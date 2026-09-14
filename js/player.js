@@ -36,6 +36,11 @@ const FUEL_BURN_FULL = 8;
 
 const BULLET_SPEED = TILE * 0.075;
 const SHIP_RADIUS = 0.3;   // in tiles, for scenery collisions
+
+// Getting off the pad is the fiddliest moment in the game, so the first few
+// seconds of every life are free: you can scrape the ground, clip a tree or
+// come down hard without losing a ship. At 50Hz this is five seconds.
+export const LAUNCH_GRACE = 250;
 const CAMERA_CEILING = -((TILE * 3) / 2);  // how far the eye may rise above y = 0
 
 // --- the ship model --------------------------------------------------------
@@ -103,6 +108,7 @@ export class Player {
     this.deathTimer = 0;
     this.fireCooldown = 0;
     this.thrusting = 0;   // 0 none, 1 hover, 2 full
+    this.grace = LAUNCH_GRACE;
   }
 
   // The camera sits behind and above, and never rotates -- the downward view
@@ -123,6 +129,11 @@ export class Player {
     return Math.hypot(this.vx, this.vy, this.vz);
   }
 
+  // While this holds, nothing can destroy the ship.
+  get protected() {
+    return this.grace > 0;
+  }
+
   get altitude() {
     // Height above the ground directly below, in fixed point.
     return (landAltitude(this.x, this.z) - this.y - UNDERCARRIAGE_Y) | 0;
@@ -137,6 +148,8 @@ export class Player {
       this.deathTimer--;
       return;
     }
+
+    if (this.grace > 0) this.grace--;
 
     // Aim for the lean the stick is asking for, and ease towards it. The
     // magnitude of the deflection sets how hard we tilt, its angle sets which
@@ -187,7 +200,7 @@ export class Player {
     if (fire && this.fireCooldown === 0) {
       this.fire();
       game.onShot();
-      this.fireCooldown = 4;
+      this.fireCooldown = 7;
     }
 
     this.checkGround(game);
@@ -240,8 +253,11 @@ export class Player {
 
     // We are touching something.
     if (ground >= SEA_LEVEL) {
-      this.die(game, 'sea');
-      return;
+      if (!this.protected) {
+        this.die(game, 'sea');
+        return;
+      }
+      // During grace, ditching just leaves you sitting on the surface.
     }
 
     // Judge the arrival on three counts: how hard you came down, how fast you
@@ -250,12 +266,16 @@ export class Player {
     const vertical = Math.abs(this.vy);
     const horizontal = Math.hypot(this.vx, this.vz);
 
-    if (vertical > LANDING_SPEED ||
-        horizontal > LANDING_SPEED * 1.6 ||
-        this.lean > 0.45) {
+    const badArrival = vertical > LANDING_SPEED ||
+                       horizontal > LANDING_SPEED * 1.6 ||
+                       this.lean > 0.45;
+
+    if (badArrival && !this.protected) {
       this.die(game, 'crash');
       return;
     }
+    // Inside the grace period a bad arrival is simply absorbed: we fall
+    // through to the landing code below, which sets the ship down safely.
 
     const onPad = isOnLaunchpad(this.x, this.z) && ground === LAUNCHPAD_ALT;
 
@@ -278,6 +298,7 @@ export class Player {
   // for clearing objects; this is the same idea done as a cylinder test, so
   // you can thread between two trees but not through one.
   hitScenery(game) {
+    if (this.protected) return false;
     const tx = this.x >> 24, tz = this.z >> 24;
 
     for (let dz = -1; dz <= 1; dz++) {

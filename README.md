@@ -29,11 +29,19 @@ error or a bad import path fails the run rather than the site.
 
 ## Controls
 
-|            | Steer                            | Thrust                | Hover     | Fire   |
-|------------|----------------------------------|-----------------------|-----------|--------|
-| **Mouse**  | pointer position on the canvas   | left button           | middle    | right  |
-| **Keys**   | arrows / WASD                    | <kbd>Z</kbd> or space | <kbd>X</kbd> | <kbd>C</kbd> |
-| **Phone**  | tilt the handset                 | THRUST pad            | —         | FIRE pad |
+|            | Steer                          | Thrust                | Hover        |
+|------------|--------------------------------|-----------------------|--------------|
+| **Mouse**  | pointer position on the canvas | left button           | middle       |
+| **Keys**   | arrows / WASD                  | <kbd>Z</kbd> or space | <kbd>X</kbd> |
+| **Phone**  | tilt the handset               | touch anywhere        | —            |
+
+**The gun fires by itself.** Aiming is done by leaning the craft, which is
+enough to think about while also keeping it in the air — and it leaves the
+touchscreen free of buttons.
+
+The first **five seconds of every life are free**: getting off the pad is the
+fiddliest moment in the game, so during that window you can scrape the ground,
+clip a tree or come down hard without losing a ship. The HUD counts it down.
 
 Steering is by *position*, not rate: how far the mouse is from the centre of
 the canvas sets how hard the craft leans, and the direction sets which way.
@@ -44,7 +52,10 @@ for sideways acceleration, so a hard lean on hover thrust will sink you.
 That position-based scheme is why phone tilt fits so naturally: the original
 was flown from an absolute mouse position, and a tilt sensor is the same kind
 of input. Tap Start while holding the phone comfortably to set the neutral
-position.
+position. Tipping the far edge of the handset down flies away from you.
+
+If the device has no motion sensor, or permission is refused, steering falls
+back to dragging on the screen and an on-screen thrust pad appears.
 
 ## How it works
 
@@ -130,7 +141,8 @@ software rasterisation, so a phone GPU does not notice it.
   the only world state the game keeps.
 - **Object, ship and font models are original designs** in the spirit of the
   originals, not transcriptions.
-- Added: tilt and touch control, synthesised audio, a saved high score.
+- Added: tilt and touch control, synthesised audio, a saved high score,
+  automatic fire, and a five-second grace period at the start of each life.
 
 ## Credits
 

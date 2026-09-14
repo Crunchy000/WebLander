@@ -21,6 +21,11 @@ import { drawText, drawTextCentred, textWidth } from './font.js';
 
 export const STATE = { TITLE: 0, PLAYING: 1, DYING: 2, GAMEOVER: 3 };
 
+// The gun runs itself. Aiming is done by leaning the craft, which is plenty to
+// think about while also keeping it in the air -- and it means the touchscreen
+// needs no fire button at all.
+const AUTO_FIRE = true;
+
 const STARTING_LIVES = 4;
 
 // The game runs on a fixed 50Hz step regardless of how often the display
@@ -128,7 +133,8 @@ export class Game {
     }
 
     // Playing.
-    this.player.update(inp.stick, inp.thrust, inp.fire, this.gravity, this);
+    const firing = AUTO_FIRE || inp.fire;
+    this.player.update(inp.stick, inp.thrust, firing, this.gravity, this);
     this.audio.engine(this.player.thrusting);
 
     updateParticles(this.gravity, (i, bx, by, bz) => this.bulletHit(i, bx, by, bz));
@@ -143,7 +149,7 @@ export class Game {
     this.lives--;
     if (this.lives <= 0) {
       this.state = STATE.GAMEOVER;
-      this.setMessage('GAME OVER', 0);
+      this.setMessage(null, 0);
       this.audio.gameOver();
       this.audio.engine(0);
       return;
@@ -349,6 +355,11 @@ export class Game {
       const alt = Math.max(0, p.altitude / TILE);
       const txt = 'ALT ' + alt.toFixed(1);
       drawText(rd, txt, SCREEN_W - 4 - textWidth(txt), 14, DIM);
+    }
+
+    if (this.state === STATE.PLAYING && p.protected) {
+      const secs = Math.ceil(p.grace / 50);
+      drawTextCentred(rd, 'SAFE ' + secs, CENTRE_X, 30, [110, 200, 255]);
     }
 
     if (this.message) {

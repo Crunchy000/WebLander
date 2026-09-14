@@ -101,24 +101,34 @@ export class Input {
       el.addEventListener('mouseleave', off);
     };
     bind('btn-thrust', (v) => { this.touchThrust = v; });
-    bind('btn-fire', (v) => { this.touchFire = v; });
 
     this.touchThrust = false;
     this.touchFire = false;
 
-    // Dragging anywhere on the canvas also steers, as a fallback for devices
-    // with no usable motion sensor.
     this.dragStick = null;
-    this.canvas.addEventListener('touchstart', (e) => this._drag(e), { passive: false });
-    this.canvas.addEventListener('touchmove', (e) => this._drag(e), { passive: false });
-    this.canvas.addEventListener('touchend', () => { this.dragStick = null; }, { passive: false });
+    this.tapThrust = false;
+
+    for (const ev of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) {
+      this.canvas.addEventListener(ev, (e) => this._canvasTouch(e), { passive: false });
+    }
   }
 
-  _drag(e) {
-    if (this.tiltEnabled) return;
+  // With tilt steering the screen is free for anything else, so touching it
+  // anywhere fires the engine -- no need to find a button while concentrating
+  // on flying. Without a motion sensor we fall back to dragging to steer, and
+  // the on-screen thrust pad earns its place again.
+  _canvasTouch(e) {
     e.preventDefault();
+    const touching = e.touches.length > 0;
+
+    if (this.tiltEnabled) {
+      this.tapThrust = touching;
+      this.dragStick = null;
+      return;
+    }
+
+    if (!touching) { this.dragStick = null; return; }
     const t = e.touches[0];
-    if (!t) { this.dragStick = null; return; }
     const r = this.canvas.getBoundingClientRect();
     this.dragStick = {
       x: clamp(((t.clientX - r.left) / r.width) * 2 - 1, -1, 1),
@@ -175,7 +185,9 @@ export class Input {
     const orient = (screen.orientation && screen.orientation.angle) || 0;
 
     let sx = dGamma / RANGE;
-    let sy = dBeta / RANGE;
+    // Inverted: tipping the far edge of the handset down flies away from you,
+    // which is the way round that matches what you see on screen.
+    let sy = -dBeta / RANGE;
 
     // Compensate for the device being held sideways.
     if (orient === 90) { const t = sx; sx = sy; sy = -t; }
@@ -211,7 +223,7 @@ export class Input {
 
     // Thrust and fire, from whichever source is active.
     let thrust = this.mouseThrust;
-    if (this.touchThrust) thrust = 2;
+    if (this.touchThrust || this.tapThrust) thrust = 2;
     if (k.has('KeyZ') || k.has('Space')) thrust = 2;
     else if (k.has('KeyX')) thrust = thrust || 1;
     this.thrust = thrust;

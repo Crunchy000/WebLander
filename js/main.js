@@ -34,15 +34,15 @@ startBtn.addEventListener('click', async () => {
   if (input.hasTouch) {
     const ok = await input.enableTilt();
     if (!ok) {
-      // No motion sensor, or permission refused: fall back to dragging.
+      // No motion sensor, or permission refused: drag to steer instead, which
+      // occupies the screen, so the thrust pad is needed after all.
       document.getElementById('tiltnote').hidden = false;
-      document.getElementById('controls-touch').innerHTML =
-        '<p><b>Drag</b> on the screen to steer.</p>' +
-        '<p>Hold <b>THRUST</b> to burn, <b>FIRE</b> to shoot.</p>';
+      touchPad.hidden = false;
     } else {
       input.calibrateTilt();
+      // Tilt steers and touching anywhere thrusts, so no buttons are needed.
+      touchPad.hidden = true;
     }
-    touchPad.hidden = false;
   }
 
   overlay.hidden = true;
