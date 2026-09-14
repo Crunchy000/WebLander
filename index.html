@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="description" content="WebLander - a browser port of the 1987 Archimedes classic Lander.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>WebLander</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000'/%3E%3Cpath d='M16 5l6 11H10z' fill='%236f8'/%3E%3Crect x='11' y='17' width='10' height='5' fill='%23ccc'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="screen" width="320" height="256"></canvas>
+
+  <!-- Touch controls, shown only on devices with a touchscreen -->
+  <div id="touch" hidden>
+    <button id="btn-fire"   class="padbtn" aria-label="Fire">FIRE</button>
+    <button id="btn-thrust" class="padbtn" aria-label="Thrust">THRUST</button>
+  </div>
+
+  <div id="overlay">
+    <div id="panel">
+      <h1>WEBLANDER</h1>
+      <p id="blurb">Fly the lander, blast the scenery, don't hit the ground too hard.</p>
+      <div id="controls-desktop">
+        <p><b>Mouse</b> steers &mdash; the further from centre, the harder you tilt.</p>
+        <p><b>Left button</b> full thrust &nbsp;&middot;&nbsp; <b>Middle</b> hover &nbsp;&middot;&nbsp; <b>Right</b> fire</p>
+        <p class="dim">Keyboard: arrows steer, <b>Z</b> thrust, <b>X</b> hover, <b>C</b> fire</p>
+      </div>
+      <div id="controls-touch" hidden>
+        <p><b>Tilt</b> your phone to steer.</p>
+        <p>Hold <b>THRUST</b> to burn, <b>FIRE</b> to shoot.</p>
+        <p class="dim">Hold the phone comfortably, then tap Start to set the neutral position.</p>
+      </div>
+      <button id="start">START</button>
+      <p id="tiltnote" class="dim" hidden>Motion access is needed for tilt steering.</p>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
