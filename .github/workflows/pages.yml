@@ -1,0 +1,85 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Least privilege that still lets deploy-pages mint its OIDC token.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deploy finish rather than cancelling it half-way.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify modules load
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # There is no build step -- the game is served as-is -- so the useful
+      # check is that every module still parses and evaluates. Each one is
+      # imported for real, which catches syntax errors, bad import paths and
+      # anything that throws at module scope before it reaches the site.
+      # main.js is skipped: it touches the DOM as soon as it loads.
+      - name: Import every module
+        run: |
+          node --input-type=module -e '
+            const mods = ["maths", "landscape", "model", "objects", "renderer",
+                          "particles", "player", "font", "input", "audio", "game"];
+            let failed = false;
+            for (const m of mods) {
+              try {
+                await import("./js/" + m + ".js");
+                console.log("  ok   js/" + m + ".js");
+              } catch (err) {
+                console.error("  FAIL js/" + m + ".js -- " + err.message);
+                failed = true;
+              }
+            }
+            if (failed) process.exit(1);
+            console.log("\nall " + mods.length + " modules loaded");
+          '
+
+      - name: Check entry points exist
+        run: |
+          for f in index.html css/style.css js/main.js; do
+            test -f "$f" || { echo "missing $f"; exit 1; }
+          done
+          echo "entry points present"
+
+  deploy:
+    name: Deploy
+    needs: verify
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # enablement: true turns Pages on for the repo if it is not already,
+      # so this works without anyone visiting the settings page first.
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
