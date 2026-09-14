@@ -1,5 +1,7 @@
 # WebLander
 
+**[▶ Play it](https://crunchy000.github.io/WebLander/)**
+
 A browser port of **Lander**, the flat-shaded 3D game David Braben wrote for
 the Acorn Archimedes in 1987 and which shipped on the machine's application
 discs.
@@ -19,6 +21,11 @@ python3 -m http.server 8000
 
 Or drop the directory on any static host — GitHub Pages, Netlify, an S3
 bucket. There is nothing to compile.
+
+Pushes to `main` deploy automatically to GitHub Pages via
+`.github/workflows/pages.yml`. Since there is no build step, the workflow's
+useful job is to import every module for real before publishing, so a syntax
+error or a bad import path fails the run rather than the site.
 
 ## Controls
 
