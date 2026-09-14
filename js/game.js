@@ -21,10 +21,6 @@ import { drawText, drawTextCentred, textWidth } from './font.js';
 
 export const STATE = { TITLE: 0, PLAYING: 1, DYING: 2, GAMEOVER: 3 };
 
-// The gun runs itself. Aiming is done by leaning the craft, which is plenty to
-// think about while also keeping it in the air -- and it means the touchscreen
-// needs no fire button at all.
-const AUTO_FIRE = true;
 
 const STARTING_LIVES = 4;
 
@@ -133,8 +129,7 @@ export class Game {
     }
 
     // Playing.
-    const firing = AUTO_FIRE || inp.fire;
-    this.player.update(inp.stick, inp.thrust, firing, this.gravity, this);
+    this.player.update(inp.stick, inp.thrust, inp.fire, this.gravity, this);
     this.audio.engine(this.player.thrusting);
 
     updateParticles(this.gravity, (i, bx, by, bz) => this.bulletHit(i, bx, by, bz));

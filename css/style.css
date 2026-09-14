@@ -120,3 +120,37 @@ html, body {
 }
 
 #start:hover { background: #9fc; }
+
+/* ---- tilt options on the title card ---- */
+
+#tiltopts {
+  margin-top: 1.2em;
+  padding-top: 1em;
+  border-top: 1px solid rgba(110, 255, 150, .22);
+}
+
+.toggle {
+  display: inline-block;
+  margin: .25em .3em;
+  padding: .6em 1em;
+  font: 500 13px/1 ui-monospace, monospace;
+  color: var(--ink);
+  background: rgba(0, 40, 16, .35);
+  border: 1px solid rgba(110, 255, 150, .45);
+  border-radius: 3px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.toggle[aria-pressed="true"] {
+  color: #000;
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.read {
+  margin-top: .8em;
+  font-size: 11px;
+  color: #4a6;
+  font-variant-numeric: tabular-nums;
+}

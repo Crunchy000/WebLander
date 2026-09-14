@@ -29,15 +29,14 @@ error or a bad import path fails the run rather than the site.
 
 ## Controls
 
-|            | Steer                          | Thrust                | Hover        |
-|------------|--------------------------------|-----------------------|--------------|
-| **Mouse**  | pointer position on the canvas | left button           | middle       |
-| **Keys**   | arrows / WASD                  | <kbd>Z</kbd> or space | <kbd>X</kbd> |
-| **Phone**  | tilt the handset               | touch anywhere        | —            |
+|            | Steer                          | Thrust                | Hover        | Fire         |
+|------------|--------------------------------|-----------------------|--------------|--------------|
+| **Mouse**  | pointer position on the canvas | left button           | middle       | right        |
+| **Keys**   | arrows / WASD                  | <kbd>Z</kbd> or space | <kbd>X</kbd> | <kbd>C</kbd> |
+| **Phone**  | tilt the handset               | one finger, anywhere  | —            | second finger |
 
-**The gun fires by itself.** Aiming is done by leaning the craft, which is
-enough to think about while also keeping it in the air — and it leaves the
-touchscreen free of buttons.
+On a phone the screen is free of buttons: one finger anywhere fires the
+engine, and putting a second finger down works the gun.
 
 The first **five seconds of every life are free**: getting off the pad is the
 fiddliest moment in the game, so during that window you can scrape the ground,
@@ -53,6 +52,11 @@ That position-based scheme is why phone tilt fits so naturally: the original
 was flown from an absolute mouse position, and a tilt sensor is the same kind
 of input. Tap Start while holding the phone comfortably to set the neutral
 position. Tipping the far edge of the handset down flies away from you.
+
+If the steering comes out backwards, the title screen has a toggle for each
+axis and remembers the choice. Handsets differ in which way they report tilt,
+and the screen orientation angle is defined differently across platforms, so
+this is a switch rather than a guess.
 
 If the device has no motion sensor, or permission is refused, steering falls
 back to dragging on the screen and an on-screen thrust pad appears.
@@ -141,8 +145,8 @@ software rasterisation, so a phone GPU does not notice it.
   the only world state the game keeps.
 - **Object, ship and font models are original designs** in the spirit of the
   originals, not transcriptions.
-- Added: tilt and touch control, synthesised audio, a saved high score,
-  automatic fire, and a five-second grace period at the start of each life.
+- Added: tilt and multi-touch control, synthesised audio, a saved high score,
+  and a five-second grace period at the start of each life.
 
 ## Credits
 

@@ -8,12 +8,39 @@
 
 import { clamp } from './maths.js';
 
+// Degrees of tilt for full stick deflection -- enough travel to be
+// controllable without having to wave the handset around.
+const TILT_RANGE = 22;
+
+function loadFlag(key, dflt) {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? dflt : v === '1';
+  } catch { return dflt; }
+}
+
+function saveFlag(key, on) {
+  try { localStorage.setItem(key, on ? '1' : '0'); } catch { /* private mode */ }
+}
+
 export class Input {
   constructor(canvas) {
     this.canvas = canvas;
 
-    // The virtual stick, each axis in [-1, 1].
+    // The virtual stick, each axis in [-1, 1]. One convention, and every
+    // input below must produce it:
+    //
+    //   x > 0  lean right      y > 0  lean away from the viewer
+    //   x < 0  lean left       y < 0  lean towards the viewer
+    //
+    // "Away" is up the screen, towards the horizon.
     this.stick = { x: 0, y: 0 };
+
+    // Per-axis tilt inversion, remembered between sessions. Which way a
+    // handset reports its tilt depends on the device and on how the screen
+    // orientation angle is defined, so these are exposed rather than guessed.
+    this.invertX = loadFlag('weblander.invertX', false);
+    this.invertY = loadFlag('weblander.invertY', false);
     this.thrust = 0;      // 0 none, 1 hover, 2 full
     this.fire = false;
     this.startPressed = false;
@@ -62,7 +89,9 @@ export class Input {
       // way the original maps the mouse's 0-1023 range onto -512..+511.
       this.mouseStick = {
         x: clamp(((e.clientX - r.left) / r.width) * 2 - 1, -1, 1),
-        y: clamp(((e.clientY - r.top) / r.height) * 2 - 1, -1, 1),
+        // Negated: screen y grows downwards, but moving the pointer up the
+        // screen, towards the horizon, has to fly away from the viewer.
+        y: clamp(1 - ((e.clientY - r.top) / r.height) * 2, -1, 1),
       };
     });
 
@@ -115,19 +144,22 @@ export class Input {
 
   // With tilt steering the screen is free for anything else, so touching it
   // anywhere fires the engine -- no need to find a button while concentrating
-  // on flying. Without a motion sensor we fall back to dragging to steer, and
-  // the on-screen thrust pad earns its place again.
+  // on flying -- and a second finger down works the gun. Without a motion
+  // sensor we fall back to dragging to steer, and the thrust pad earns its
+  // place again.
   _canvasTouch(e) {
     e.preventDefault();
-    const touching = e.touches.length > 0;
+    const n = e.touches.length;
 
     if (this.tiltEnabled) {
-      this.tapThrust = touching;
+      this.tapThrust = n >= 1;
+      this.touchFire = n >= 2;
       this.dragStick = null;
       return;
     }
 
-    if (!touching) { this.dragStick = null; return; }
+    if (n === 0) { this.dragStick = null; return; }
+    this.touchFire = n >= 2;
     const t = e.touches[0];
     const r = this.canvas.getBoundingClientRect();
     this.dragStick = {
@@ -169,32 +201,53 @@ export class Input {
     if (this.tiltRaw) this.tiltZero = { ...this.tiltRaw };
   }
 
+  // How far the picture is turned from the handset's natural orientation.
+  screenAngle() {
+    if (screen.orientation && typeof screen.orientation.angle === 'number') {
+      return screen.orientation.angle;
+    }
+    return window.orientation || 0;   // older iOS
+  }
+
   _tiltStick() {
     if (!this.tiltEnabled || !this.tiltRaw || !this.tiltZero) return null;
 
-    let dBeta = this.tiltRaw.beta - this.tiltZero.beta;    // front-back lean
-    let dGamma = this.tiltRaw.gamma - this.tiltZero.gamma; // left-right lean
-
     // Wrap, so crossing +/-180 does not send the craft flying.
-    if (dBeta > 180) dBeta -= 360; else if (dBeta < -180) dBeta += 360;
-    if (dGamma > 180) dGamma -= 360; else if (dGamma < -180) dGamma += 360;
+    const wrap = (d) => (d > 180 ? d - 360 : d < -180 ? d + 360 : d);
+    const dBeta = wrap(this.tiltRaw.beta - this.tiltZero.beta);
+    const dGamma = wrap(this.tiltRaw.gamma - this.tiltZero.gamma);
 
-    // About 22 degrees of lean gives full deflection -- enough travel to be
-    // controllable without having to wave the phone around.
-    const RANGE = 22;
-    const orient = (screen.orientation && screen.orientation.angle) || 0;
+    // Tilt in the handset's own frame, in its natural orientation:
+    //   right -- the right-hand edge dipping down       (+gamma)
+    //   away  -- the top edge tipping away from you     (-beta)
+    const right = dGamma;
+    const away = -dBeta;
 
-    let sx = dGamma / RANGE;
-    // Inverted: tipping the far edge of the handset down flies away from you,
-    // which is the way round that matches what you see on screen.
-    let sy = -dBeta / RANGE;
+    // Turn that into screen space. The sensor reports in the handset's frame
+    // regardless of which way up the picture is, so playing in landscape
+    // swaps the two axes unless they are rotated to match -- which is why
+    // left/right and forwards/backwards can end up wired to each other.
+    const rad = (this.screenAngle() * Math.PI) / 180;
+    const c = Math.cos(rad), sn = Math.sin(rad);
+    let sx = (right * c + away * sn) / TILT_RANGE;
+    let sy = (-right * sn + away * c) / TILT_RANGE;
 
-    // Compensate for the device being held sideways.
-    if (orient === 90) { const t = sx; sx = sy; sy = -t; }
-    else if (orient === 270 || orient === -90) { const t = sx; sx = -sy; sy = t; }
-    else if (orient === 180) { sx = -sx; sy = -sy; }
+    // User overrides last, in screen space, so flipping one axis can never
+    // disturb the other.
+    if (this.invertX) sx = -sx;
+    if (this.invertY) sy = -sy;
+
+    this.tiltDebug = {
+      beta: Math.round(dBeta), gamma: Math.round(dGamma),
+      x: +sx.toFixed(2), y: +sy.toFixed(2), angle: this.screenAngle(),
+    };
 
     return { x: clamp(sx, -1, 1), y: clamp(sy, -1, 1) };
+  }
+
+  setInvert(axis, on) {
+    if (axis === 'x') this.invertX = on; else this.invertY = on;
+    saveFlag('weblander.invert' + axis.toUpperCase(), on);
   }
 
   // -- per-frame ------------------------------------------------------------
@@ -203,7 +256,7 @@ export class Input {
     // Keyboard steering eases towards the corner being held.
     const k = this.keys;
     const kx = (k.has('ArrowRight') || k.has('KeyD') ? 1 : 0) - (k.has('ArrowLeft') || k.has('KeyA') ? 1 : 0);
-    const ky = (k.has('ArrowDown') || k.has('KeyS') ? 1 : 0) - (k.has('ArrowUp') || k.has('KeyW') ? 1 : 0);
+    const ky = (k.has('ArrowUp') || k.has('KeyW') ? 1 : 0) - (k.has('ArrowDown') || k.has('KeyS') ? 1 : 0);
     const RATE = 0.09;
     this.keyStick.x += (kx - this.keyStick.x) * RATE;
     this.keyStick.y += (ky - this.keyStick.y) * RATE;

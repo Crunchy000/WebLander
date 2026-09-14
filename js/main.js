@@ -28,6 +28,33 @@ if (input.hasTouch) {
   document.getElementById('controls-touch').hidden = false;
 }
 
+// Tilt axis toggles. These are exposed because which way a handset reports
+// its tilt varies by device and by how the screen orientation angle is
+// defined, so it is better to let the player correct it in one tap than to
+// guess on their behalf.
+for (const [id, axis] of [['inv-x', 'x'], ['inv-y', 'y']]) {
+  const btn = document.getElementById(id);
+  if (!btn) continue;
+  const on = axis === 'x' ? input.invertX : input.invertY;
+  btn.setAttribute('aria-pressed', String(on));
+  btn.addEventListener('click', () => {
+    const next = btn.getAttribute('aria-pressed') !== 'true';
+    btn.setAttribute('aria-pressed', String(next));
+    input.setInvert(axis, next);
+  });
+}
+
+// Live readout, so a misbehaving sensor is diagnosable rather than a mystery.
+const readout = document.getElementById('tiltread');
+setInterval(() => {
+  if (!readout || overlay.hidden) return;
+  input.sample();
+  const d = input.tiltDebug;
+  readout.textContent = d
+    ? `tilt  beta ${d.beta}°  gamma ${d.gamma}°  screen ${d.angle}°  ->  x ${d.x}  y ${d.y}`
+    : 'tilt: waiting for sensor…';
+}, 150);
+
 startBtn.addEventListener('click', async () => {
   audio.start();
 

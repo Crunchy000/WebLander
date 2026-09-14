@@ -31,8 +31,15 @@
       </div>
       <div id="controls-touch" hidden>
         <p><b>Tilt</b> your phone to steer.</p>
-        <p><b>Touch anywhere</b> to fire the engine. The gun shoots by itself.</p>
+        <p><b>One finger</b> anywhere fires the engine. <b>Two fingers</b> shoot.</p>
         <p class="dim">Hold the phone comfortably, then tap Start to set the neutral position.</p>
+
+        <div id="tiltopts">
+          <p class="dim">If the steering feels backwards, flip an axis:</p>
+          <button id="inv-x" class="toggle" aria-pressed="false">Invert left / right</button>
+          <button id="inv-y" class="toggle" aria-pressed="false">Invert forward / back</button>
+          <p id="tiltread" class="read">tilt: waiting for sensor…</p>
+        </div>
       </div>
       <button id="start">START</button>
       <p id="tiltnote" class="dim" hidden>Motion access is needed for tilt steering.</p>
