@@ -215,43 +215,65 @@ export class Audio {
   // in size so a string of them does not sound like a metronome.
   secondary() { this._boom(0.42 + Math.random() * 0.34); }
 
-  // Water, which is nothing like an explosion: no crack, because nothing
-  // shocks the air. It is an impact, then the dull weight of displaced water,
-  // then a long fizz of bubbles that carries most of the character.
+  // A single bubble. The pitch RISES as it collapses -- that upward chirp is
+  // what the ear hears as "bubble"; a falling tone sounds like a drip
+  // instead. Short, resonant, and almost pure tone.
+  _glug({ at = 0, f = 220, gain = 0.5, dur = 0.09 }) {
+    const ctx = this.ctx, t = ctx.currentTime + at;
+
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(f, t);
+    o.frequency.exponentialRampToValueAtTime(f * (1.7 + Math.random() * 0.8), t + dur);
+
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+
+    o.connect(g).connect(this.boomBus);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+
+    // A tick of noise on the break, so it is not a bare sine.
+    this._noise({ dur: 0.035, type: 'bandpass', f0: f * 5, f1: f * 2.5,
+                  gain: gain * 0.5, q: 3, delay: at });
+  }
+
+  // Water. Nothing shocks the air, so there is no crack: an impact, the dull
+  // weight of displaced water, and then a string of glugs as the air goes
+  // down with it. The glugging is what makes it sound like a hull filling
+  // rather than a wave breaking.
   _splash(scale = 1) {
     if (!this.enabled) return;
     const S = scale;
 
-    // 1. Impact: broad, but rounded rather than sharp.
-    this._noise({ dur: 0.16 * S, type: 'bandpass', f0: 1500, f1: 380,
-                  gain: 1.5 * S, q: 0.7, dest: this.crackBus });
+    // 1. Impact: broad, rounded, no edge.
+    this._noise({ dur: 0.15 * S, type: 'bandpass', f0: 1300, f1: 340,
+                  gain: 1.3 * S, q: 0.7, dest: this.crackBus });
 
-    // 2. Displacement: the dull body of water being shoved aside.
-    this._noise({ dur: 0.55 * S, type: 'lowpass', f0: 700, f1: 130,
-                  gain: 1.3 * S, q: 1.1 });
+    // 2. Displacement: the body of water shoved aside.
+    this._noise({ dur: 0.50 * S, type: 'lowpass', f0: 620, f1: 120,
+                  gain: 1.25 * S, q: 1.1 });
 
-    // 3. Fizz: bubbles, high and sparse, decaying slowly. This is the part
-    // that actually sounds wet -- without it you just have a muffled thud.
-    this._noise({ dur: 1.5 * S, type: 'highpass', f0: 2600, f1: 4200,
-                  gain: 0.55 * S, q: 0.6, delay: 0.05 });
-    this._noise({ dur: 2.2 * S, type: 'bandpass', f0: 3400, f1: 1500,
-                  gain: 0.34 * S, q: 2.2, delay: 0.18 });
-
-    // 4. A short falling gulp, for the sense of something going under.
-    if (S > 0.7) {
-      const ctx = this.ctx, t = ctx.currentTime;
-      const o = ctx.createOscillator();
-      o.type = 'sine';
-      o.frequency.setValueAtTime(320, t + 0.05);
-      o.frequency.exponentialRampToValueAtTime(70, t + 0.05 + 0.5 * S);
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, t + 0.05);
-      g.gain.exponentialRampToValueAtTime(0.5 * S, t + 0.09);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05 + 0.7 * S);
-      o.connect(g).connect(this.boomBus);
-      o.start(t + 0.05);
-      o.stop(t + 0.05 + 0.8 * S);
+    // 3. Glugs: irregularly spaced and falling in pitch across the run, as
+    // the air pocket empties and the remaining bubbles get bigger.
+    const n = Math.round(4 + 5 * S);
+    let at = 0.10;
+    for (let i = 0; i < n; i++) {
+      const through = i / Math.max(1, n - 1);
+      this._glug({
+        at,
+        f: (300 - 150 * through) * (0.85 + Math.random() * 0.3),
+        gain: (0.75 - 0.3 * through) * S,
+        dur: (0.07 + 0.05 * through) * S,
+      });
+      at += (0.075 + Math.random() * 0.13) * S;
     }
+
+    // 4. A thin wash of small bubbles underneath the glugs.
+    this._noise({ dur: 1.1 * S, type: 'bandpass', f0: 2200, f1: 900,
+                  gain: 0.22 * S, q: 2.5, delay: 0.08 });
   }
 
   // A ship going under.

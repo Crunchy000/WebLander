@@ -41,9 +41,13 @@ const BOMB_FIN = [250, 206,  62];
 
 // --- layout ----------------------------------------------------------------
 
+// Overall size of the aircraft. Everything below is in unscaled units and
+// passes through here, so the whole machine resizes from one number.
+const SCALE = 0.76;
+
 export const ARM_R = 0.72;      // arm tip, out from the centre
 const ARM_Y = -0.03;            // arms sit just above the waist
-const BELLY = 0.39;             // skids reach the undercarriage height
+const BELLY = 0.39 / SCALE;     // scales to exactly the undercarriage height
 
 // Arm bearings, X-configuration: two forward, two aft.
 export const ARMS = [
@@ -55,7 +59,7 @@ export const ARMS = [
 
 function buildBody() {
   const m = new Model();
-  const v = (x, y, z) => m.vert(x, y, z);
+  const v = (x, y, z) => m.vert(x * SCALE, y * SCALE, z * SCALE);
   const CH = -0.02;
 
   // Faceted shell: a ring at the waist, drawn up to a short spine and down
@@ -156,7 +160,7 @@ function buildBody() {
 // A motor pod, built about the arm tip.
 function buildPod() {
   const m = new Model();
-  const v = (x, y, z) => m.vert(x, y, z);
+  const v = (x, y, z) => m.vert(x * SCALE, y * SCALE, z * SCALE);
   const r = 0.085;
   const top = [], bot = [];
   for (let i = 0; i < 6; i++) {
@@ -177,7 +181,7 @@ function buildPod() {
 // and a zero-thickness blade would vanish entirely.
 function buildRotor() {
   const m = new Model();
-  const v = (x, y, z) => m.vert(x, y, z);
+  const v = (x, y, z) => m.vert(x * SCALE, y * SCALE, z * SCALE);
   const R = 0.46, w = 0.055, t = 0.028;
   const Y = -0.17, CONE = 0.05;
 
@@ -209,7 +213,7 @@ function buildRotor() {
 // camera rides at the craft's altitude, so a flat ring would be edge-on.
 function buildDisc() {
   const m = new Model();
-  const v = (x, y, z) => m.vert(x, y, z);
+  const v = (x, y, z) => m.vert(x * SCALE, y * SCALE, z * SCALE);
   const RI = 0.26, RO = 0.455, Y = -0.17, CONE = 0.05, SEG = 12;
 
   const inner = [], outer = [];
@@ -242,7 +246,10 @@ export function drawUav(rd, p, camX, camY, camZ) {
 
   for (let i = 0; i < ARMS.length; i++) {
     const { a } = ARMS[i];
-    const off = matApply(p.matrix, Math.sin(a) * ARM_R * TILE, ARM_Y * TILE, Math.cos(a) * ARM_R * TILE);
+    const off = matApply(p.matrix,
+      Math.sin(a) * ARM_R * SCALE * TILE,
+      ARM_Y * SCALE * TILE,
+      Math.cos(a) * ARM_R * SCALE * TILE);
     const wx = (p.x + off[0]) | 0;
     const wy = (p.y + off[1]) | 0;
     const wz = (p.z + off[2]) | 0;
