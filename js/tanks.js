@@ -23,14 +23,15 @@ const WRECK_LIFE = 900;         // frames a burnt-out hull lingers
 
 // --- models ----------------------------------------------------------------
 
-const HULL_A  = [ 96, 122,  74];
-const HULL_B  = [ 74,  98,  58];
-const DECK    = [126, 152,  96];
-const TRACK   = [ 58,  58,  62];
-const TRACK_B = [ 84,  84,  90];
-const TURRET  = [108, 134,  82];
-const BARREL  = [ 72,  76,  84];
-const MARK    = [226,  96,  52];   // hazard stripe, so they read as targets
+const HULL_A  = [ 62,  70,  82];   // dark and cold, to read against green
+const HULL_B  = [ 46,  53,  63];
+const DECK    = [ 84,  94, 108];
+const TRACK   = [ 30,  31,  35];
+const TRACK_B = [ 58,  60,  66];
+const TURRET  = [ 74,  84,  98];
+const BARREL  = [104, 110, 122];
+const MARK    = [255, 150,  40];   // hazard markings, so they read as targets
+const MARK_B  = [255, 208,  64];
 const CHAR    = [ 46,  42,  40];
 const CHAR_B  = [ 68,  62,  58];
 
@@ -69,11 +70,24 @@ function buildHull(burnt) {
   ], burnt ? CHAR_B : HULL_B);
 
   if (!burnt) {
-    // A stripe across the deck, so they are legible from the air.
+    // Deck stripe, for when you are directly overhead.
     facet(m, [
       v(-0.30, -0.31, -0.20), v(0.30, -0.31, -0.20),
       v(0.30, -0.31, -0.06), v(-0.30, -0.31, -0.06),
     ], MARK);
+
+    // Flank chevrons. These are the ones that do the work: from the air you
+    // mostly see a tank side-on, and a dark hull on dark tracks needs
+    // something bright at eye level to separate it from the ground.
+    for (const sgn of [1, -1]) {
+      const x = sgn * 0.305;
+      for (const [z0, z1, col] of [[-0.40, -0.18, MARK], [-0.10, 0.12, MARK_B], [0.20, 0.38, MARK]]) {
+        facet(m, [
+          v(x, -0.26, z0), v(x, -0.26, z1),
+          v(x, -0.10, z1), v(x, -0.10, z0),
+        ], col);
+      }
+    }
   }
   return m;
 }
@@ -85,7 +99,15 @@ function buildTurret(burnt) {
   const v = (x, y, z) => m.vert(x, y, z);
   const t = burnt ? CHAR : TURRET;
 
-  box(m, -0.22, -0.26, -0.24, 0.22, 0.00, 0.22, t, burnt ? CHAR_B : shade(t, 1.15));
+  box(m, -0.22, -0.26, -0.24, 0.22, 0.00, 0.22, t, burnt ? CHAR_B : shade(t, 1.2));
+  if (!burnt) {
+    for (const sgn of [1, -1]) {
+      facet(m, [
+        v(sgn * 0.225, -0.22, -0.18), v(sgn * 0.225, -0.22, 0.16),
+        v(sgn * 0.225, -0.12, 0.16), v(sgn * 0.225, -0.12, -0.18),
+      ], MARK);
+    }
+  }
   // Gun.
   box(m, -0.045, -0.20, 0.20, 0.045, -0.11, 0.78, burnt ? CHAR_B : BARREL);
   if (!burnt) {

@@ -23,7 +23,7 @@ export const LAUNCHPAD_Y       = LAUNCHPAD_ALT - UNDERCARRIAGE_Y;
 
 // The visible grid.
 export const TILES_X = 19;   // corners left-to-right (18 tiles)
-export const TILES_Z = 11;   // corners front-to-back (10 tiles)
+export const TILES_Z = 17;   // corners front-to-back (16 tiles)
 
 export const LANDSCAPE_X = (TILE * (TILES_X - 2)) / 2;          // 5.5 tiles
 export const LANDSCAPE_Z_DEPTH = TILE * (TILES_Z - 1);          // 10 tiles
