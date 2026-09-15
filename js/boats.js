@@ -25,90 +25,118 @@ const CLEARANCE = 2.2 * TILE;   // open water needed around a spawn
 
 // --- models ----------------------------------------------------------------
 
-const HULL     = [ 38,  52,  86];   // navy
-const HULL_B   = [ 26,  36,  62];
-const BOOT     = [176,  58,  52];   // boot-topping at the waterline
-const DECK     = [162, 142, 104];   // planking
-const HOUSE    = [232, 236, 242];   // superstructure
-const HOUSE_B  = [196, 202, 212];
-const BRIDGE   = [ 96, 214, 236];   // glazing
-const FUNNEL   = [216,  78,  54];
-const FUNNEL_B = [ 40,  42,  48];
-const MAST     = [208, 212, 220];
-const TRIM     = [250, 196,  64];
-const CHAR     = [ 44,  40,  40];
-const CHAR_B   = [ 68,  62,  58];
+// A stubby patchwork tug. Rather than painting each part a sensible colour,
+// every facet takes its own from a bright palette, which is what gives the
+// patchwork look -- and it happens to suit a flat-shaded renderer perfectly,
+// since each panel is already a single flat colour with its own shading.
 
-function box(m, x0, y0, z0, x1, y1, z1, cols) {
-  const v = (x, y, z) => m.vert(x, y, z);
-  const c = Array.isArray(cols) ? { all: cols } : cols;
-  const pick = (k) => c[k] || c.all;
-  const q = [
-    v(x0, y0, z0), v(x1, y0, z0), v(x1, y0, z1), v(x0, y0, z1),
-    v(x0, y1, z0), v(x1, y1, z0), v(x1, y1, z1), v(x0, y1, z1),
-  ];
-  facet(m, [q[0], q[1], q[2], q[3]], pick('top'));
-  facet(m, [q[4], q[5], q[6], q[7]], pick('bottom'));
-  facet(m, [q[0], q[1], q[5], q[4]], pick('back'));
-  facet(m, [q[3], q[2], q[6], q[7]], pick('front'));
-  facet(m, [q[1], q[2], q[6], q[5]], pick('right'));
-  facet(m, [q[0], q[3], q[7], q[4]], pick('left'));
-  return q;
-}
+const PATCH = [
+  [246, 124,  36],   // orange
+  [132,  86, 200],   // purple
+  [ 48, 198, 198],   // teal
+  [238,  92, 156],   // pink
+  [250, 202,  52],   // yellow
+  [ 58, 120, 214],   // blue
+  [ 74, 188,  98],   // green
+  [242, 242, 246],   // white
+  [228,  68,  68],   // red
+  [146, 208,  76],   // lime
+  [255, 158, 186],   // rose
+  [ 32, 158, 148],   // sea green
+];
 
-// Bow towards +z. The origin sits at the waterline, so the hull can simply be
-// pushed down as it floods.
+const CHAR   = [ 44,  40,  40];
+const CHAR_B = [ 70,  64,  60];
+const DOOR   = [ 36,  32,  40];   // the shaded arch of the doorway
+const CAP    = [248, 248, 250];   // wheelhouse roof
+
+// Walk the palette with a stride coprime to its length, so neighbouring
+// panels never land on the same colour.
+let patchN = 0;
+const patch = () => PATCH[(patchN++ * 5) % PATCH.length];
+
+// Stations along the hull, bow towards +z: how wide she is at the rail and at
+// the keel, and how high the rail sits -- the sheer rising towards the bow.
+const STATIONS = [
+  { z: -0.80, rail: 0.30, keel: 0.11, ry: -0.30, ky: 0.17 },
+  { z: -0.45, rail: 0.41, keel: 0.21, ry: -0.33, ky: 0.23 },
+  { z: -0.05, rail: 0.45, keel: 0.23, ry: -0.36, ky: 0.24 },
+  { z:  0.35, rail: 0.43, keel: 0.19, ry: -0.42, ky: 0.22 },
+  { z:  0.66, rail: 0.33, keel: 0.11, ry: -0.51, ky: 0.16 },
+  { z:  0.88, rail: 0.11, keel: 0.04, ry: -0.58, ky: 0.09 },
+];
+
 function buildBoat(burnt) {
   const m = new Model();
   const v = (x, y, z) => m.vert(x, y, z);
-  const hull = burnt ? CHAR : HULL;
-  const deck = burnt ? CHAR_B : DECK;
+  patchN = burnt ? 0 : 3;              // a different shuffle for each build
+  const col = () => (burnt ? (patchN++ % 2 ? CHAR : CHAR_B) : patch());
 
-  // Hull: a slab aft narrowing to a stem at the bow.
-  const W = 0.34, YT = -0.16, YB = 0.20;
-  const sternL = v(-W, YT, -0.92), sternR = v(W, YT, -0.92);
-  const waistL = v(-W, YT, 0.30), waistR = v(W, YT, 0.30);
-  const stem = v(0, YT, 1.05);
-  const kStern = v(0, YB, -0.86), kWaist = v(0, YB, 0.26), kStem = v(0, YB, 0.92);
+  // Hull: loft the sides and bottom between adjacent stations.
+  const rail = [], keel = [];
+  for (const st of STATIONS) {
+    rail.push([v(-st.rail, st.ry, st.z), v(st.rail, st.ry, st.z)]);
+    keel.push([v(-st.keel, st.ky, st.z), v(st.keel, st.ky, st.z)]);
+  }
 
-  facet(m, [sternL, sternR, waistR, waistL], deck);          // deck aft
-  facet(m, [waistL, waistR, stem], deck);                    // forecastle
-  facet(m, [sternL, waistL, kWaist, kStern], burnt ? CHAR : HULL_B);   // port side
-  facet(m, [sternR, waistR, kWaist, kStern], hull);          // starboard side
-  facet(m, [waistL, stem, kStem, kWaist], burnt ? CHAR : HULL_B);
-  facet(m, [waistR, stem, kStem, kWaist], hull);
-  facet(m, [sternL, sternR, kStern], burnt ? CHAR : HULL_B);  // transom
+  for (let i = 0; i < STATIONS.length - 1; i++) {
+    // Port and starboard topsides.
+    facet(m, [rail[i][0], rail[i + 1][0], keel[i + 1][0], keel[i][0]], col());
+    facet(m, [rail[i][1], rail[i + 1][1], keel[i + 1][1], keel[i][1]], col());
+    // Bottom.
+    facet(m, [keel[i][0], keel[i + 1][0], keel[i + 1][1], keel[i][1]], col());
+    // Deck, inside the rail.
+    facet(m, [rail[i][0], rail[i + 1][0], rail[i + 1][1], rail[i][1]], col());
+  }
+  // Transom across the stern.
+  facet(m, [rail[0][0], rail[0][1], keel[0][1], keel[0][0]], col());
+
+  // Wheelhouse, a tall block forward of amidships with an arched doorway.
+  const hx = 0.30, hz0 = -0.28, hz1 = 0.30, hTop = -0.92, hBot = -0.34;
+  const wh = [
+    v(-hx, hTop, hz0), v(hx, hTop, hz0), v(hx, hTop, hz1), v(-hx, hTop, hz1),
+    v(-hx, hBot, hz0), v(hx, hBot, hz0), v(hx, hBot, hz1), v(-hx, hBot, hz1),
+  ];
+  facet(m, [wh[0], wh[1], wh[2], wh[3]], burnt ? CHAR : CAP);   // roof
+  facet(m, [wh[0], wh[1], wh[5], wh[4]], col());                // aft face
+  facet(m, [wh[1], wh[2], wh[6], wh[5]], col());                // starboard
+  facet(m, [wh[0], wh[3], wh[7], wh[4]], col());                // port
+  facet(m, [wh[3], wh[2], wh[6], wh[7]], col());                // forward face
 
   if (!burnt) {
-    // Boot-topping, a bright band right on the waterline.
+    // The doorway: a dark opening with a squared arch, set into the front.
+    const dz = hz1 + 0.006;
+    facet(m, [v(-0.12, -0.44, dz), v(0.12, -0.44, dz),
+              v(0.12, -0.34, dz), v(-0.12, -0.34, dz)], DOOR);
+    facet(m, [v(-0.12, -0.44, dz), v(0.12, -0.44, dz), v(0.00, -0.60, dz)], DOOR);
+    // A band of trim round the base of the wheelhouse.
     for (const sgn of [1, -1]) {
-      facet(m, [
-        v(sgn * (W + 0.005), -0.02, -0.88), v(sgn * (W + 0.005), -0.02, 0.28),
-        v(sgn * (W + 0.005), 0.05, 0.28), v(sgn * (W + 0.005), 0.05, -0.88),
-      ], BOOT);
+      facet(m, [v(sgn * (hx + 0.006), -0.40, hz0), v(sgn * (hx + 0.006), -0.40, hz1),
+                v(sgn * (hx + 0.006), -0.34, hz1), v(sgn * (hx + 0.006), -0.34, hz0)], patch());
     }
   }
 
-  // Superstructure, aft of amidships.
-  box(m, -0.24, -0.46, -0.58, 0.24, -0.16, 0.06, burnt ? [CHAR] : {
-    all: HOUSE, top: HOUSE_B, front: HOUSE_B,
-  });
-  // Bridge, with glazing forward.
-  box(m, -0.17, -0.62, -0.44, 0.17, -0.46, -0.10, burnt ? [CHAR] : {
-    all: HOUSE_B, top: HOUSE, front: BRIDGE,
-  });
+  // Funnel, tall and set aft of the wheelhouse.
+  const fx = 0.13, fz = -0.46;
+  const fn = [
+    v(-fx, -1.08, fz - fx), v(fx, -1.08, fz - fx), v(fx, -1.08, fz + fx), v(-fx, -1.08, fz + fx),
+    v(-fx, -0.34, fz - fx), v(fx, -0.34, fz - fx), v(fx, -0.34, fz + fx), v(-fx, -0.34, fz + fx),
+  ];
+  facet(m, [fn[0], fn[1], fn[2], fn[3]], burnt ? CHAR : CAP);
+  facet(m, [fn[0], fn[1], fn[5], fn[4]], col());
+  facet(m, [fn[1], fn[2], fn[6], fn[5]], col());
+  facet(m, [fn[0], fn[3], fn[7], fn[4]], col());
+  facet(m, [fn[3], fn[2], fn[6], fn[7]], col());
 
   if (!burnt) {
-    // Funnel with a black band.
-    box(m, -0.10, -0.80, -0.40, 0.10, -0.62, -0.20, { all: FUNNEL, top: FUNNEL_B });
-    // Mast.
-    box(m, -0.022, -0.96, 0.16, 0.022, -0.44, 0.20, [MAST]);
-    // A splash of deck colour so she reads against the water.
-    facet(m, [
-      v(-0.20, -0.17, 0.10), v(0.20, -0.17, 0.10),
-      v(0.20, -0.17, 0.24), v(-0.20, -0.17, 0.24),
-    ], TRIM);
+    // A band round the funnel, in a different patch again.
+    const b = fx + 0.008;
+    for (const [a, c] of [[-b, 0], [b, 0]]) {
+      facet(m, [v(a, -0.98, fz - fx), v(a, -0.98, fz + fx),
+                v(a, -0.86, fz + fx), v(a, -0.86, fz - fx)], patch());
+    }
   }
+
   return m;
 }
 
