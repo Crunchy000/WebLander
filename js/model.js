@@ -6,7 +6,8 @@
 //
 // Remember that +y points DOWN, so the top of a model has a negative y.
 
-import { TILE } from './maths.js';
+import { TILE, matApply } from './maths.js';
+import { project } from './renderer.js';
 
 // --- model construction ----------------------------------------------------
 
@@ -106,4 +107,119 @@ export function mergeAt(dst, src, dx, dy, dz) {
   dst.height = Math.max(dst.height, src.height - oy);
   dst.radius = Math.max(dst.radius, src.radius + Math.max(Math.abs(ox), Math.abs(oz)));
   return dst;
+}
+
+// ---------------------------------------------------------------------------
+// Facet lighting
+// ---------------------------------------------------------------------------
+
+// Light from above, a little to the left and ahead. +y is down, so "above"
+// is negative.
+const LIGHT = (() => {
+  const v = [-0.34, -1, 0.26];
+  const len = Math.hypot(v[0], v[1], v[2]);
+  return [v[0] / len, v[1] / len, v[2] / len];
+})();
+
+// Add a face shaded by its own normal, so the faceting does the work rather
+// than hand-picked brightness. The normal is flipped outward where needed:
+// the model is drawn without backface culling, so winding is free to be
+// inconsistent.
+//
+// The ambient floor is deliberately high. The camera rides at the craft's own
+// altitude, so the facets usually on show are the flanks and belly -- exactly
+// the ones a purely directional light leaves in shadow, which against a black
+// sky would reduce the whole craft to a silhouette.
+export function facet(m, idx, base) {
+  const v = m.verts;
+  const p = (i) => [v[i * 3], v[i * 3 + 1], v[i * 3 + 2]];
+  const [ax, ay, az] = p(idx[0]);
+  const [bx, by, bz] = p(idx[1]);
+  const [cx, cy, cz] = p(idx[2]);
+
+  const e1 = [bx - ax, by - ay, bz - az];
+  const e2 = [cx - ax, cy - ay, cz - az];
+  let n = [
+    e1[1] * e2[2] - e1[2] * e2[1],
+    e1[2] * e2[0] - e1[0] * e2[2],
+    e1[0] * e2[1] - e1[1] * e2[0],
+  ];
+  const len = Math.hypot(n[0], n[1], n[2]) || 1;
+  n = [n[0] / len, n[1] / len, n[2] / len];
+
+  let mx = 0, my = 0, mz = 0;
+  for (const i of idx) { const q = p(i); mx += q[0]; my += q[1]; mz += q[2]; }
+  const k = idx.length;
+  if (n[0] * (mx / k) + n[1] * (my / k) + n[2] * (mz / k) < 0) {
+    n = [-n[0], -n[1], -n[2]];
+  }
+
+  const lit = Math.max(0, n[0] * LIGHT[0] + n[1] * LIGHT[1] + n[2] * LIGHT[2]);
+  m.face(idx, shade(base, 0.70 + 0.46 * lit));
+  return m;
+}
+
+// --- model drawing ---------------------------------------------------------
+
+const scratch = [];
+const pt = { x: 0, y: 0 };
+
+// Draw a model's faces back to front. With only a dozen or so faces per
+// object a straight depth sort is cheaper than anything cleverer, and it
+// copes with the concave shapes (legs, fins) that culling alone would not.
+export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ) {
+  const verts = model.verts;
+  const n = verts.length / 3;
+
+  // Transform and project every vertex once.
+  while (scratch.length < n * 3) scratch.push(0);
+  let anyVisible = false;
+  for (let i = 0; i < n; i++) {
+    let px = verts[i * 3], py = verts[i * 3 + 1], pz = verts[i * 3 + 2];
+    if (matrix) {
+      const r = matApply(matrix, px, py, pz);
+      px = r[0]; py = r[1]; pz = r[2];
+    }
+    const vx = (wx + px - camX) | 0;
+    const vy = (wy + py - camY) | 0;
+    const vz = (wz + pz - camZ) | 0;
+    if (project(vx, vy, vz, pt)) {
+      scratch[i * 3] = pt.x;
+      scratch[i * 3 + 1] = pt.y;
+      scratch[i * 3 + 2] = vz;
+      anyVisible = true;
+    } else {
+      scratch[i * 3 + 2] = -1; // behind the camera
+    }
+  }
+  if (!anyVisible) return;
+
+  // Depth-sort the faces by their mean distance.
+  const faces = model.faces;
+  const order = [];
+  for (let f = 0; f < faces.length; f++) {
+    const idx = faces[f].idx;
+    let depth = 0, ok = true;
+    for (let k = 0; k < idx.length; k++) {
+      const d = scratch[idx[k] * 3 + 2];
+      if (d < 0) { ok = false; break; }
+      depth += d;
+    }
+    if (!ok) continue;
+    order.push([depth / idx.length, f]);
+  }
+  order.sort((a, b) => b[0] - a[0]);
+
+  for (const [, f] of order) {
+    const { idx, col } = faces[f];
+    const i0 = idx[0] * 3, i1 = idx[1] * 3, i2 = idx[2] * 3;
+    if (idx.length === 3) {
+      rd.tri(scratch[i0], scratch[i0 + 1], scratch[i1], scratch[i1 + 1],
+             scratch[i2], scratch[i2 + 1], col);
+    } else {
+      const i3 = idx[3] * 3;
+      rd.quad(scratch[i0], scratch[i0 + 1], scratch[i1], scratch[i1 + 1],
+              scratch[i2], scratch[i2 + 1], scratch[i3], scratch[i3 + 1], col);
+    }
+  }
 }

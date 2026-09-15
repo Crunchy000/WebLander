@@ -8,7 +8,7 @@ import {
 } from './landscape.js';
 import { project, SCREEN_W, SCREEN_H, CENTRE_X } from './renderer.js';
 import { Player, GRAVITY_START, FUEL_MAX } from './player.js';
-import { drawModel } from './player.js';
+import { drawModel } from './model.js';
 import {
   MODELS, OBJ_SCORE, objectAt, objectOffset, destroyObject, isWreck,
   resetObjects,

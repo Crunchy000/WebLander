@@ -133,6 +133,34 @@ export function matFromAim(yaw, pitch, out = new Float64Array(9)) {
   return out;
 }
 
+// Multiply two 3x3 matrices: applies b first, then a.
+export function matMul(a, b, out = new Float64Array(9)) {
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      out[r * 3 + c] = a[r * 3] * b[c] + a[r * 3 + 1] * b[3 + c] + a[r * 3 + 2] * b[6 + c];
+    }
+  }
+  return out;
+}
+
+// Rotation about the x-axis -- the axis a tilt-rotor's nacelles pivot on.
+export function matRotX(t, out = new Float64Array(9)) {
+  const s = Math.sin(t), c = Math.cos(t);
+  out[0] = 1; out[1] = 0; out[2] = 0;
+  out[3] = 0; out[4] = c; out[5] = -s;
+  out[6] = 0; out[7] = s; out[8] = c;
+  return out;
+}
+
+// Rotation about the y-axis, for spinning rotor blades.
+export function matRotY(t, out = new Float64Array(9)) {
+  const s = Math.sin(t), c = Math.cos(t);
+  out[0] = c;  out[1] = 0; out[2] = s;
+  out[3] = 0;  out[4] = 1; out[5] = 0;
+  out[6] = -s; out[7] = 0; out[8] = c;
+  return out;
+}
+
 // Transform a vector by a matrix. Operates on plain numbers; callers working
 // in fixed point simply pass fixed-point components through.
 export function matApply(m, x, y, z, out = [0, 0, 0]) {
