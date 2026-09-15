@@ -132,6 +132,22 @@ The visible landscape is a fixed grid of tile corners anchored to the camera;
 the world slides through it as you fly, which is why the horizon never moves
 and why drawing costs the same every frame wherever you are.
 
+### The hull
+
+The lander is built entirely from flat panels meeting at hard angles, with a
+sharp chine running round its waist where the upper and lower facets join. It
+suits the renderer: flat shading is all this thing does, so a shape made only
+of flat panels reads exactly as intended, each facet catching the light
+differently.
+
+Facet colours are computed at build time from each face's own normal rather
+than picked by hand, with the normal flipped outward where the winding runs
+the wrong way — the model is drawn without backface culling, so winding is
+otherwise free to be inconsistent. The ambient floor is set deliberately high:
+the camera rides at the craft's own altitude, so the facets usually on show
+are the flanks and underside, which a purely directional light would leave in
+shadow and a black sky would then swallow.
+
 ### Rendering
 
 Everything — landscape, ship, scenery, particles, HUD text — is projected on
@@ -154,7 +170,7 @@ software rasterisation, so a phone GPU does not notice it.
 | `js/renderer.js` | WebGL batcher and the projection |
 | `js/model.js` | flat-shaded polygon model primitives |
 | `js/objects.js` | scenery models and the stateless object map |
-| `js/player.js` | ship model, flight physics, collisions |
+| `js/player.js` | faceted hull, flight physics, collisions |
 | `js/particles.js` | exhaust, bullets, explosions, smoke, spray |
 | `js/input.js` | mouse, keyboard, touch and tilt |
 | `js/audio.js` | synthesised sound, no assets |

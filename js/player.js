@@ -37,7 +37,7 @@ const FUEL_BURN_FULL = 8;
 const BULLET_SPEED = TILE * 0.075;
 // How far along the nose the barrel ends, so shots leave the muzzle rather
 // than the middle of the hull.
-const MUZZLE = TILE * 0.52;
+const MUZZLE = TILE * 0.88;
 const SHIP_RADIUS = 0.3;   // in tiles, for scenery collisions
 
 // Getting off the pad is the fiddliest moment in the game, so the first few
@@ -48,57 +48,153 @@ const CAMERA_CEILING = -((TILE * 3) / 2);  // how far the eye may rise above y =
 
 // --- the ship model --------------------------------------------------------
 
-const HULL   = [204, 204, 212];
-const HULL_D = [140, 140, 150];
-const CANOPY = [80, 160, 220];
-const TRIM   = [220, 80, 60];
-const NOZZLE = [90, 90, 96];
+// Faceted hull, in the spirit of the early faceted-stealth prototypes: every
+// surface is dead flat and they meet at hard angles, with a sharp chine
+// running right round the waist where the upper and lower panels join. It
+// suits this renderer -- flat shading is all it does, so a shape made only of
+// flat panels reads exactly as intended, each facet catching the light
+// differently.
+
+const PANEL  = [186, 194, 210];
+const KEEL   = [152, 160, 178];
+const GLASS  = [58, 96, 140];
+const GUN    = [112, 118, 132];
+const STRUT  = [198, 84, 64];
+const FOOT   = [170, 176, 188];
+
+// Light coming from above, a little to the left and ahead. Remember +y is
+// down, so "above" is negative.
+const LIGHT = (() => {
+  const v = [-0.34, -1, 0.26];
+  const len = Math.hypot(v[0], v[1], v[2]);
+  return [v[0] / len, v[1] / len, v[2] / len];
+})();
+
+// Add a face shaded by its own normal, so the faceting does the work rather
+// than hand-picked brightness values. The normal is flipped outward where
+// needed, since the model is drawn without backface culling and the winding
+// is not consistent across the hull.
+function facet(m, idx, base) {
+  const v = m.verts;
+  const p = (i) => [v[i * 3], v[i * 3 + 1], v[i * 3 + 2]];
+  const [ax, ay, az] = p(idx[0]);
+  const [bx, by, bz] = p(idx[1]);
+  const [cx, cy, cz] = p(idx[2]);
+
+  const e1 = [bx - ax, by - ay, bz - az];
+  const e2 = [cx - ax, cy - ay, cz - az];
+  let n = [
+    e1[1] * e2[2] - e1[2] * e2[1],
+    e1[2] * e2[0] - e1[0] * e2[2],
+    e1[0] * e2[1] - e1[1] * e2[0],
+  ];
+  const len = Math.hypot(n[0], n[1], n[2]) || 1;
+  n = [n[0] / len, n[1] / len, n[2] / len];
+
+  // Point it away from the middle of the hull.
+  let mx = 0, my = 0, mz = 0;
+  for (const i of idx) { const q = p(i); mx += q[0]; my += q[1]; mz += q[2]; }
+  const k = idx.length;
+  if (n[0] * (mx / k) + n[1] * (my / k) + n[2] * (mz / k) < 0) {
+    n = [-n[0], -n[1], -n[2]];
+  }
+
+  const lit = Math.max(0, n[0] * LIGHT[0] + n[1] * LIGHT[1] + n[2] * LIGHT[2]);
+  m.face(idx, shade(base, 0.68 + 0.48 * lit));
+  return m;
+}
+
+// Widen and lengthen the hull without touching its height: the undercarriage
+// height is a world constant, so the feet must stay exactly where they are.
+const SPREAD = 1.22;
 
 function buildShip() {
   const m = new Model();
-  // Main hull: a six-sided drum around the middle.
-  m.drum(0.30, 0.33, -0.06, 0.20, 6, HULL, shade(HULL, 1.05));
-  // Canopy on top.
-  m.cone(0.26, 0.18, 0.44, 6, CANOPY);
-  // Engine bell underneath.
-  m.drum(0.17, 0.11, -0.30, -0.05, 6, NOZZLE, null);
+  const vert = (x, y, z) => m.vert(x * SPREAD, y, z * SPREAD);
 
-  // A gun barrel out of the nose. Without something visible to fire from,
-  // shots appear to come out of thin air.
-  const bw = 0.055;
-  const gun = [
-    m.vert(-bw, -0.04, 0.24), m.vert(bw, -0.04, 0.24),
-    m.vert(bw, 0.06, 0.24), m.vert(-bw, 0.06, 0.24),
-    m.vert(-bw, -0.04, 0.52), m.vert(bw, -0.04, 0.52),
-    m.vert(bw, 0.06, 0.52), m.vert(-bw, 0.06, 0.52),
+  // The chine: a sharp horizontal ring at the waist. Everything above slopes
+  // up to a ridge, everything below slopes down to a keel.
+  const c = [
+    vert( 0.00, 0.00,  0.62),   // 0  nose
+    vert( 0.29, 0.00,  0.08),   // 1  right shoulder
+    vert( 0.23, 0.00, -0.38),   // 2  right hip
+    vert( 0.00, 0.00, -0.50),   // 3  tail
+    vert(-0.23, 0.00, -0.38),   // 4  left hip
+    vert(-0.29, 0.00,  0.08),   // 5  left shoulder
   ];
-  m.face([gun[0], gun[1], gun[5], gun[4]], shade(NOZZLE, 1.25));  // top
-  m.face([gun[3], gun[2], gun[6], gun[7]], shade(NOZZLE, 0.7));   // bottom
-  m.face([gun[1], gun[2], gun[6], gun[5]], shade(NOZZLE, 1.0));   // right
-  m.face([gun[0], gun[3], gun[7], gun[4]], shade(NOZZLE, 0.85));  // left
-  m.face([gun[4], gun[5], gun[6], gun[7]], TRIM);                 // muzzle
 
-  // Three landing legs splayed out to the feet.
+  const tF = vert(0.00, -0.22,  0.14);   // top ridge, forward
+  const tR = vert(0.00, -0.17, -0.30);   // top ridge, aft
+  const bF = vert(0.00,  0.17,  0.10);   // keel, forward
+  const bR = vert(0.00,  0.15, -0.32);   // keel, aft
+
+  // Upper facets.
+  facet(m, [c[0], c[1], tF], PANEL);                 // starboard cheek
+  facet(m, [c[1], c[2], tR, tF], PANEL);             // starboard flank
+  facet(m, [c[2], c[3], tR], PANEL);                 // starboard quarter
+  facet(m, [c[3], c[4], tR], PANEL);                 // port quarter
+  facet(m, [c[4], c[5], tF, tR], PANEL);             // port flank
+  facet(m, [c[5], c[0], tF], PANEL);                 // port cheek
+
+  // Canopy: one dark facet set into the spine, angled like the rest.
+  const gL = vert(-0.10, -0.20, 0.10);
+  const gR = vert( 0.10, -0.20, 0.10);
+  const gN = vert( 0.00, -0.13, 0.38);
+  facet(m, [gL, gR, gN], GLASS);
+
+  // Lower facets.
+  facet(m, [c[0], bF, c[1]], KEEL);
+  facet(m, [c[1], bF, bR, c[2]], KEEL);
+  facet(m, [c[2], bR, c[3]], KEEL);
+  facet(m, [c[3], bR, c[4]], KEEL);
+  facet(m, [c[4], bR, bF, c[5]], KEEL);
+  facet(m, [c[5], bF, c[0]], KEEL);
+
+  // Engine: a short faceted bell under the tail.
+  const eR = 0.12;
+  const eTop = [], eBot = [];
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+    eTop.push(vert(Math.cos(a) * eR, 0.14, -0.20 + Math.sin(a) * eR));
+    eBot.push(vert(Math.cos(a) * eR * 1.35, 0.34, -0.20 + Math.sin(a) * eR * 1.35));
+  }
+  for (let i = 0; i < 4; i++) {
+    const j = (i + 1) % 4;
+    facet(m, [eTop[i], eBot[i], eBot[j], eTop[j]], GUN);
+  }
+
+  // Cannon, out of the nose. Square-sectioned so it matches the hull.
+  const bw = 0.05;
+  const g0 = vert(-bw, -0.04, 0.50), g1 = vert(bw, -0.04, 0.50);
+  const g2 = vert( bw,  0.05, 0.50), g3 = vert(-bw, 0.05, 0.50);
+  const g4 = vert(-bw, -0.04, 0.82), g5 = vert(bw, -0.04, 0.82);
+  const g6 = vert( bw,  0.05, 0.82), g7 = vert(-bw, 0.05, 0.82);
+  facet(m, [g0, g1, g5, g4], GUN);
+  facet(m, [g3, g2, g6, g7], GUN);
+  facet(m, [g1, g2, g6, g5], GUN);
+  facet(m, [g0, g3, g7, g4], GUN);
+  m.face([g4, g5, g6, g7], STRUT);
+
+  // Three angular legs down to the feet.
   for (let i = 0; i < 3; i++) {
     const a = (i / 3) * Math.PI * 2 + 0.5;
     const cx = Math.cos(a), cz = Math.sin(a);
-    const hipX = cx * 0.2, hipZ = cz * 0.2;
-    const footX = cx * 0.46, footZ = cz * 0.46;
-    const w = 0.045;
-    // A thin quad from hip down to foot, plus a pad.
-    const v0 = m.vert(hipX - cz * w, -0.02, hipZ + cx * w);
-    const v1 = m.vert(hipX + cz * w, -0.02, hipZ - cx * w);
-    const v2 = m.vert(footX + cz * w, 0.39, footZ - cx * w);
-    const v3 = m.vert(footX - cz * w, 0.39, footZ + cx * w);
-    m.face([v0, v1, v2, v3], shade(TRIM, 0.7 + 0.35 * cx));
+    const hipX = cx * 0.18, hipZ = cz * 0.18 - 0.06;
+    const footX = cx * 0.44, footZ = cz * 0.44 - 0.06;
+    const w = 0.04;
+    const v0 = vert(hipX - cz * w, 0.10, hipZ + cx * w);
+    const v1 = vert(hipX + cz * w, 0.10, hipZ - cx * w);
+    const v2 = vert(footX + cz * w, 0.39, footZ - cx * w);
+    const v3 = vert(footX - cz * w, 0.39, footZ + cx * w);
+    facet(m, [v0, v1, v2, v3], STRUT);
 
     const p = 0.07;
-    const p0 = m.vert(footX - p, 0.39, footZ - p);
-    const p1 = m.vert(footX + p, 0.39, footZ - p);
-    const p2 = m.vert(footX + p, 0.39, footZ + p);
-    const p3 = m.vert(footX - p, 0.39, footZ + p);
-    m.face([p0, p1, p2, p3], HULL_D);
+    facet(m, [
+      vert(footX - p, 0.39, footZ - p), vert(footX + p, 0.39, footZ - p),
+      vert(footX + p, 0.39, footZ + p), vert(footX - p, 0.39, footZ + p),
+    ], FOOT);
   }
+
   return m;
 }
 
