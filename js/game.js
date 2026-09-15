@@ -87,7 +87,10 @@ export class Game {
 
   onTankDestroyed(x, y, z) {
     this.audio.bigBoom();
-    this.setMessage('TANK DESTROYED', 70);
+    // Name the reward. Without the number there is nothing tying the boom to
+    // the score climbing, so the most valuable target in the game felt like
+    // it paid no better than a tree.
+    this.setMessage('TANK  +' + TANK_SCORE, 80);
   }
 
   onDeath(how) {
