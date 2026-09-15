@@ -46,11 +46,16 @@ The first **five seconds of every life are free**: getting off the pad is the
 fiddliest moment in the game, so during that window you can scrape the ground,
 clip a tree or come down hard without losing a ship. The HUD counts it down.
 
-Steering is by *position*, not rate: how far the mouse is from the centre of
-the canvas sets how hard the craft leans, and the direction sets which way.
-The craft has no independent yaw — it leans, and leaning is what moves you,
-because thrust always acts along the ship's own "up" axis. Tilting trades lift
-for sideways acceleration, so a hard lean on hover thrust will sink you.
+Steering is by *position*, not rate: the bearing of the stick from centre
+becomes the craft's heading, and how far you push it becomes how far its nose
+drops. Thrust acts along the roof, so a nose-down attitude carries you along
+the heading — trading lift for speed, which means a hard push on hover thrust
+will sink you.
+
+There is no separate turn control, because steering *is* turning. The craft
+swings to face wherever you are steering, and since the gun fires along the
+nose, aiming and flying are one action. Centre the stick and it holds its
+heading rather than snapping back.
 
 That position-based scheme is why phone tilt fits so naturally: the original
 was flown from an absolute mouse position, and a tilt sensor is the same kind
@@ -135,7 +140,10 @@ and why drawing costs the same every frame wherever you are.
 ### The hull
 
 The lander is built entirely from flat panels meeting at hard angles, with a
-sharp chine running round its waist where the upper and lower facets join. It
+sharp chine running round its waist where the upper and lower facets join,
+swept fins at the hips and a cannon out of the nose. There is no
+undercarriage — it sets down on its keel, which is why the belly reaches
+exactly `UNDERCARRIAGE_Y` below the centre. It
 suits the renderer: flat shading is all this thing does, so a shape made only
 of flat panels reads exactly as intended, each facet catching the light
 differently.

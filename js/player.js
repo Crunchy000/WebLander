@@ -5,7 +5,7 @@
 // for sideways acceleration. That single idea is the whole flight model, and
 // it is why the controls map so naturally onto a phone you physically tilt.
 
-import { TILE, matFromTilt, matApply, clamp, rnd, rndSigned } from './maths.js';
+import { TILE, matFromAim, matApply, clamp, rnd, rndSigned } from './maths.js';
 import { Model, shade } from './model.js';
 import {
   landAltitude, SEA_LEVEL, LAUNCHPAD_ALT, LAUNCHPAD_Y,
@@ -37,7 +37,7 @@ const FUEL_BURN_FULL = 8;
 const BULLET_SPEED = TILE * 0.075;
 // How far along the nose the barrel ends, so shots leave the muzzle rather
 // than the middle of the hull.
-const MUZZLE = TILE * 0.88;
+const MUZZLE = TILE * 1.26;
 const SHIP_RADIUS = 0.3;   // in tiles, for scenery collisions
 
 // Getting off the pad is the fiddliest moment in the game, so the first few
@@ -48,22 +48,29 @@ const CAMERA_CEILING = -((TILE * 3) / 2);  // how far the eye may rise above y =
 
 // --- the ship model --------------------------------------------------------
 
-// Faceted hull, in the spirit of the early faceted-stealth prototypes: every
-// surface is dead flat and they meet at hard angles, with a sharp chine
-// running right round the waist where the upper and lower panels join. It
-// suits this renderer -- flat shading is all it does, so a shape made only of
-// flat panels reads exactly as intended, each facet catching the light
+// Faceted hull: every surface dead flat, meeting at hard angles, with a sharp
+// chine running right round the waist where the upper and lower panels join.
+// It suits this renderer -- flat shading is all it does, so a shape built only
+// from flat panels reads exactly as intended, each facet catching the light
 // differently.
+//
+// There is no undercarriage; the craft sets down on its keel, which is why the
+// belly reaches exactly UNDERCARRIAGE_Y below the centre.
 
-const PANEL  = [186, 194, 210];
-const KEEL   = [152, 160, 178];
-const GLASS  = [58, 96, 140];
-const GUN    = [112, 118, 132];
-const STRUT  = [198, 84, 64];
-const FOOT   = [170, 176, 188];
+const SPINE   = [ 96, 150, 214];   // upper hull, steel blue
+const SPINE_B = [ 74, 122, 182];   // alternating upper panels
+const CHEEK   = [226, 108,  62];   // forward cheeks, warm accent
+const FLANK   = [ 62, 160, 158];   // mid flanks, teal
+const BELLY   = [206, 158,  74];   // keel, amber
+const BELLY_B = [170, 124,  58];
+const GLASS   = [ 36, 214, 226];   // canopy
+const ENGINE  = [ 74,  78,  92];
+const BARREL  = [ 92,  98, 112];
+const MUZZLE_C= [242,  92,  64];
+const FIN     = [232, 196,  74];
 
-// Light coming from above, a little to the left and ahead. Remember +y is
-// down, so "above" is negative.
+// Light from above, a little to the left and ahead. +y is down, so "above"
+// is negative.
 const LIGHT = (() => {
   const v = [-0.34, -1, 0.26];
   const len = Math.hypot(v[0], v[1], v[2]);
@@ -71,9 +78,14 @@ const LIGHT = (() => {
 })();
 
 // Add a face shaded by its own normal, so the faceting does the work rather
-// than hand-picked brightness values. The normal is flipped outward where
-// needed, since the model is drawn without backface culling and the winding
-// is not consistent across the hull.
+// than hand-picked brightness. The normal is flipped outward where needed:
+// the model is drawn without backface culling, so winding is free to be
+// inconsistent.
+//
+// The ambient floor is deliberately high. The camera rides at the craft's own
+// altitude, so the facets usually on show are the flanks and belly -- exactly
+// the ones a purely directional light leaves in shadow, which against a black
+// sky would reduce the whole craft to a silhouette.
 function facet(m, idx, base) {
   const v = m.verts;
   const p = (i) => [v[i * 3], v[i * 3 + 1], v[i * 3 + 2]];
@@ -91,7 +103,6 @@ function facet(m, idx, base) {
   const len = Math.hypot(n[0], n[1], n[2]) || 1;
   n = [n[0] / len, n[1] / len, n[2] / len];
 
-  // Point it away from the middle of the hull.
   let mx = 0, my = 0, mz = 0;
   for (const i of idx) { const q = p(i); mx += q[0]; my += q[1]; mz += q[2]; }
   const k = idx.length;
@@ -100,100 +111,85 @@ function facet(m, idx, base) {
   }
 
   const lit = Math.max(0, n[0] * LIGHT[0] + n[1] * LIGHT[1] + n[2] * LIGHT[2]);
-  m.face(idx, shade(base, 0.68 + 0.48 * lit));
+  m.face(idx, shade(base, 0.70 + 0.46 * lit));
   return m;
 }
 
-// Widen and lengthen the hull without touching its height: the undercarriage
-// height is a world constant, so the feet must stay exactly where they are.
-const SPREAD = 1.22;
-
 function buildShip() {
   const m = new Model();
-  const vert = (x, y, z) => m.vert(x * SPREAD, y, z * SPREAD);
+  const v = (x, y, z) => m.vert(x, y, z);
 
-  // The chine: a sharp horizontal ring at the waist. Everything above slopes
-  // up to a ridge, everything below slopes down to a keel.
+  const CH = -0.06;             // chine height
+  const KEEL_Y = 0.39;          // belly, at exactly the undercarriage height
+
+  // The chine ring: the sharp edge round the waist.
   const c = [
-    vert( 0.00, 0.00,  0.62),   // 0  nose
-    vert( 0.29, 0.00,  0.08),   // 1  right shoulder
-    vert( 0.23, 0.00, -0.38),   // 2  right hip
-    vert( 0.00, 0.00, -0.50),   // 3  tail
-    vert(-0.23, 0.00, -0.38),   // 4  left hip
-    vert(-0.29, 0.00,  0.08),   // 5  left shoulder
+    v( 0.00, CH,  0.95),   // 0  nose
+    v( 0.46, CH,  0.12),   // 1  starboard shoulder
+    v( 0.36, CH, -0.52),   // 2  starboard hip
+    v( 0.00, CH, -0.80),   // 3  tail
+    v(-0.36, CH, -0.52),   // 4  port hip
+    v(-0.46, CH,  0.12),   // 5  port shoulder
   ];
 
-  const tF = vert(0.00, -0.22,  0.14);   // top ridge, forward
-  const tR = vert(0.00, -0.17, -0.30);   // top ridge, aft
-  const bF = vert(0.00,  0.17,  0.10);   // keel, forward
-  const bR = vert(0.00,  0.15, -0.32);   // keel, aft
+  const tF = v(0.00, -0.40,  0.18);   // spine, forward
+  const tR = v(0.00, -0.33, -0.40);   // spine, aft
+  const bF = v(0.00, KEEL_Y,  0.14);  // keel, forward
+  const bR = v(0.00, KEEL_Y - 0.03, -0.44);  // keel, aft
 
-  // Upper facets.
-  facet(m, [c[0], c[1], tF], PANEL);                 // starboard cheek
-  facet(m, [c[1], c[2], tR, tF], PANEL);             // starboard flank
-  facet(m, [c[2], c[3], tR], PANEL);                 // starboard quarter
-  facet(m, [c[3], c[4], tR], PANEL);                 // port quarter
-  facet(m, [c[4], c[5], tF, tR], PANEL);             // port flank
-  facet(m, [c[5], c[0], tF], PANEL);                 // port cheek
+  // Upper facets, alternating tones so neighbouring panels stay distinct.
+  facet(m, [c[0], c[1], tF], CHEEK);
+  facet(m, [c[1], c[2], tR, tF], SPINE);
+  facet(m, [c[2], c[3], tR], SPINE_B);
+  facet(m, [c[3], c[4], tR], SPINE_B);
+  facet(m, [c[4], c[5], tF, tR], SPINE);
+  facet(m, [c[5], c[0], tF], CHEEK);
 
-  // Canopy: one dark facet set into the spine, angled like the rest.
-  const gL = vert(-0.10, -0.20, 0.10);
-  const gR = vert( 0.10, -0.20, 0.10);
-  const gN = vert( 0.00, -0.13, 0.38);
-  facet(m, [gL, gR, gN], GLASS);
+  // Canopy set into the spine.
+  facet(m, [v(-0.13, -0.37, 0.14), v(0.13, -0.37, 0.14), v(0.00, -0.26, 0.52)], GLASS);
 
   // Lower facets.
-  facet(m, [c[0], bF, c[1]], KEEL);
-  facet(m, [c[1], bF, bR, c[2]], KEEL);
-  facet(m, [c[2], bR, c[3]], KEEL);
-  facet(m, [c[3], bR, c[4]], KEEL);
-  facet(m, [c[4], bR, bF, c[5]], KEEL);
-  facet(m, [c[5], bF, c[0]], KEEL);
+  facet(m, [c[0], bF, c[1]], BELLY);
+  facet(m, [c[1], bF, bR, c[2]], BELLY_B);
+  facet(m, [c[2], bR, c[3]], FLANK);
+  facet(m, [c[3], bR, c[4]], FLANK);
+  facet(m, [c[4], bR, bF, c[5]], BELLY_B);
+  facet(m, [c[5], bF, c[0]], BELLY);
 
-  // Engine: a short faceted bell under the tail.
-  const eR = 0.12;
-  const eTop = [], eBot = [];
+  // Swept fins at the hips, for shape and a splash of colour.
+  for (const sgn of [1, -1]) {
+    facet(m, [
+      v(sgn * 0.34, CH, -0.30),
+      v(sgn * 0.62, CH - 0.02, -0.66),
+      v(sgn * 0.30, CH, -0.74),
+    ], FIN);
+  }
+
+  // Engine, faceted, under the tail.
+  const eR = 0.15, eTop = [], eBot = [];
   for (let i = 0; i < 4; i++) {
     const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
-    eTop.push(vert(Math.cos(a) * eR, 0.14, -0.20 + Math.sin(a) * eR));
-    eBot.push(vert(Math.cos(a) * eR * 1.35, 0.34, -0.20 + Math.sin(a) * eR * 1.35));
+    eTop.push(v(Math.cos(a) * eR, 0.10, -0.34 + Math.sin(a) * eR));
+    eBot.push(v(Math.cos(a) * eR * 1.4, 0.34, -0.34 + Math.sin(a) * eR * 1.4));
   }
   for (let i = 0; i < 4; i++) {
     const j = (i + 1) % 4;
-    facet(m, [eTop[i], eBot[i], eBot[j], eTop[j]], GUN);
+    facet(m, [eTop[i], eBot[i], eBot[j], eTop[j]], ENGINE);
   }
 
-  // Cannon, out of the nose. Square-sectioned so it matches the hull.
-  const bw = 0.05;
-  const g0 = vert(-bw, -0.04, 0.50), g1 = vert(bw, -0.04, 0.50);
-  const g2 = vert( bw,  0.05, 0.50), g3 = vert(-bw, 0.05, 0.50);
-  const g4 = vert(-bw, -0.04, 0.82), g5 = vert(bw, -0.04, 0.82);
-  const g6 = vert( bw,  0.05, 0.82), g7 = vert(-bw, 0.05, 0.82);
-  facet(m, [g0, g1, g5, g4], GUN);
-  facet(m, [g3, g2, g6, g7], GUN);
-  facet(m, [g1, g2, g6, g5], GUN);
-  facet(m, [g0, g3, g7, g4], GUN);
-  m.face([g4, g5, g6, g7], STRUT);
-
-  // Three angular legs down to the feet.
-  for (let i = 0; i < 3; i++) {
-    const a = (i / 3) * Math.PI * 2 + 0.5;
-    const cx = Math.cos(a), cz = Math.sin(a);
-    const hipX = cx * 0.18, hipZ = cz * 0.18 - 0.06;
-    const footX = cx * 0.44, footZ = cz * 0.44 - 0.06;
-    const w = 0.04;
-    const v0 = vert(hipX - cz * w, 0.10, hipZ + cx * w);
-    const v1 = vert(hipX + cz * w, 0.10, hipZ - cx * w);
-    const v2 = vert(footX + cz * w, 0.39, footZ - cx * w);
-    const v3 = vert(footX - cz * w, 0.39, footZ + cx * w);
-    facet(m, [v0, v1, v2, v3], STRUT);
-
-    const p = 0.07;
-    facet(m, [
-      vert(footX - p, 0.39, footZ - p), vert(footX + p, 0.39, footZ - p),
-      vert(footX + p, 0.39, footZ + p), vert(footX - p, 0.39, footZ + p),
-    ], FOOT);
-  }
+  // Cannon out of the nose, square-sectioned to match the hull.
+  const bw = 0.06;
+  const g = [
+    v(-bw, CH - 0.05, 0.80), v(bw, CH - 0.05, 0.80),
+    v( bw, CH + 0.06, 0.80), v(-bw, CH + 0.06, 0.80),
+    v(-bw, CH - 0.05, 1.20), v(bw, CH - 0.05, 1.20),
+    v( bw, CH + 0.06, 1.20), v(-bw, CH + 0.06, 1.20),
+  ];
+  facet(m, [g[0], g[1], g[5], g[4]], BARREL);
+  facet(m, [g[3], g[2], g[6], g[7]], BARREL);
+  facet(m, [g[1], g[2], g[6], g[5]], BARREL);
+  facet(m, [g[0], g[3], g[7], g[4]], BARREL);
+  m.face([g[4], g[5], g[6], g[7]], MUZZLE_C);
 
   return m;
 }
@@ -215,7 +211,7 @@ export class Player {
     this.vx = 0; this.vy = 0; this.vz = 0;
     this.leanDir = 0;
     this.lean = 0;
-    this.matrix = matFromTilt(0, 0);
+    this.matrix = matFromAim(0, 0);
     this.fuel = FUEL_MAX;
     this.landed = true;
     this.dead = false;
@@ -268,9 +264,12 @@ export class Player {
     // Aim for the lean the stick is asking for, and ease towards it. The
     // magnitude of the deflection sets how hard we tilt, its angle sets which
     // way -- straight from the original's polar treatment of the mouse.
+    // Bearing of the stick becomes the craft's heading; how hard you push
+    // becomes how far its nose drops. Centring the stick leaves the heading
+    // where it was, so the craft holds its facing rather than snapping back.
     const mag = Math.min(1, Math.hypot(stick.x, stick.y));
     const targetLean = mag * MAX_LEAN;
-    const targetDir = (mag > 0.02) ? Math.atan2(stick.y, stick.x) : this.leanDir;
+    const targetDir = (mag > 0.02) ? Math.atan2(stick.x, stick.y) : this.leanDir;
 
     // Interpolate the direction the short way round the circle.
     let dd = targetDir - this.leanDir;
@@ -279,7 +278,7 @@ export class Player {
     this.leanDir += dd * LEAN_RATE;
     this.lean += (targetLean - this.lean) * LEAN_RATE;
 
-    matFromTilt(this.leanDir, this.lean, this.matrix);
+    matFromAim(this.leanDir, this.lean, this.matrix);
 
     // Out of fuel, or too high for the engines to bite, means no thrust.
     if (this.fuel <= 0) thrust = 0;

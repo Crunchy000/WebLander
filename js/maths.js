@@ -100,29 +100,35 @@ export function matIdentity() {
   return new Float64Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
 }
 
-// Build the ship's orientation: tilt `lean` radians away from vertical, in the
-// compass direction `dir` radians. This is the manoeuvre the whole game is
-// built around -- the craft has no independent yaw, it simply leans, and
-// leaning is what moves you.
-export function matFromTilt(dir, lean, out = new Float64Array(9)) {
-  const cd = Math.cos(dir), sd = Math.sin(dir);
-  const cl = Math.cos(lean), sl = Math.sin(lean);
+// Build the craft's orientation from a heading and a pitch.
+//
+// This is the heart of the flight model, and it is worth being precise about.
+// Steering does not merely lean the craft: it turns it. The direction you
+// steer becomes the craft's heading, and how hard you steer becomes how far
+// its nose tips down. Thrust acts along the roof, so a nose-down attitude
+// pushes you along the heading -- and because the gun fires along the nose,
+// aiming and flying are the same action.
+//
+// Columns of the matrix are the craft's own axes in world space:
+//
+//   model +x -> side      model -y -> roof (up)      model +z -> nose
+//
+// Remember +y points down, so "up" is negative y.
+export function matFromAim(yaw, pitch, out = new Float64Array(9)) {
+  const sy = Math.sin(yaw), cy = Math.cos(yaw);
+  const sp = Math.sin(pitch), cp = Math.cos(pitch);
 
-  // Rotate about the horizontal axis perpendicular to `dir`.
-  const ax = -sd, az = cd;          // axis of rotation (unit, in the xz plane)
-  const t = 1 - cl;
+  // nose: the heading, tipped down by pitch.
+  const nx = sy * cp, ny = sp, nz = cy * cp;
+  // roof: straight up, tipped forward by the same pitch, so thrust carries
+  // you along the heading as the nose drops.
+  const rx = sy * sp, ry = -cp, rz = cy * sp;
+  // side: horizontal, square to the heading.
+  const dx = cy, dy = 0, dz = -sy;
 
-  out[0] = t * ax * ax + cl;
-  out[1] = -sl * az;
-  out[2] = t * ax * az;
-
-  out[3] = sl * az;
-  out[4] = cl;
-  out[5] = -sl * ax;
-
-  out[6] = t * ax * az;
-  out[7] = sl * ax;
-  out[8] = t * az * az + cl;
+  out[0] = dx; out[1] = -rx; out[2] = nx;
+  out[3] = dy; out[4] = -ry; out[5] = ny;
+  out[6] = dz; out[7] = -rz; out[8] = nz;
 
   return out;
 }
