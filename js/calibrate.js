@@ -27,14 +27,6 @@ const STEPS = [
     hint: 'Hold it there — it captures itself.',
   },
   {
-    key: 'ready',
-    title: 'GOT IT',
-    body: 'That is <b>away</b> set.',
-    hint: 'Bring the phone back to how you were holding it.',
-    manual: true,
-    button: 'NEXT: TILT RIGHT',
-  },
-  {
     key: 'right',
     title: 'TILT RIGHT',
     body: 'Now tip it as if flying to your <b>right</b>.',
@@ -121,8 +113,6 @@ export class Calibration {
       this.captured.zero = { ...raw };
     }
 
-    // The 'ready' step just gives the player a beat to reposition before the
-    // next demonstration starts watching.
     this.errEl.textContent = '';
     this.stepIndex++;
     this.renderStep();
@@ -130,6 +120,14 @@ export class Calibration {
 
   capture(d) {
     this.captured[this.step.key] = d;
+
+    if (this.step.key === 'away') {
+      // Say so, then move on by itself once they recentre.
+      this.errEl.textContent = '';
+      this.stepIndex++;
+      this.renderStep();
+      return;
+    }
 
     if (this.step.key === 'right') {
       const err = this.mapper.build(this.captured.away, this.captured.right);
@@ -192,7 +190,7 @@ export class Calibration {
     this.setProgress(progress);
 
     if (needsCentre) {
-      this.hintEl.textContent = 'Bring it back to centre to start…';
+      this.hintEl.textContent = 'Good — now level the phone…';
     } else {
       this.hintEl.textContent = magnitude(d) < 9
         ? 'Tip it a little further…'

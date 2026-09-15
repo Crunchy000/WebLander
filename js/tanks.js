@@ -1,0 +1,316 @@
+// tanks.js -- moving ground targets.
+//
+// Unlike the scenery, which is a pure function of tile coordinates and stores
+// nothing, tanks are real entities: they drive about, so they need state. The
+// pool is small and recycled -- they are spawned in a ring around the player
+// and retired once they fall far behind, so however far you fly there are only
+// ever a handful being simulated.
+
+import { TILE, matRotY, matFromAim, matApply, rnd, rndSigned, rndInt } from './maths.js';
+import { Model, shade, facet, drawModel } from './model.js';
+import { landAltitude, SEA_LEVEL, isOnLaunchpad, UNDERCARRIAGE_Y } from './landscape.js';
+import { spawnExplosion, spawnSparks, spawnSmoke } from './particles.js';
+
+export const MAX_TANKS = 9;
+export const TANK_SCORE = 150;
+
+const SPAWN_MIN = 14 * TILE;    // ring in which new tanks appear
+const SPAWN_MAX = 26 * TILE;
+const RETIRE = 44 * TILE;       // ... and beyond which they are recycled
+const HIT_RADIUS = 0.75;        // tiles, for a bomb passing through one
+const BLAST_RADIUS = 2.1;       // tiles, for the explosion where it lands
+const WRECK_LIFE = 900;         // frames a burnt-out hull lingers
+
+// --- models ----------------------------------------------------------------
+
+const HULL_A  = [ 96, 122,  74];
+const HULL_B  = [ 74,  98,  58];
+const DECK    = [126, 152,  96];
+const TRACK   = [ 58,  58,  62];
+const TRACK_B = [ 84,  84,  90];
+const TURRET  = [108, 134,  82];
+const BARREL  = [ 72,  76,  84];
+const MARK    = [226,  96,  52];   // hazard stripe, so they read as targets
+const CHAR    = [ 46,  42,  40];
+const CHAR_B  = [ 68,  62,  58];
+
+function box(m, x0, y0, z0, x1, y1, z1, col, topCol) {
+  const v = (x, y, z) => m.vert(x, y, z);
+  const q = [
+    v(x0, y0, z0), v(x1, y0, z0), v(x1, y0, z1), v(x0, y0, z1),
+    v(x0, y1, z0), v(x1, y1, z0), v(x1, y1, z1), v(x0, y1, z1),
+  ];
+  facet(m, [q[0], q[1], q[2], q[3]], topCol || col);   // top (y0 is upper)
+  facet(m, [q[4], q[5], q[6], q[7]], col);             // bottom
+  facet(m, [q[0], q[1], q[5], q[4]], col);             // front
+  facet(m, [q[3], q[2], q[6], q[7]], col);             // back
+  facet(m, [q[1], q[2], q[6], q[5]], col);             // right
+  facet(m, [q[0], q[3], q[7], q[4]], col);             // left
+  return q;
+}
+
+// Hull and tracks. Sits with its belly on the ground, nose towards +z.
+function buildHull(burnt) {
+  const m = new Model();
+  const v = (x, y, z) => m.vert(x, y, z);
+  const body = burnt ? CHAR : HULL_A;
+  const deck = burnt ? CHAR_B : DECK;
+  const trk = burnt ? CHAR : TRACK;
+
+  // Tracks down each side.
+  box(m, -0.46, -0.16, -0.62, -0.28, 0.02, 0.62, trk, burnt ? CHAR_B : TRACK_B);
+  box(m,  0.28, -0.16, -0.62,  0.46, 0.02, 0.62, trk, burnt ? CHAR_B : TRACK_B);
+
+  // Hull between them, with a sloped glacis at the front.
+  box(m, -0.30, -0.30, -0.56, 0.30, -0.02, 0.40, body, deck);
+  facet(m, [
+    v(-0.30, -0.30, 0.40), v(0.30, -0.30, 0.40),
+    v(0.30, -0.04, 0.64), v(-0.30, -0.04, 0.64),
+  ], burnt ? CHAR_B : HULL_B);
+
+  if (!burnt) {
+    // A stripe across the deck, so they are legible from the air.
+    facet(m, [
+      v(-0.30, -0.31, -0.20), v(0.30, -0.31, -0.20),
+      v(0.30, -0.31, -0.06), v(-0.30, -0.31, -0.06),
+    ], MARK);
+  }
+  return m;
+}
+
+// Turret and gun, built about its own pivot so it can rotate independently --
+// and, once the tank is killed, fly off on its own.
+function buildTurret(burnt) {
+  const m = new Model();
+  const v = (x, y, z) => m.vert(x, y, z);
+  const t = burnt ? CHAR : TURRET;
+
+  box(m, -0.22, -0.26, -0.24, 0.22, 0.00, 0.22, t, burnt ? CHAR_B : shade(t, 1.15));
+  // Gun.
+  box(m, -0.045, -0.20, 0.20, 0.045, -0.11, 0.78, burnt ? CHAR_B : BARREL);
+  if (!burnt) {
+    facet(m, [
+      v(-0.045, -0.20, 0.78), v(0.045, -0.20, 0.78),
+      v(0.045, -0.11, 0.78), v(-0.045, -0.11, 0.78),
+    ], MARK);
+  }
+  return m;
+}
+
+const HULL = buildHull(false);
+const HULL_WRECK = buildHull(true);
+const TURRET_M = buildTurret(false);
+const TURRET_WRECK = buildTurret(true);
+
+// --- state -----------------------------------------------------------------
+
+const ALIVE = 0, DYING = 1, WRECK = 2;
+
+const tanks = [];
+for (let i = 0; i < MAX_TANKS; i++) {
+  tanks.push({ live: false, state: ALIVE });
+}
+
+export function resetTanks() {
+  for (const t of tanks) { t.live = false; t.state = ALIVE; }
+}
+
+export function tankCount() {
+  return tanks.reduce((n, t) => n + (t.live ? 1 : 0), 0);
+}
+
+function placeTank(t, px, pz) {
+  // Somewhere in a ring around the player, on dry land, clear of the pad.
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const a = rnd() * Math.PI * 2;
+    const r = SPAWN_MIN + rnd() * (SPAWN_MAX - SPAWN_MIN);
+    const x = (px + Math.cos(a) * r) | 0;
+    const z = (pz + Math.sin(a) * r) | 0;
+    if (isOnLaunchpad(x, z)) continue;
+    if (landAltitude(x, z) >= SEA_LEVEL - TILE * 0.3) continue;
+
+    t.live = true;
+    t.state = ALIVE;
+    t.x = x; t.z = z;
+    t.heading = rnd() * Math.PI * 2;
+    t.turret = t.heading;
+    t.speed = (0.010 + rnd() * 0.010) * TILE;   // per frame
+    t.turnTimer = 60 + rndInt(180);
+    t.wreckTimer = 0;
+    t.smokeTick = rndInt(20);
+    return true;
+  }
+  return false;
+}
+
+// --- update ----------------------------------------------------------------
+
+export function updateTanks(player, game) {
+  const px = player.x, pz = player.z;
+
+  for (const t of tanks) {
+    if (!t.live) {
+      // Trickle new ones in rather than spawning a whole wave at once.
+      if (rnd() < 0.02) placeTank(t, px, pz);
+      continue;
+    }
+
+    // Retire anything left far behind.
+    const dx = (t.x - px) / TILE, dz = (t.z - pz) / TILE;
+    if (Math.hypot(dx, dz) * TILE > RETIRE) { t.live = false; continue; }
+
+    if (t.state === WRECK) {
+      if (--t.wreckTimer <= 0) { t.live = false; continue; }
+      if ((t.smokeTick = (t.smokeTick + 1) % 9) === 0) {
+        spawnSmoke(t.x, (landAltitude(t.x, t.z) - TILE * 0.5) | 0, t.z);
+      }
+      continue;
+    }
+
+    if (t.state === DYING) {
+      // The turret is still in the air.
+      t.tvy += 0x2800;
+      t.tx += t.tvx; t.ty += t.tvy; t.tz += t.tvz;
+      t.tspin += t.tspinRate;
+      const ground = landAltitude(t.tx, t.tz);
+      if (t.ty >= ground) {
+        t.ty = ground;
+        t.state = WRECK;
+        t.wreckTimer = WRECK_LIFE;
+        spawnSparks(t.tx, t.ty, t.tz, 8);
+      }
+      if ((t.smokeTick = (t.smokeTick + 1) % 5) === 0) {
+        spawnSmoke(t.x, (landAltitude(t.x, t.z) - TILE * 0.5) | 0, t.z);
+      }
+      continue;
+    }
+
+    // Driving. Change course now and then.
+    if (--t.turnTimer <= 0) {
+      t.heading += rndSigned() * 1.2;
+      t.turnTimer = 70 + rndInt(200);
+    }
+
+    const nx = (t.x + Math.sin(t.heading) * t.speed) | 0;
+    const nz = (t.z + Math.cos(t.heading) * t.speed) | 0;
+
+    // Turn back from the shoreline rather than driving into the sea.
+    if (landAltitude(nx, nz) >= SEA_LEVEL - TILE * 0.2) {
+      t.heading += 1.6 + rnd();
+      t.turnTimer = 40 + rndInt(60);
+    } else {
+      t.x = nx; t.z = nz;
+    }
+
+    // The turret tracks the player, which is unsettling and also tells you
+    // at a glance which of them have noticed you.
+    const want = Math.atan2(px - t.x, pz - t.z);
+    let d = want - t.turret;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    t.turret += Math.max(-0.03, Math.min(0.03, d));
+  }
+}
+
+// --- being hit -------------------------------------------------------------
+
+// Test a bomb against every live tank. Returns true if one was destroyed.
+export function tankHit(bx, by, bz, game) {
+  for (const t of tanks) {
+    if (!t.live || t.state !== ALIVE) continue;
+
+    const dx = (bx - t.x) / TILE, dz = (bz - t.z) / TILE;
+    if (dx * dx + dz * dz > HIT_RADIUS * HIT_RADIUS) continue;
+
+    const ground = landAltitude(t.x, t.z);
+    if (by < ground - TILE * 1.4 || by > ground + TILE * 0.4) continue;
+
+    killTank(t, game);
+    return true;
+  }
+  return false;
+}
+
+// Everything caught by a bomb going off. A free-falling bomb against a moving
+// target is a matter of leading it, so the blast has to have some reach --
+// requiring a direct hit on something that drives at a tile a second would be
+// no fun at all.
+export function tankBlast(bx, by, bz, game) {
+  let killed = 0;
+  for (const t of tanks) {
+    if (!t.live || t.state !== ALIVE) continue;
+    const dx = (bx - t.x) / TILE, dz = (bz - t.z) / TILE;
+    if (dx * dx + dz * dz > BLAST_RADIUS * BLAST_RADIUS) continue;
+    killTank(t, game);
+    killed++;
+  }
+  return killed;
+}
+
+function killTank(t, game) {
+  const ground = landAltitude(t.x, t.z);
+  const mid = (ground - TILE * 0.35) | 0;
+
+  // A proper blast: a fast core, slower debris thrown wide, and sparks.
+  spawnExplosion(t.x, mid, t.z, 34, TILE * 0.055, null);
+  spawnExplosion(t.x, mid, t.z, 26, TILE * 0.022,
+    [[120, 116, 108], [86, 84, 80], [150, 62, 34]]);
+  spawnSparks(t.x, mid, t.z, 22);
+
+  // Blow the turret off, spinning.
+  t.state = DYING;
+  t.tx = t.x; t.ty = mid; t.tz = t.z;
+  t.tvx = rndSigned() * TILE * 0.018;
+  t.tvz = rndSigned() * TILE * 0.018;
+  t.tvy = -(TILE * 0.055 + rnd() * TILE * 0.025);
+  t.tspin = t.turret;
+  t.tspinRate = rndSigned() * 0.34;
+  t.smokeTick = 0;
+
+  game.addScore(TANK_SCORE);
+  game.onTankDestroyed(t.x, mid, t.z);
+}
+
+// --- drawing ---------------------------------------------------------------
+
+const hullMat = new Float64Array(9);
+const turMat = new Float64Array(9);
+
+// Tanks are handed to the landscape scan so they draw in the right row, which
+// keeps them correctly hidden behind hills in front of them.
+export function tanksInRow(zLo, zHi, out) {
+  for (const t of tanks) {
+    if (!t.live) continue;
+    if (t.z >= zLo && t.z < zHi) out.push(t);
+  }
+  return out;
+}
+
+export function drawTank(rd, t, camX, camY, camZ) {
+  const ground = landAltitude(t.x, t.z);
+
+  // Pitch the hull to sit along the slope it is standing on.
+  const d = TILE * 0.55;
+  const ahead = landAltitude((t.x + Math.sin(t.heading) * d) | 0,
+                             (t.z + Math.cos(t.heading) * d) | 0);
+  const behind = landAltitude((t.x - Math.sin(t.heading) * d) | 0,
+                              (t.z - Math.cos(t.heading) * d) | 0);
+  const pitch = Math.atan2(ahead - behind, 2 * d);
+
+  matFromAim(t.heading, pitch, hullMat);
+  const wrecked = t.state !== ALIVE;
+  drawModel(rd, wrecked ? HULL_WRECK : HULL, hullMat,
+            t.x, ground, t.z, camX, camY, camZ);
+
+  if (t.state === ALIVE) {
+    matRotY(t.turret, turMat);
+    const seat = matApply(hullMat, 0, -0.30 * TILE, -0.06 * TILE);
+    drawModel(rd, TURRET_M, turMat,
+              (t.x + seat[0]) | 0, (ground + seat[1]) | 0, (t.z + seat[2]) | 0,
+              camX, camY, camZ);
+  } else {
+    // Detached turret, wherever it has got to.
+    matRotY(t.tspin, turMat);
+    drawModel(rd, TURRET_WRECK, turMat, t.tx, t.ty, t.tz, camX, camY, camZ);
+  }
+}

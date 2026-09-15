@@ -18,6 +18,9 @@ import {
   spawnExplosion, spawnSparks, spawnSmoke, particleCount, P_BULLET,
 } from './particles.js';
 import { drawText, drawTextCentred, textWidth } from './font.js';
+import {
+  updateTanks, drawTank, tanksInRow, tankHit, tankBlast, resetTanks, TANK_SCORE,
+} from './tanks.js';
 
 export const STATE = { TITLE: 0, PLAYING: 1, DYING: 2, GAMEOVER: 3 };
 
@@ -50,6 +53,7 @@ export class Game {
 
     // Objects waiting to be drawn, staggered behind the landscape.
     this.pending = Array.from({ length: TILES_Z + 2 }, () => []);
+    this.pendingTanks = Array.from({ length: TILES_Z + 2 }, () => []);
 
     this.newGame();
     this.state = STATE.TITLE;
@@ -63,6 +67,7 @@ export class Game {
     this.messageTimer = 0;
     resetObjects();
     resetParticles();
+    resetTanks();
     this.player.reset();
     this.state = STATE.PLAYING;
   }
@@ -78,6 +83,11 @@ export class Game {
 
   onRefuel() {
     if ((this.refuelTick = (this.refuelTick | 0) + 1) % 6 === 0) this.audio.refuel();
+  }
+
+  onTankDestroyed(x, y, z) {
+    this.audio.explosion();
+    this.setMessage('TANK DESTROYED', 70);
   }
 
   onDeath(how) {
@@ -132,6 +142,7 @@ export class Game {
     this.player.update(inp.stick, inp.thrust, inp.fire, this.gravity, this);
     this.audio.engine(this.player.thrusting);
 
+    updateTanks(this.player, this);
     updateParticles(this.gravity, (i, bx, by, bz) => this.bulletHit(i, bx, by, bz));
 
     // Wrecks smoke away for as long as they are in view.
@@ -158,6 +169,8 @@ export class Game {
   // A bullet has moved; see whether it has struck anything worth destroying.
   bulletHit(i, bx, by, bz) {
     const ground = landAltitude(bx, bz);
+
+    if (tankHit(bx, by, bz, this)) return true;
 
     // Check the tile the bullet is over, and its neighbours, for scenery.
     const tx = bx >> 24, tz = bz >> 24;
@@ -190,7 +203,8 @@ export class Game {
         // A bomb going off, not a bullet pocking the dirt.
         spawnExplosion(bx, ground, bz, 26, TILE * 0.030, null);
         spawnSparks(bx, ground, bz, 12);
-        this.audio.explosion();
+        // Anything close enough goes up with it.
+        if (!tankBlast(bx, ground, bz, this)) this.audio.explosion();
       } else {
         this.audio.splash();
       }
@@ -241,6 +255,7 @@ export class Game {
     const fracZ = (zCamera - zCameraTile) | 0;
 
     for (const list of this.pending) list.length = 0;
+    for (const list of this.pendingTanks) list.length = 0;
 
     const pt = { x: 0, y: 0 };
 
@@ -248,6 +263,10 @@ export class Game {
       const worldZ = (zCameraTile - j * TILE) | 0;
       const viewZ = (LANDSCAPE_Z - fracZ - j * TILE) | 0;
       const tz = worldZ >> 24;
+
+      // Any tank standing in this row's band of ground draws with it, so
+      // hills in front still hide what is behind them.
+      if (j > 0) tanksInRow(worldZ, (worldZ + TILE) | 0, this.pendingTanks[j]);
 
       let prevAlt = 0;
 
@@ -301,6 +320,12 @@ export class Game {
   }
 
   flushObjects(row, eyeX, eyeY, eyeZ) {
+    const armour = this.pendingTanks[row];
+    if (armour && armour.length) {
+      for (const t of armour) drawTank(this.rd, t, eyeX, eyeY, eyeZ);
+      armour.length = 0;
+    }
+
     const list = this.pending[row];
     if (!list || list.length === 0) return;
 
