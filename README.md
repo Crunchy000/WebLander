@@ -184,6 +184,8 @@ software rasterisation, so a phone GPU does not notice it.
 | `js/renderer.js` | WebGL batcher and the projection |
 | `js/model.js` | flat-shaded polygon model primitives |
 | `js/objects.js` | scenery models and the stateless object map |
+| `js/tanks.js` | roving armour, their gunnery and their destruction |
+| `js/boats.js` | shipping on the sea, and sinking it |
 | `js/player.js` | faceted hull, flight physics, collisions |
 | `js/particles.js` | exhaust, bullets, explosions, smoke, spray |
 | `js/input.js` | mouse, keyboard, touch and tilt |
