@@ -213,10 +213,9 @@ software rasterisation, so a phone GPU does not notice it.
 
 *Lander* was written by **David Braben** and is copyright © D.J. Braben, 1987.
 
-This port was written against the extensively annotated disassembly at
-[lander.bbcelite.com](https://lander.bbcelite.com/), commentary copyright
-**Mark Moxon** — an outstanding piece of work without which the landscape
-formula, the colour packing and the projection would have stayed mysteries.
+This tribute referenced
+[lander.bbcelite.com](https://lander.bbcelite.com/)
+**Mark Moxon**
 
 The code in this repository is a fresh implementation in JavaScript. It
 contains none of the original program's code.
