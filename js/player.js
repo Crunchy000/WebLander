@@ -13,12 +13,12 @@ import {
 } from './landscape.js';
 import { MODELS, objectAt, objectOffset, isWreck } from './objects.js';
 import { project } from './renderer.js';
-import { spawnExhaust, spawnBullet, spawnExplosion, spawnSparks } from './particles.js';
+import { spawnExhaust, spawnBomb, spawnExplosion, spawnSparks } from './particles.js';
 import { drawUav } from './uav.js';
 
 // Which airframe to fly. The faceted lander and the tilt-rotor UAV share the
 // same flight model, so this is a straight swap.
-export const AIRFRAME = 'lander';   // 'lander' | 'uav'
+export const AIRFRAME = 'uav';   // 'lander' | 'uav'
 
 // --- tuning ----------------------------------------------------------------
 
@@ -39,10 +39,10 @@ const DRAG = 0.985;             // damping; without it the craft is unflyable
 const FUEL_BURN_HOVER = 3;
 const FUEL_BURN_FULL = 8;
 
-const BULLET_SPEED = TILE * 0.075;
-// How far along the nose the barrel ends, so shots leave the muzzle rather
-// than the middle of the hull.
-const MUZZLE = TILE * 1.26;
+// Where the bomb leaves the craft, and how hard it is pushed clear. Barely
+// any push: it should fall away rather than be shot downwards.
+const BAY_OFFSET = TILE * 0.34;
+const RELEASE_SPEED = TILE * 0.010;
 const SHIP_RADIUS = 0.3;   // in tiles, for scenery collisions
 
 // Getting off the pad is the fiddliest moment in the game, so the first few
@@ -276,7 +276,7 @@ export class Player {
     if (fire && this.fireCooldown === 0) {
       this.fire();
       game.onShot();
-      this.fireCooldown = 7;
+      this.fireCooldown = 20;
     }
 
     this.checkGround(game);
@@ -301,18 +301,18 @@ export class Player {
   }
 
   fire() {
-    // The gun points out through the ship's nose, along its local forward
-    // axis, so aiming means leaning: level flight shoots straight ahead,
-    // tipping forward walks the shots down into the landscape.
-    const nose = matApply(this.matrix, 0, 0, 1);
+    // Bombs are dropped, not fired. They leave the bay along the craft's own
+    // down axis, carrying its velocity, and gravity does the rest -- so you
+    // aim by flying over the target rather than by pointing at it.
+    const down = matApply(this.matrix, 0, 1, 0);
 
-    spawnBullet(
-      (this.x + nose[0] * MUZZLE) | 0,
-      (this.y + nose[1] * MUZZLE) | 0,
-      (this.z + nose[2] * MUZZLE) | 0,
-      (this.vx + nose[0] * BULLET_SPEED) | 0,
-      (this.vy + nose[1] * BULLET_SPEED) | 0,
-      (this.vz + nose[2] * BULLET_SPEED) | 0,
+    spawnBomb(
+      (this.x + down[0] * BAY_OFFSET) | 0,
+      (this.y + down[1] * BAY_OFFSET) | 0,
+      (this.z + down[2] * BAY_OFFSET) | 0,
+      (this.vx + down[0] * RELEASE_SPEED) | 0,
+      (this.vy + down[1] * RELEASE_SPEED) | 0,
+      (this.vz + down[2] * RELEASE_SPEED) | 0,
     );
   }
 

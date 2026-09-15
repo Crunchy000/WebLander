@@ -98,9 +98,12 @@ export function spawnExhaust(px, py, pz, dvx, dvy, dvz, spread) {
   );
 }
 
-export function spawnBullet(px, py, pz, bvx, bvy, bvz) {
-  return spawn(px, py, pz, bvx, bvy, bvz, [255, 255, 170], 90,
-               P_GRAVITY | P_BULLET | P_SPLASH, 2);
+// A bomb: released rather than fired, so it carries the craft's own velocity
+// and lets gravity do the aiming. Heavier and slower-lived than a bullet, and
+// drawn large enough to follow down.
+export function spawnBomb(px, py, pz, bvx, bvy, bvz) {
+  return spawn(px, py, pz, bvx, bvy, bvz, [58, 62, 74], 160,
+               P_GRAVITY | P_BULLET | P_SPLASH, 3);
 }
 
 // A ball of debris flung out in every direction.

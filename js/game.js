@@ -187,8 +187,12 @@ export class Game {
     // Otherwise it goes off when it hits the ground.
     if (by >= ground) {
       if (ground < SEA_LEVEL) {
-        spawnExplosion(bx, ground, bz, 7, TILE * 0.012, null);
-        this.audio.blast();
+        // A bomb going off, not a bullet pocking the dirt.
+        spawnExplosion(bx, ground, bz, 26, TILE * 0.030, null);
+        spawnSparks(bx, ground, bz, 12);
+        this.audio.explosion();
+      } else {
+        this.audio.splash();
       }
       return true;
     }

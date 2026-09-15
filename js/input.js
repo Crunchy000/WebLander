@@ -232,15 +232,20 @@ export class Input {
 
     const rad = (this.screenAngle() * Math.PI) / 180;
     const c = Math.cos(rad), sn = Math.sin(rad);
-    const sx = (right * c + away * sn) / TILT_RANGE;
-    const sy = (-right * sn + away * c) / TILT_RANGE;
+    let sx = (right * c + away * sn) / TILT_RANGE;
+    let sy = (-right * sn + away * c) / TILT_RANGE;
+
+    // Clamp the length rather than each axis, so leaning hard keeps its
+    // bearing instead of snapping to the nearest diagonal.
+    const len = Math.hypot(sx, sy);
+    if (len > 1) { sx /= len; sy /= len; }
 
     this.tiltDebug = {
       beta: Math.round(dBeta), gamma: Math.round(dGamma),
       x: +sx.toFixed(2), y: +sy.toFixed(2), mode: 'uncalibrated',
     };
 
-    return { x: clamp(sx, -1, 1), y: clamp(sy, -1, 1) };
+    return { x: sx, y: sy };
   }
 
   // -- per-frame ------------------------------------------------------------

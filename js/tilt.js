@@ -38,11 +38,10 @@ export function magnitude(d) {
   return Math.hypot(d.g, d.b);
 }
 
-// Rescale a demonstrated direction to a sensible throw, keeping its heading.
-function normaliseThrow(d) {
+// Rescale a demonstrated direction to a given throw, keeping its heading.
+function scaleTo(d, target) {
   const len = magnitude(d);
   if (len < 1e-3) return null;
-  const target = Math.min(MAX_THROW, Math.max(MIN_THROW, len));
   const k = target / len;
   return { g: d.g * k, b: d.b * k };
 }
@@ -65,8 +64,16 @@ export class TiltMapper {
   // Build the mapping from the two demonstrated tilts. Returns null on
   // success, or a message explaining why it could not be used.
   build(awayDelta, rightDelta) {
-    const A = normaliseThrow(awayDelta);
-    const R = normaliseThrow(rightDelta);
+    // Both axes share one throw, taken from the average of what was
+    // demonstrated. Scaling each to its own length would make the craft
+    // answer sooner to one axis than the other, which reads as the compass
+    // being skewed rather than as a sensitivity difference.
+    const la = magnitude(awayDelta), lr = magnitude(rightDelta);
+    if (la < 1e-3 || lr < 1e-3) return 'That tilt was too small to read.';
+
+    const throwDeg = Math.min(MAX_THROW, Math.max(MIN_THROW, (la + lr) / 2));
+    const A = scaleTo(awayDelta, throwDeg);
+    const R = scaleTo(rightDelta, throwDeg);
     if (!A || !R) return 'That tilt was too small to read.';
 
     // Reject two directions that are too close to tell apart.
@@ -93,10 +100,17 @@ export class TiltMapper {
     if (!this.calibrated || !raw) return null;
     const d = delta(raw, this.zero);
     const [a, b, c, e] = this.inv;
-    return {
-      x: Math.max(-1, Math.min(1, a * d.g + b * d.b)),
-      y: Math.max(-1, Math.min(1, c * d.g + e * d.b)),
-    };
+
+    let x = a * d.g + b * d.b;
+    let y = c * d.g + e * d.b;
+
+    // Clamp the length, keeping the bearing. Clamping each axis separately
+    // would confine the stick to a square: lean hard in any direction and
+    // both axes peg, collapsing every heading onto the nearest diagonal.
+    const len = Math.hypot(x, y);
+    if (len > 1) { x /= len; y /= len; }
+
+    return { x, y };
   }
 
   save() {
