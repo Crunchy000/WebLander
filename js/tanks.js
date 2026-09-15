@@ -239,6 +239,7 @@ export function updateTanks(player, game) {
     if (Math.hypot(dx, dz) * TILE > RETIRE) { t.live = false; continue; }
 
     if (t.state === WRECK) {
+      cookOff(t, game);
       if (--t.wreckTimer <= 0) { t.live = false; continue; }
       if ((t.smokeTick = (t.smokeTick + 1) % 9) === 0) {
         spawnSmoke(t.x, (landAltitude(t.x, t.z) - TILE * 0.5) | 0, t.z);
@@ -247,6 +248,7 @@ export function updateTanks(player, game) {
     }
 
     if (t.state === DYING) {
+      cookOff(t, game);
       // The turret is still in the air.
       t.tvy += 0x2800;
       t.tx += t.tvx; t.ty += t.tvy; t.tz += t.tvz;
@@ -407,6 +409,26 @@ export function tankBlast(bx, by, bz, game) {
   return killed;
 }
 
+// Secondaries in a burning wreck: a fireball somewhere on the hull, with the
+// sound tied to it so the bangs match something visible rather than arriving
+// from nowhere.
+function cookOff(t, game) {
+  if (!t.secondaries || t.secondaries <= 0) return;
+  if (--t.nextSec > 0) return;
+
+  const ground = landAltitude(t.x, t.z);
+  const jx = (t.x + rndSigned() * TILE * 0.45) | 0;
+  const jz = (t.z + rndSigned() * TILE * 0.45) | 0;
+  const jy = (ground - TILE * (0.3 + rnd() * 0.5)) | 0;
+
+  spawnExplosion(jx, jy, jz, 14 + rndInt(10), TILE * (0.028 + rnd() * 0.022), null);
+  spawnSparks(jx, jy, jz, 8 + rndInt(8));
+
+  t.secondaries--;
+  t.nextSec = 26 + rndInt(46);
+  game.onSecondaryBlast();
+}
+
 function killTank(t, game) {
   const ground = landAltitude(t.x, t.z);
   const mid = (ground - TILE * 0.35) | 0;
@@ -426,6 +448,10 @@ function killTank(t, game) {
   t.tspin = t.turret;
   t.tspinRate = rndSigned() * 0.34;
   t.smokeTick = 0;
+
+  // She will keep letting go for a few seconds after the hit.
+  t.secondaries = 2 + rndInt(3);
+  t.nextSec = 22 + rndInt(30);
 
   game.addScore(TANK_SCORE);
   game.onTankDestroyed(t.x, mid, t.z);

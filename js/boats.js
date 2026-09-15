@@ -216,6 +216,7 @@ export function updateBoats(player, game) {
 
     if (b.state === SINKING) {
       b.sink++;
+      cookOff(b, game);
       // Settles by the stern, going down by the head at the last.
       if (b.sink % 7 === 0) spawnSmoke(b.x, (SEA_LEVEL - TILE * 0.7) | 0, b.z);
       if (b.sink % 11 === 0) spawnSparks(b.x, (SEA_LEVEL - TILE * 0.3) | 0, b.z, 3);
@@ -323,6 +324,30 @@ function damageBoat(b, game) {
   game.onBoatHit(b.x, mid, b.z);
 }
 
+// Secondaries as she burns and settles -- fuel and stores letting go, each
+// with its own fireball so the bangs have something to belong to.
+function cookOff(b, game) {
+  if (!b.secondaries || b.secondaries <= 0) return;
+  if (--b.nextSec > 0) return;
+
+  const jx = (b.x + rndSigned() * TILE * 0.55) | 0;
+  const jz = (b.z + rndSigned() * TILE * 0.7) | 0;
+  const jy = (SEA_LEVEL - TILE * (0.4 + rnd() * 0.7)) | 0;
+
+  spawnExplosion(jx, jy, jz, 16 + rndInt(12), TILE * (0.03 + rnd() * 0.026), null);
+  spawnSparks(jx, jy, jz, 10 + rndInt(8));
+  // Steam where the fire meets the water.
+  for (let i = 0; i < 6; i++) {
+    const a = rnd() * Math.PI * 2, sp = TILE * (0.004 + rnd() * 0.01);
+    spawn(jx, SEA_LEVEL, jz, Math.cos(a) * sp, -(TILE * 0.012 + rnd() * TILE * 0.014),
+          Math.sin(a) * sp, [226, 238, 248], 26 + rndInt(20), P_GRAVITY | P_FADE, 2);
+  }
+
+  b.secondaries--;
+  b.nextSec = 30 + rndInt(52);
+  game.onSecondaryBlast();
+}
+
 function sinkBoat(b, game) {
   const mid = (SEA_LEVEL - TILE * 0.5) | 0;
   spawnExplosion(b.x, mid, b.z, 30, TILE * 0.05, null);
@@ -339,6 +364,8 @@ function sinkBoat(b, game) {
 
   b.state = SINKING;
   b.sink = 0;
+  b.secondaries = 3 + rndInt(3);
+  b.nextSec = 26 + rndInt(34);
   if (!b.listTarget) b.listTarget = rndSigned() > 0 ? 0.3 : -0.3;
   game.addScore(BOAT_SCORE);
   game.onBoatSunk(b.x, mid, b.z);

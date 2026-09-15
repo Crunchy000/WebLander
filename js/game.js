@@ -103,6 +103,10 @@ export class Game {
     this.setMessage('SHIP SUNK  +' + BOAT_SCORE, 90);
   }
 
+  onSecondaryBlast() {
+    this.audio.secondary();
+  }
+
   onTankFired(x, y, z) {
     this.audio.tankGun();
   }

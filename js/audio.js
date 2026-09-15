@@ -210,6 +210,11 @@ export class Audio {
   // A tank or a ship going up.
   bigBoom() { this._boom(1.25); }
 
+  // A secondary going off in a burning wreck -- ammunition cooking, a tank
+  // letting go. Smaller than the hit that caused it, and deliberately varied
+  // in size so a string of them does not sound like a metronome.
+  secondary() { this._boom(0.42 + Math.random() * 0.34); }
+
   shot()      { this._burst(0.09, 2200, 'bandpass', 0.35, 600); }
   blast()     { this._boom(0.62); }
   explosion() { this._boom(0.95); }
