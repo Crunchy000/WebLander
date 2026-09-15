@@ -103,6 +103,10 @@ export class Game {
     this.setMessage('SHIP SUNK  +' + BOAT_SCORE, 90);
   }
 
+  onShipGoesUnder(x, y, z) {
+    this.audio.bigSplash();
+  }
+
   onSecondaryBlast() {
     this.audio.secondary();
   }

@@ -220,13 +220,28 @@ export function updateBoats(player, game) {
       // Settles by the stern, going down by the head at the last.
       if (b.sink % 7 === 0) spawnSmoke(b.x, (SEA_LEVEL - TILE * 0.7) | 0, b.z);
       if (b.sink % 11 === 0) spawnSparks(b.x, (SEA_LEVEL - TILE * 0.3) | 0, b.z, 3);
+      // The moment the deck goes under, she takes a last gulp: a ring of
+      // spray thrown up as the hull displaces, then foam closing over.
+      if (!b.wentUnder && b.sink >= SINK_TIME * 0.72) {
+        b.wentUnder = true;
+        for (let i = 0; i < 30; i++) {
+          const a = rnd() * Math.PI * 2, r = (0.3 + rnd() * 0.8) * TILE;
+          spawn((b.x + Math.cos(a) * r) | 0, SEA_LEVEL, (b.z + Math.sin(a) * r) | 0,
+                Math.cos(a) * TILE * (0.004 + rnd() * 0.010),
+                -(TILE * 0.018 + rnd() * TILE * 0.026),
+                Math.sin(a) * TILE * (0.004 + rnd() * 0.010),
+                [230, 244, 252], 30 + rndInt(26), P_GRAVITY | P_FADE, 2);
+        }
+        game.onShipGoesUnder(b.x, SEA_LEVEL, b.z);
+      }
+
       if (b.sink >= SINK_TIME) {
-        // Gone. Leave a patch of foam where she was.
-        for (let i = 0; i < 16; i++) {
-          const a = rnd() * Math.PI * 2, r = rnd() * TILE * 0.9;
+        // Gone. Leave a patch of foam closing over where she was.
+        for (let i = 0; i < 18; i++) {
+          const a = rnd() * Math.PI * 2, r = rnd() * TILE * 1.0;
           spawn((b.x + Math.cos(a) * r) | 0, SEA_LEVEL, (b.z + Math.sin(a) * r) | 0,
                 Math.cos(a) * TILE * 0.004, -rnd() * TILE * 0.006, Math.sin(a) * TILE * 0.004,
-                [226, 240, 250], 30 + rndInt(24), P_GRAVITY | P_FADE, 2);
+                [226, 240, 250], 34 + rndInt(26), P_GRAVITY | P_FADE, 2);
         }
         b.live = false;
       }
@@ -366,6 +381,7 @@ function sinkBoat(b, game) {
   b.sink = 0;
   b.secondaries = 3 + rndInt(3);
   b.nextSec = 26 + rndInt(34);
+  b.wentUnder = false;
   if (!b.listTarget) b.listTarget = rndSigned() > 0 ? 0.3 : -0.3;
   game.addScore(BOAT_SCORE);
   game.onBoatSunk(b.x, mid, b.z);

@@ -215,10 +215,52 @@ export class Audio {
   // in size so a string of them does not sound like a metronome.
   secondary() { this._boom(0.42 + Math.random() * 0.34); }
 
+  // Water, which is nothing like an explosion: no crack, because nothing
+  // shocks the air. It is an impact, then the dull weight of displaced water,
+  // then a long fizz of bubbles that carries most of the character.
+  _splash(scale = 1) {
+    if (!this.enabled) return;
+    const S = scale;
+
+    // 1. Impact: broad, but rounded rather than sharp.
+    this._noise({ dur: 0.16 * S, type: 'bandpass', f0: 1500, f1: 380,
+                  gain: 1.5 * S, q: 0.7, dest: this.crackBus });
+
+    // 2. Displacement: the dull body of water being shoved aside.
+    this._noise({ dur: 0.55 * S, type: 'lowpass', f0: 700, f1: 130,
+                  gain: 1.3 * S, q: 1.1 });
+
+    // 3. Fizz: bubbles, high and sparse, decaying slowly. This is the part
+    // that actually sounds wet -- without it you just have a muffled thud.
+    this._noise({ dur: 1.5 * S, type: 'highpass', f0: 2600, f1: 4200,
+                  gain: 0.55 * S, q: 0.6, delay: 0.05 });
+    this._noise({ dur: 2.2 * S, type: 'bandpass', f0: 3400, f1: 1500,
+                  gain: 0.34 * S, q: 2.2, delay: 0.18 });
+
+    // 4. A short falling gulp, for the sense of something going under.
+    if (S > 0.7) {
+      const ctx = this.ctx, t = ctx.currentTime;
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(320, t + 0.05);
+      o.frequency.exponentialRampToValueAtTime(70, t + 0.05 + 0.5 * S);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t + 0.05);
+      g.gain.exponentialRampToValueAtTime(0.5 * S, t + 0.09);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05 + 0.7 * S);
+      o.connect(g).connect(this.boomBus);
+      o.start(t + 0.05);
+      o.stop(t + 0.05 + 0.8 * S);
+    }
+  }
+
+  // A ship going under.
+  bigSplash() { this._splash(1.3); }
+
   shot()      { this._burst(0.09, 2200, 'bandpass', 0.35, 600); }
   blast()     { this._boom(0.62); }
   explosion() { this._boom(0.95); }
-  splash()    { this._burst(0.45, 3200, 'bandpass', 0.8, 700); }
+  splash()    { this._splash(0.5); }
 
   tone(freq, dur = 0.12, type = 'square', gain = 0.22) {
     if (!this.enabled) return;
