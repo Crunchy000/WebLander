@@ -13,7 +13,7 @@ import {
 } from './landscape.js';
 import { MODELS, objectAt, objectOffset, isWreck } from './objects.js';
 import { project } from './renderer.js';
-import { spawnExhaust, spawnBomb, spawnExplosion, spawnSparks } from './particles.js';
+import { spawnExhaust, spawnBomb, spawnExplosion, spawnSparks, spawnDust } from './particles.js';
 import { drawUav } from './uav.js';
 
 // Which airframe to fly. The faceted lander and the tilt-rotor UAV share the
@@ -43,6 +43,8 @@ const FUEL_BURN_FULL = 8;
 // any push: it should fall away rather than be shot downwards.
 const BAY_OFFSET = TILE * 0.34;
 const RELEASE_SPEED = TILE * 0.010;
+// Clearance, in tiles, within which the rotors start lifting dust.
+const WASH_HEIGHT = 2.6;
 const SHIP_RADIUS = 0.3;   // in tiles, for scenery collisions
 
 // Getting off the pad is the fiddliest moment in the game, so the first few
@@ -259,7 +261,8 @@ export class Player {
       this.fuel -= thrust === 2 ? FUEL_BURN_FULL : FUEL_BURN_HOVER;
       if (this.fuel < 0) this.fuel = 0;
 
-      if (AIRFRAME !== 'uav') this.emitExhaust(up, thrust);
+      if (AIRFRAME === 'uav') this.rotorWash();
+      else this.emitExhaust(up, thrust);
     }
 
     // Gravity, then damping, then move.
@@ -280,6 +283,32 @@ export class Player {
     }
 
     this.checkGround(game);
+  }
+
+  // Downwash off the ground. Only close in, and only over land -- it is grit
+  // being thrown about, which is also a useful read on how much clearance is
+  // left underneath you.
+  rotorWash() {
+    const ground = landAltitude(this.x, this.z);
+    if (ground >= SEA_LEVEL) return;
+
+    const clearance = (ground - (this.y + UNDERCARRIAGE_Y)) / TILE;
+    if (clearance < 0 || clearance > WASH_HEIGHT) return;
+
+    // Thicker the lower you are.
+    const strength = 1 - clearance / WASH_HEIGHT;
+    if (rnd() > strength * 0.9) return;
+
+    const a = rnd() * Math.PI * 2;
+    const r = (0.5 + rnd() * 0.8) * TILE;
+    const speed = TILE * (0.004 + 0.010 * strength);
+    spawnDust(
+      (this.x + Math.cos(a) * r) | 0,
+      ground,
+      (this.z + Math.sin(a) * r) | 0,
+      Math.cos(a) * speed,
+      Math.sin(a) * speed,
+    );
   }
 
   emitExhaust(up, thrust) {

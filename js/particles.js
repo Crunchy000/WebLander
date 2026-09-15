@@ -82,6 +82,7 @@ const FLAME = [[255, 238, 136], [255, 170, 51], [255, 102, 34]];
 const SMOKE = [[102, 102, 102], [136, 136, 136], [68, 68, 68]];
 const SPRAY = [[187, 221, 255], [255, 255, 255]];
 const SPARK = [[255, 255, 204], [255, 221, 102]];
+const DUST  = [[176, 164, 136], [154, 144, 120], [196, 184, 156]];
 
 const pick = (a) => a[rndInt(a.length)];
 
@@ -128,6 +129,13 @@ export function spawnSparks(px, py, pz, n) {
       rndSigned() * TILE * 0.045, -rnd() * TILE * 0.05, rndSigned() * TILE * 0.045,
       pick(SPARK), 18 + rndInt(20), P_GRAVITY | P_FADE, 1);
   }
+}
+
+// Rotor wash: grit thrown outwards off the ground under a hovering rotor.
+export function spawnDust(px, py, pz, outX, outZ) {
+  spawn(px, py, pz,
+    outX, -TILE * 0.004 - rnd() * TILE * 0.004, outZ,
+    pick(DUST), 22 + rndInt(20), P_GRAVITY | P_FADE, 2);
 }
 
 // Smoke climbing from a wreck.

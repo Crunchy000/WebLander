@@ -29,6 +29,8 @@ const HUB      = [236,  72, 168];   // magenta hubs
 const BLADE    = [ 68,  74,  92];
 const BLADE_LIT= [126, 134, 156];
 const BLADE_TIP= [246, 246, 250];
+const DISC_A   = [116, 124, 146];   // swept disc, alternating
+const DISC_B   = [ 92,  99, 120];
 const SKID     = [232, 238, 246];
 const SKID_LEG = [176, 186, 202];
 const LENS     = [ 96, 244, 250];
@@ -200,7 +202,33 @@ function buildRotor() {
   return m;
 }
 
+// The swept disc. At speed a real prop blurs into a translucent ring, and
+// with no blending available the honest approximation is a dim, faintly
+// coned annulus sitting just inside the blade tips, with the solid blades
+// still drawn over it. Coned rather than flat for the usual reason: the
+// camera rides at the craft's altitude, so a flat ring would be edge-on.
+function buildDisc() {
+  const m = new Model();
+  const v = (x, y, z) => m.vert(x, y, z);
+  const RI = 0.26, RO = 0.455, Y = -0.17, CONE = 0.05, SEG = 12;
+
+  const inner = [], outer = [];
+  for (let i = 0; i < SEG; i++) {
+    const a = (i / SEG) * Math.PI * 2;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    inner.push(v(ca * RI, Y - CONE * (RI / RO), sa * RI));
+    outer.push(v(ca * RO, Y - CONE, sa * RO));
+  }
+  for (let i = 0; i < SEG; i++) {
+    const j = (i + 1) % SEG;
+    // Alternate tones so the ring reads as motion rather than a solid plate.
+    facet(m, [inner[i], outer[i], outer[j], inner[j]], i % 2 ? DISC_A : DISC_B);
+  }
+  return m;
+}
+
 export const UAV_BODY = buildBody();
+export const UAV_DISC = buildDisc();
 export const UAV_POD = buildPod();
 export const UAV_ROTOR = buildRotor();
 
@@ -220,6 +248,12 @@ export function drawUav(rd, p, camX, camY, camZ) {
     const wz = (p.z + off[2]) | 0;
 
     drawModel(rd, UAV_POD, p.matrix, wx, wy, wz, camX, camY, camZ);
+
+    // Under power the blades are turning too fast to resolve, so lay the
+    // swept disc down first and draw the blades over it.
+    if (p.thrusting) {
+      drawModel(rd, UAV_DISC, p.matrix, wx, wy, wz, camX, camY, camZ);
+    }
 
     // Diagonally opposite rotors turn the same way, adjacent ones oppose --
     // as they must on a real quad, or it would spin about its own axis.
