@@ -2,7 +2,7 @@
 
 **[▶ Play it](https://crunchy000.github.io/WebLander/)**
 
-A browser port of **Lander**, the flat-shaded 3D game David Braben wrote for
+A browser tribute to **Lander**, the flat-shaded 3D game David Braben wrote for
 the Acorn Archimedes in 1987 and which shipped on the machine's application
 discs.
 
