@@ -86,7 +86,7 @@ export class Game {
   }
 
   onTankDestroyed(x, y, z) {
-    this.audio.explosion();
+    this.audio.bigBoom();
     this.setMessage('TANK DESTROYED', 70);
   }
 

@@ -93,6 +93,35 @@ export class Audio {
     src.stop(t + dur);
   }
 
+  // A tank going up: three layers, because a single noise burst reads as a
+  // pop rather than a detonation. A low sine drop supplies the thump you feel,
+  // a long filtered noise burst is the blast itself, and a second, quieter
+  // burst a moment later is the debris coming back down.
+  bigBoom() {
+    if (!this.enabled) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+
+    // Thump: a low tone dropping fast.
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(110, t);
+    o.frequency.exponentialRampToValueAtTime(28, t + 0.45);
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0.0001, t);
+    og.gain.exponentialRampToValueAtTime(0.95, t + 0.015);
+    og.gain.exponentialRampToValueAtTime(0.0001, t + 0.7);
+    o.connect(og).connect(this.master);
+    o.start(t);
+    o.stop(t + 0.75);
+
+    // Blast: broad noise, opening then closing.
+    this._burst(0.9, 1400, 'lowpass', 1.0, 45);
+
+    // Debris, a beat later and quieter.
+    setTimeout(() => this._burst(0.55, 2600, 'bandpass', 0.30, 300), 130);
+    setTimeout(() => this._burst(0.40, 900, 'lowpass', 0.22, 120), 300);
+  }
+
   shot()      { this._burst(0.09, 2200, 'bandpass', 0.35, 600); }
   blast()     { this._burst(0.30, 900, 'lowpass', 0.55, 120); }
   explosion() { this._burst(0.75, 700, 'lowpass', 0.9, 60); }

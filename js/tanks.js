@@ -17,57 +17,76 @@ export const TANK_SCORE = 150;
 const SPAWN_MIN = 14 * TILE;    // ring in which new tanks appear
 const SPAWN_MAX = 26 * TILE;
 const RETIRE = 44 * TILE;       // ... and beyond which they are recycled
-const HIT_RADIUS = 0.75;        // tiles, for a bomb passing through one
+const HIT_RADIUS = 1.00;        // tiles, for a bomb passing through one
 const BLAST_RADIUS = 2.1;       // tiles, for the explosion where it lands
 const WRECK_LIFE = 900;         // frames a burnt-out hull lingers
 
 // --- models ----------------------------------------------------------------
 
-const HULL_A  = [ 62,  70,  82];   // dark and cold, to read against green
-const HULL_B  = [ 46,  53,  63];
-const DECK    = [ 84,  94, 108];
-const TRACK   = [ 30,  31,  35];
-const TRACK_B = [ 58,  60,  66];
-const TURRET  = [ 74,  84,  98];
-const BARREL  = [104, 110, 122];
+const HULL_A  = [ 62,  74,  92];   // flanks, cold steel blue
+const HULL_B  = [ 44,  54,  68];   // shadowed panels
+const HULL_C  = [ 58,  92,  96];   // teal-tinted plate
+const GLACIS  = [ 82, 100, 118];   // sloped front, catches the light
+const DECK    = [ 96, 110, 128];
+const REAR    = [ 70,  58,  72];   // engine deck, warmer
+const TRACK   = [ 28,  29,  34];
+const TRACK_B = [ 64,  66,  74];
+const TURRET  = [ 72,  66, 104];   // indigo, distinct from the hull
+const TURRET_T= [104,  96, 142];
+const BARREL  = [116, 122, 136];
+const OPTIC   = [ 86, 236, 244];   // sensor block, cyan
 const MARK    = [255, 150,  40];   // hazard markings, so they read as targets
 const MARK_B  = [255, 208,  64];
+const MARK_C  = [236,  72,  62];
 const CHAR    = [ 46,  42,  40];
 const CHAR_B  = [ 68,  62,  58];
 
-function box(m, x0, y0, z0, x1, y1, z1, col, topCol) {
-  const v = (x, y, z) => m.vert(x, y, z);
+// Vertices go through here so the whole vehicle can be scaled in one place.
+const S = 1.38;
+
+// A box whose six faces can each take their own colour. Passing a single
+// colour paints the lot; passing an object names the faces individually,
+// which is what gives the hull its patchwork of tones.
+function box(m, x0, y0, z0, x1, y1, z1, cols) {
+  const v = (x, y, z) => m.vert(x * S, y * S, z * S);
+  const c = Array.isArray(cols) ? { all: cols } : cols;
+  const pick = (k) => c[k] || c.all || c.body;
+
   const q = [
     v(x0, y0, z0), v(x1, y0, z0), v(x1, y0, z1), v(x0, y0, z1),
     v(x0, y1, z0), v(x1, y1, z0), v(x1, y1, z1), v(x0, y1, z1),
   ];
-  facet(m, [q[0], q[1], q[2], q[3]], topCol || col);   // top (y0 is upper)
-  facet(m, [q[4], q[5], q[6], q[7]], col);             // bottom
-  facet(m, [q[0], q[1], q[5], q[4]], col);             // front
-  facet(m, [q[3], q[2], q[6], q[7]], col);             // back
-  facet(m, [q[1], q[2], q[6], q[5]], col);             // right
-  facet(m, [q[0], q[3], q[7], q[4]], col);             // left
+  facet(m, [q[0], q[1], q[2], q[3]], pick('top'));      // y0 is the upper face
+  facet(m, [q[4], q[5], q[6], q[7]], pick('bottom'));
+  facet(m, [q[0], q[1], q[5], q[4]], pick('back'));     // -z
+  facet(m, [q[3], q[2], q[6], q[7]], pick('front'));    // +z
+  facet(m, [q[1], q[2], q[6], q[5]], pick('right'));
+  facet(m, [q[0], q[3], q[7], q[4]], pick('left'));
   return q;
 }
 
 // Hull and tracks. Sits with its belly on the ground, nose towards +z.
 function buildHull(burnt) {
   const m = new Model();
-  const v = (x, y, z) => m.vert(x, y, z);
+  const v = (x, y, z) => m.vert(x * S, y * S, z * S);
   const body = burnt ? CHAR : HULL_A;
   const deck = burnt ? CHAR_B : DECK;
   const trk = burnt ? CHAR : TRACK;
 
-  // Tracks down each side.
-  box(m, -0.46, -0.16, -0.62, -0.28, 0.02, 0.62, trk, burnt ? CHAR_B : TRACK_B);
-  box(m,  0.28, -0.16, -0.62,  0.46, 0.02, 0.62, trk, burnt ? CHAR_B : TRACK_B);
+  const trackCols = burnt ? [CHAR] : { all: trk, top: TRACK_B, right: HULL_B, left: HULL_B };
+  box(m, -0.46, -0.16, -0.62, -0.28, 0.02, 0.62, trackCols);
+  box(m,  0.28, -0.16, -0.62,  0.46, 0.02, 0.62, trackCols);
 
-  // Hull between them, with a sloped glacis at the front.
-  box(m, -0.30, -0.30, -0.56, 0.30, -0.02, 0.40, body, deck);
+  // Hull between them, each panel its own tone.
+  box(m, -0.30, -0.30, -0.56, 0.30, -0.02, 0.40, burnt ? [CHAR] : {
+    all: body, top: deck, right: HULL_A, left: HULL_C, back: REAR, front: GLACIS,
+  });
+
+  // Sloped glacis plate at the front.
   facet(m, [
     v(-0.30, -0.30, 0.40), v(0.30, -0.30, 0.40),
     v(0.30, -0.04, 0.64), v(-0.30, -0.04, 0.64),
-  ], burnt ? CHAR_B : HULL_B);
+  ], burnt ? CHAR_B : GLACIS);
 
   if (!burnt) {
     // Deck stripe, for when you are directly overhead.
@@ -96,10 +115,19 @@ function buildHull(burnt) {
 // and, once the tank is killed, fly off on its own.
 function buildTurret(burnt) {
   const m = new Model();
-  const v = (x, y, z) => m.vert(x, y, z);
+  const v = (x, y, z) => m.vert(x * S, y * S, z * S);
   const t = burnt ? CHAR : TURRET;
 
-  box(m, -0.22, -0.26, -0.24, 0.22, 0.00, 0.22, t, burnt ? CHAR_B : shade(t, 1.2));
+  box(m, -0.22, -0.26, -0.24, 0.22, 0.00, 0.22, burnt ? [CHAR] : {
+    all: t, top: TURRET_T, front: shade(t, 1.25), back: MARK_C,
+  });
+  if (!burnt) {
+    // Optics block on the front face.
+    facet(m, [
+      v(-0.09, -0.24, 0.225), v(0.09, -0.24, 0.225),
+      v(0.09, -0.16, 0.225), v(-0.09, -0.16, 0.225),
+    ], OPTIC);
+  }
   if (!burnt) {
     for (const sgn of [1, -1]) {
       facet(m, [
@@ -109,7 +137,7 @@ function buildTurret(burnt) {
     }
   }
   // Gun.
-  box(m, -0.045, -0.20, 0.20, 0.045, -0.11, 0.78, burnt ? CHAR_B : BARREL);
+  box(m, -0.045, -0.20, 0.20, 0.045, -0.11, 0.78, burnt ? [CHAR_B] : [BARREL]);
   if (!burnt) {
     facet(m, [
       v(-0.045, -0.20, 0.78), v(0.045, -0.20, 0.78),
