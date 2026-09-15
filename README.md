@@ -42,6 +42,12 @@ The gun points out through the ship's nose, so aiming means leaning: level
 flight shoots straight ahead, and tipping forward walks the shots down into
 the landscape.
 
+The craft runs on a **battery, not fuel**. Set down anywhere the ground is
+level enough to sit square on and it charges — the launchpad is simply the
+best surface there is. But a grounded craft is a stationary target, and tanks
+will open fire on one the moment their turret comes to bear. Charging in the
+open is a decision, not a rest.
+
 The first **five seconds of every life are free**: getting off the pad is the
 fiddliest moment in the game, so during that window you can scrape the ground,
 clip a tree or come down hard without losing a ship. The HUD counts it down.

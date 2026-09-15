@@ -10,6 +10,7 @@ import { TILE, matRotY, matFromAim, matApply, rnd, rndSigned, rndInt } from './m
 import { Model, shade, facet, drawModel } from './model.js';
 import { landAltitude, SEA_LEVEL, isOnLaunchpad, UNDERCARRIAGE_Y } from './landscape.js';
 import { spawnExplosion, spawnSparks, spawnSmoke } from './particles.js';
+import { project } from './renderer.js';
 
 export const MAX_TANKS = 9;
 export const TANK_SCORE = 150;
@@ -20,6 +21,20 @@ const RETIRE = 44 * TILE;       // ... and beyond which they are recycled
 const HIT_RADIUS = 1.00;        // tiles, for a bomb passing through one
 const BLAST_RADIUS = 2.1;       // tiles, for the explosion where it lands
 const WRECK_LIFE = 900;         // frames a burnt-out hull lingers
+
+// Gunnery. Tanks only open up on a craft that is sitting on the ground: in
+// the air you are a hard target and it would just be unfair, but the moment
+// you set down to charge you are a stationary one, which is the whole tension
+// of stopping to charge in the open.
+const GUN_RANGE = 13 * TILE;
+const RELOAD = 150;             // frames between rounds
+const AIM_TOLERANCE = 0.30;     // radians the turret must be within to fire
+const SHELL_SPEED = 0.21;       // tiles per frame
+const SHELL_HIT = 0.9;          // tiles
+const MAX_SHELLS = 24;
+
+const shells = [];
+let shellsFired = 0;
 
 // --- models ----------------------------------------------------------------
 
@@ -163,6 +178,19 @@ for (let i = 0; i < MAX_TANKS; i++) {
 
 export function resetTanks() {
   for (const t of tanks) { t.live = false; t.state = ALIVE; }
+  shells.length = 0;
+  shellsFired = 0;
+}
+
+export function shellCount() {
+  return shells.length;
+}
+
+// Rounds fired since the last reset. A shell is consumed the moment it
+// arrives, so the live count is a transient and useless for telling whether
+// the guns are working.
+export function shellsFiredTotal() {
+  return shellsFired;
 }
 
 export function tankCount() {
@@ -188,6 +216,7 @@ function placeTank(t, px, pz) {
     t.turnTimer = 60 + rndInt(180);
     t.wreckTimer = 0;
     t.smokeTick = rndInt(20);
+    t.reload = RELOAD + rndInt(RELOAD);
     return true;
   }
   return false;
@@ -259,6 +288,87 @@ export function updateTanks(player, game) {
     while (d > Math.PI) d -= Math.PI * 2;
     while (d < -Math.PI) d += Math.PI * 2;
     t.turret += Math.max(-0.03, Math.min(0.03, d));
+
+    // Open fire on a craft that has set down, once laid on and reloaded.
+    if (t.reload > 0) t.reload--;
+    const range = Math.hypot(px - t.x, pz - t.z);
+    if (player.landed && !player.dead && t.reload === 0 &&
+        range < GUN_RANGE && Math.abs(d) < AIM_TOLERANCE &&
+        shells.length < MAX_SHELLS) {
+      fireShell(t, player, game);
+      t.reload = RELOAD + rndInt(60);
+    }
+  }
+
+  updateShells(player, game);
+}
+
+function fireShell(t, player, game) {
+  const ground = landAltitude(t.x, t.z);
+  const muzzleY = (ground - TILE * 0.42) | 0;
+  const mx = (t.x + Math.sin(t.turret) * TILE * 0.9) | 0;
+  const mz = (t.z + Math.cos(t.turret) * TILE * 0.9) | 0;
+
+  // Aim at the craft itself rather than the ground under it.
+  const tx = player.x, ty = (player.y + UNDERCARRIAGE_Y * 0.5) | 0, tz = player.z;
+  const dx = tx - mx, dy = ty - muzzleY, dz = tz - mz;
+  const len = Math.hypot(dx, dy, dz) || 1;
+  const sp = SHELL_SPEED * TILE;
+
+  shells.push({
+    x: mx, y: muzzleY, z: mz,
+    vx: (dx / len) * sp, vy: (dy / len) * sp, vz: (dz / len) * sp,
+    life: 120,
+  });
+
+  shellsFired++;
+  spawnSparks(mx, muzzleY, mz, 4);
+  game.onTankFired(mx, muzzleY, mz);
+}
+
+function updateShells(player, game) {
+  for (let i = shells.length - 1; i >= 0; i--) {
+    const sh = shells[i];
+    sh.x = (sh.x + sh.vx) | 0;
+    sh.y = (sh.y + sh.vy) | 0;
+    sh.z = (sh.z + sh.vz) | 0;
+
+    let done = --sh.life <= 0;
+
+    // Did it find the craft?
+    if (!done && !player.dead) {
+      const dx = (sh.x - player.x) / TILE;
+      const dy = (sh.y - player.y) / TILE;
+      const dz = (sh.z - player.z) / TILE;
+      if (dx * dx + dy * dy + dz * dz < SHELL_HIT * SHELL_HIT) {
+        spawnExplosion(sh.x, sh.y, sh.z, 14, TILE * 0.03, null);
+        game.onPlayerShelled();
+        done = true;
+      }
+    }
+
+    // Or the ground.
+    if (!done && sh.y >= landAltitude(sh.x, sh.z)) {
+      const g = landAltitude(sh.x, sh.z);
+      if (g < SEA_LEVEL) spawnExplosion(sh.x, g, sh.z, 8, TILE * 0.016, null);
+      done = true;
+    }
+
+    if (done) shells.splice(i, 1);
+  }
+}
+
+// Shells are drawn straight, not bucketed by row: they are in the air and
+// brief, and losing one behind a hill matters less than seeing it coming.
+const shellPt = { x: 0, y: 0 };
+
+export function drawShells(rd, camX, camY, camZ) {
+  for (const sh of shells) {
+    if (!project((sh.x - camX) | 0, (sh.y - camY) | 0, (sh.z - camZ) | 0, shellPt)) continue;
+    const x = Math.round(shellPt.x), y = Math.round(shellPt.y);
+    // A bright core with a dimmer halo, so a round in flight is unmistakable.
+    rd.rect(x - 2, y - 2, 5, 5, [190, 90, 40]);
+    rd.rect(x - 1, y - 1, 3, 3, [255, 236, 150]);
   }
 }
 

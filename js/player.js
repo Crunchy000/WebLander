@@ -10,6 +10,7 @@ import { Model, shade, facet, drawModel } from './model.js';
 import {
   landAltitude, SEA_LEVEL, LAUNCHPAD_ALT, LAUNCHPAD_Y,
   UNDERCARRIAGE_Y, LANDING_SPEED, LANDSCAPE_Z_MID, isOnLaunchpad,
+  groundRoughness, FLAT_ENOUGH,
 } from './landscape.js';
 import { MODELS, objectAt, objectOffset, isWreck } from './objects.js';
 import { project } from './renderer.js';
@@ -28,7 +29,10 @@ export const GRAVITY_START = 0x02800;
 // the ground, not cruising above it. The engines cut out just above that, so
 // climbing is self-limiting and the landscape always stays in frame.
 export const HIGHEST_ALTITUDE = -(TILE * 3);
-export const FUEL_MAX = 0x4000;
+// Battery capacity. Doubled from the original tank so a sortie lasts about
+// twice as long; the charge rate is doubled to match, so topping up still
+// takes the same time on the ground.
+export const CHARGE_MAX = 0x8000;
 
 const THRUST_HOVER = 0x02800;   // exactly cancels the starting gravity
 const THRUST_FULL  = 0x04800;
@@ -36,8 +40,8 @@ const MAX_LEAN = 0.62;          // radians at full stick deflection
 const LEAN_RATE = 0.22;         // how fast the craft follows the stick
 const DRAG = 0.985;             // damping; without it the craft is unflyable
 
-const FUEL_BURN_HOVER = 3;
-const FUEL_BURN_FULL = 8;
+const DRAW_HOVER = 3;    // power drawn per frame while hovering
+const DRAW_FULL = 8;     // ... and under full thrust
 
 // Where the bomb leaves the craft, and how hard it is pushed clear. Barely
 // any push: it should fall away rather than be shot downwards.
@@ -173,7 +177,8 @@ export class Player {
     this.leanDir = 0;
     this.lean = 0;
     this.matrix = matFromAim(0, 0);
-    this.fuel = FUEL_MAX;
+    this.charge = CHARGE_MAX;
+    this.charging = false;
     this.landed = true;
     this.dead = false;
     this.deathTimer = 0;
@@ -245,8 +250,8 @@ export class Player {
 
     matFromAim(this.leanDir, this.lean, this.matrix);
 
-    // Out of fuel, or too high for the engines to bite, means no thrust.
-    if (this.fuel <= 0) thrust = 0;
+    // Flat battery, or too high for the rotors to bite, means no thrust.
+    if (this.charge <= 0) thrust = 0;
     if (this.y < HIGHEST_ALTITUDE) thrust = 0;
     this.thrusting = thrust;
 
@@ -258,8 +263,8 @@ export class Player {
       this.vy = (this.vy + up[1] * power) | 0;
       this.vz = (this.vz + up[2] * power) | 0;
 
-      this.fuel -= thrust === 2 ? FUEL_BURN_FULL : FUEL_BURN_HOVER;
-      if (this.fuel < 0) this.fuel = 0;
+      this.charge -= thrust === 2 ? DRAW_FULL : DRAW_HOVER;
+      if (this.charge < 0) this.charge = 0;
 
       if (AIRFRAME === 'uav') this.rotorWash();
       else this.emitExhaust(up, thrust);
@@ -355,6 +360,7 @@ export class Player {
 
     if (feet < ground) {
       this.landed = false;
+      this.charging = false;
       return;
     }
 
@@ -395,9 +401,16 @@ export class Player {
       this.landed = true;
       game.onTouchdown(onPad);
     }
-    if (onPad && this.fuel < FUEL_MAX) {
-      this.fuel = Math.min(FUEL_MAX, this.fuel + 40);
-      game.onRefuel();
+
+    // Charge anywhere the ground is level enough to sit square on. The pad is
+    // simply the best surface there is -- but it is also the one place every
+    // tank on the map knows how to find.
+    const flat = onPad || groundRoughness(this.x, this.z) <= FLAT_ENOUGH;
+    this.charging = flat && this.charge < CHARGE_MAX;
+
+    if (this.charging) {
+      this.charge = Math.min(CHARGE_MAX, this.charge + (onPad ? 80 : 52));
+      game.onCharging();
     }
   }
 
@@ -438,6 +451,9 @@ export class Player {
 
   die(game, how) {
     if (this.dead) return;
+    // The launch grace covers every cause, tank fire included. Checking here
+    // rather than at each call site means a new way of dying cannot forget.
+    if (this.protected) return;
     this.dead = true;
     this.deathTimer = 110;
     spawnExplosion(this.x, this.y, this.z, 60, TILE * 0.045, null);

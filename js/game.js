@@ -7,7 +7,7 @@ import {
   UNDERCARRIAGE_Y,
 } from './landscape.js';
 import { project, SCREEN_W, SCREEN_H, CENTRE_X } from './renderer.js';
-import { Player, GRAVITY_START, FUEL_MAX } from './player.js';
+import { Player, GRAVITY_START, CHARGE_MAX } from './player.js';
 import { drawModel } from './model.js';
 import {
   MODELS, OBJ_SCORE, objectAt, objectOffset, destroyObject, isWreck,
@@ -19,7 +19,8 @@ import {
 } from './particles.js';
 import { drawText, drawTextCentred, textWidth } from './font.js';
 import {
-  updateTanks, drawTank, tanksInRow, tankHit, tankBlast, resetTanks, TANK_SCORE,
+  updateTanks, drawTank, tanksInRow, tankHit, tankBlast, resetTanks,
+  drawShells, TANK_SCORE,
 } from './tanks.js';
 
 export const STATE = { TITLE: 0, PLAYING: 1, DYING: 2, GAMEOVER: 3 };
@@ -78,11 +79,21 @@ export class Game {
 
   onTouchdown(onPad) {
     this.audio.touchdown();
-    if (onPad) this.setMessage('REFUELLING', 90);
   }
 
-  onRefuel() {
-    if ((this.refuelTick = (this.refuelTick | 0) + 1) % 6 === 0) this.audio.refuel();
+  onCharging() {
+    // Chirp occasionally rather than every frame.
+    if ((this.chargeTick = (this.chargeTick | 0) + 1) % 7 === 0) this.audio.charge();
+    this.setMessage('CHARGING', 12);
+  }
+
+  // A tank shell found the craft while it sat on the ground.
+  onTankFired(x, y, z) {
+    this.audio.tankGun();
+  }
+
+  onPlayerShelled() {
+    this.player.die(this, 'shelled');
   }
 
   onTankDestroyed(x, y, z) {
@@ -96,7 +107,8 @@ export class Game {
   onDeath(how) {
     this.audio.explosion();
     this.state = STATE.DYING;
-    this.setMessage(how === 'sea' ? 'LOST AT SEA' : 'CRASHED', 110);
+    this.setMessage(how === 'sea' ? 'LOST AT SEA'
+      : how === 'shelled' ? 'SHOT DOWN' : 'CRASHED', 110);
   }
 
   setMessage(text, frames) {
@@ -236,6 +248,7 @@ export class Game {
 
     this.drawLandscape(eyeX, eyeY, eyeZ);
     drawParticles(rd, eyeX, eyeY, eyeZ);
+    drawShells(rd, eyeX, eyeY, eyeZ);
     if (this.state === STATE.PLAYING) p.draw(rd, eyeX, eyeY, eyeZ);
     this.drawHud();
 
@@ -365,13 +378,16 @@ export class Game {
     const hi = 'HI ' + pad(this.highScore, 6);
     drawText(rd, hi, SCREEN_W - 4 - textWidth(hi), 4, DIM);
 
-    // Fuel gauge.
+    // Charge meter.
     const BAR_W = 92, BAR_H = 6, bx = 4, by = SCREEN_H - 12;
-    drawText(rd, 'FUEL', bx, by - 9, DIM);
+    drawText(rd, p.charging ? 'CHARGING' : 'CHARGE', bx, by - 9,
+             p.charging ? [120, 230, 255] : DIM);
     rd.rect(bx - 1, by - 1, BAR_W + 2, BAR_H + 2, [40, 60, 45]);
-    const frac = Math.max(0, p.fuel / FUEL_MAX);
-    const fuelCol = frac > 0.5 ? [80, 220, 100] : frac > 0.22 ? [230, 200, 60] : [230, 70, 50];
-    if (frac > 0) rd.rect(bx, by, Math.max(1, Math.round(BAR_W * frac)), BAR_H, fuelCol);
+    const frac = Math.max(0, p.charge / CHARGE_MAX);
+    let barCol = frac > 0.5 ? [80, 220, 100] : frac > 0.22 ? [230, 200, 60] : [230, 70, 50];
+    // Pulse while taking on charge, so it is obviously happening.
+    if (p.charging && ((this.chargeTick | 0) >> 2) % 2 === 0) barCol = [140, 240, 255];
+    if (frac > 0) rd.rect(bx, by, Math.max(1, Math.round(BAR_W * frac)), BAR_H, barCol);
 
     // Lives, as a row of pips.
     const lifeText = 'SHIPS ' + Math.max(0, this.lives - 1);

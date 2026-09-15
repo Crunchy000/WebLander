@@ -142,7 +142,10 @@ export class Audio {
   }
 
   touchdown() { this.tone(520, 0.14); setTimeout(() => this.tone(780, 0.2), 120); }
-  refuel()    { this.tone(1100, 0.05, 'sine', 0.12); }
+  charge()    { this.tone(1100, 0.05, 'sine', 0.12); }
+
+  // A tank's gun going off in the distance.
+  tankGun()   { this._burst(0.22, 1100, 'lowpass', 0.55, 160); }
   gameOver()  {
     [440, 370, 294, 220].forEach((f, i) => setTimeout(() => this.tone(f, 0.3, 'square', 0.2), i * 180));
   }

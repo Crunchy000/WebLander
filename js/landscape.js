@@ -91,6 +91,24 @@ export function landAltitude(x, z) {
   return alt;
 }
 
+// Is the ground here level enough to settle a craft on? Samples a ring
+// around the point and measures how far the corners deviate from the middle.
+// Returns the deviation in tiles; small is flat.
+export function groundRoughness(x, z, radius = TILE * 0.9) {
+  const mid = landAltitude(x, z);
+  let worst = 0;
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    const h = landAltitude((x + Math.cos(a) * radius) | 0, (z + Math.sin(a) * radius) | 0);
+    const d = Math.abs(h - mid);
+    if (d > worst) worst = d;
+  }
+  return worst / TILE;
+}
+
+// How much unevenness a landing site may have and still be usable.
+export const FLAT_ENOUGH = 0.22;
+
 export function isOnLaunchpad(x, z) {
   return (x >>> 0) < LAUNCHPAD_SIZE && (z >>> 0) < LAUNCHPAD_SIZE;
 }
