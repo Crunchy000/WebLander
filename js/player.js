@@ -35,6 +35,9 @@ const FUEL_BURN_HOVER = 3;
 const FUEL_BURN_FULL = 8;
 
 const BULLET_SPEED = TILE * 0.075;
+// How far along the nose the barrel ends, so shots leave the muzzle rather
+// than the middle of the hull.
+const MUZZLE = TILE * 0.52;
 const SHIP_RADIUS = 0.3;   // in tiles, for scenery collisions
 
 // Getting off the pad is the fiddliest moment in the game, so the first few
@@ -59,6 +62,21 @@ function buildShip() {
   m.cone(0.26, 0.18, 0.44, 6, CANOPY);
   // Engine bell underneath.
   m.drum(0.17, 0.11, -0.30, -0.05, 6, NOZZLE, null);
+
+  // A gun barrel out of the nose. Without something visible to fire from,
+  // shots appear to come out of thin air.
+  const bw = 0.055;
+  const gun = [
+    m.vert(-bw, -0.04, 0.24), m.vert(bw, -0.04, 0.24),
+    m.vert(bw, 0.06, 0.24), m.vert(-bw, 0.06, 0.24),
+    m.vert(-bw, -0.04, 0.52), m.vert(bw, -0.04, 0.52),
+    m.vert(bw, 0.06, 0.52), m.vert(-bw, 0.06, 0.52),
+  ];
+  m.face([gun[0], gun[1], gun[5], gun[4]], shade(NOZZLE, 1.25));  // top
+  m.face([gun[3], gun[2], gun[6], gun[7]], shade(NOZZLE, 0.7));   // bottom
+  m.face([gun[1], gun[2], gun[6], gun[5]], shade(NOZZLE, 1.0));   // right
+  m.face([gun[0], gun[3], gun[7], gun[4]], shade(NOZZLE, 0.85));  // left
+  m.face([gun[4], gun[5], gun[6], gun[7]], TRIM);                 // muzzle
 
   // Three landing legs splayed out to the feet.
   for (let i = 0; i < 3; i++) {
@@ -225,16 +243,18 @@ export class Player {
   }
 
   fire() {
-    // Bullets leave along the ship's own down-axis, so you shoot wherever the
-    // craft is leaning -- aiming means tilting.
-    const down = matApply(this.matrix, 0, 1, 0);
+    // The gun points out through the ship's nose, along its local forward
+    // axis, so aiming means leaning: level flight shoots straight ahead,
+    // tipping forward walks the shots down into the landscape.
+    const nose = matApply(this.matrix, 0, 0, 1);
+
     spawnBullet(
-      (this.x + down[0] * TILE * 0.3) | 0,
-      (this.y + down[1] * TILE * 0.3) | 0,
-      (this.z + down[2] * TILE * 0.3) | 0,
-      (this.vx + down[0] * BULLET_SPEED) | 0,
-      (this.vy + down[1] * BULLET_SPEED) | 0,
-      (this.vz + down[2] * BULLET_SPEED) | 0,
+      (this.x + nose[0] * MUZZLE) | 0,
+      (this.y + nose[1] * MUZZLE) | 0,
+      (this.z + nose[2] * MUZZLE) | 0,
+      (this.vx + nose[0] * BULLET_SPEED) | 0,
+      (this.vy + nose[1] * BULLET_SPEED) | 0,
+      (this.vz + nose[2] * BULLET_SPEED) | 0,
     );
   }
 

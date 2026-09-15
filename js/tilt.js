@@ -141,12 +141,25 @@ export class SteadyHold {
 
   reset() {
     this.samples = [];
+    this.armed = false;
   }
 
   // Feed a delta each frame. Returns progress 0..1, and the captured reading
   // once it reaches 1.
+  //
+  // Nothing is captured until the handset has first come back near centre.
+  // Each step starts with the phone still held at the previous step's angle,
+  // and without this the leftover tilt is read straight back as the answer to
+  // the next question.
   push(d) {
-    if (magnitude(d) < this.minTilt) {
+    const m = magnitude(d);
+
+    if (!this.armed) {
+      if (m < this.minTilt * 0.5) this.armed = true;
+      return { progress: 0, captured: null, needsCentre: true };
+    }
+
+    if (m < this.minTilt) {
       this.samples.length = 0;
       return { progress: 0, captured: null };
     }

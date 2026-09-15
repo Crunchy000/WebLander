@@ -27,6 +27,14 @@ const STEPS = [
     hint: 'Hold it there — it captures itself.',
   },
   {
+    key: 'ready',
+    title: 'GOT IT',
+    body: 'That is <b>away</b> set.',
+    hint: 'Bring the phone back to how you were holding it.',
+    manual: true,
+    button: 'NEXT: TILT RIGHT',
+  },
+  {
     key: 'right',
     title: 'TILT RIGHT',
     body: 'Now tip it as if flying to your <b>right</b>.',
@@ -102,14 +110,20 @@ export class Calibration {
   // Manual advance, used only for the neutral step.
   advance() {
     if (this.previewing || !this.step || !this.step.manual) return;
-    const raw = this.input.tiltRaw;
-    if (!raw) {
-      this.errEl.textContent = 'No motion readings yet — move the phone slightly.';
-      return;
+
+    if (this.step.key === 'zero') {
+      const raw = this.input.tiltRaw;
+      if (!raw) {
+        this.errEl.textContent = 'No motion readings yet — move the phone slightly.';
+        return;
+      }
+      this.mapper.setZero(raw);
+      this.captured.zero = { ...raw };
     }
+
+    // The 'ready' step just gives the player a beat to reposition before the
+    // next demonstration starts watching.
     this.errEl.textContent = '';
-    this.mapper.setZero(raw);
-    this.captured.zero = { ...raw };
     this.stepIndex++;
     this.renderStep();
   }
@@ -122,7 +136,7 @@ export class Calibration {
       if (err) {
         // Send them back to the "away" step rather than losing everything.
         this.errEl.textContent = err;
-        this.stepIndex = 1;
+        this.stepIndex = STEPS.findIndex((st) => st.key === 'away');
         this.renderStep();
         return;
       }
@@ -174,12 +188,16 @@ export class Calibration {
     if (!this.step || this.step.manual || !this.mapper.zero) return;
 
     const d = delta(raw, this.mapper.zero);
-    const { progress, captured } = this.hold.push(d);
+    const { progress, captured, needsCentre } = this.hold.push(d);
     this.setProgress(progress);
 
-    this.hintEl.textContent = magnitude(d) < 9
-      ? 'Tip it a little further…'
-      : 'Hold it there…';
+    if (needsCentre) {
+      this.hintEl.textContent = 'Bring it back to centre to start…';
+    } else {
+      this.hintEl.textContent = magnitude(d) < 9
+        ? 'Tip it a little further…'
+        : 'Hold it there…';
+    }
 
     if (captured) this.capture(captured);
   }

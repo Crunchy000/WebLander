@@ -38,6 +38,10 @@ error or a bad import path fails the run rather than the site.
 On a phone the screen is free of buttons: one finger anywhere fires the
 engine, and putting a second finger down works the gun.
 
+The gun points out through the ship's nose, so aiming means leaning: level
+flight shoots straight ahead, and tipping forward walks the shots down into
+the landscape.
+
 The first **five seconds of every life are free**: getting off the pad is the
 fiddliest moment in the game, so during that window you can scrape the ground,
 clip a tree or come down hard without losing a ship. The HUD counts it down.
@@ -77,8 +81,11 @@ controls that suit the person who calibrated them.
 
 The demonstration steps capture themselves once a tilt is held still for about
 half a second — tapping while holding the phone at an angle would mean looking
-away from the screen at the moment it matters. Calibration is saved, and can
-be redone from the title card.
+away from the screen at the moment it matters. Between the two demonstrations
+there is a confirmation step, and a step will not capture anything until the
+handset has come back near centre, so the tilt left over from the previous
+answer is never read as the next one. Calibration is saved, and can be redone
+from the title card.
 
 If the device has no motion sensor, or permission is refused, steering falls
 back to dragging on the screen and an on-screen thrust pad appears.
