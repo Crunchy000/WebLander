@@ -35,14 +35,26 @@
         <p class="dim">Hold the phone comfortably, then tap Start to set the neutral position.</p>
 
         <div id="tiltopts">
-          <p class="dim">If the steering feels backwards, flip an axis:</p>
-          <button id="inv-x" class="toggle" aria-pressed="false">Invert left / right</button>
-          <button id="inv-y" class="toggle" aria-pressed="false">Invert forward / back</button>
+          <button id="cal-open" class="toggle">CALIBRATE TILT</button>
           <p id="tiltread" class="read">tilt: waiting for sensor…</p>
         </div>
       </div>
       <button id="start">START</button>
       <p id="tiltnote" class="dim" hidden>Motion access is needed for tilt steering.</p>
+    </div>
+  </div>
+</div>
+
+  <div id="calibrate" hidden>
+    <div id="cal-panel">
+      <h2 id="cal-title">HOLD IT STILL</h2>
+      <p id="cal-body"></p>
+      <div id="cal-track"><div id="cal-bar"></div></div>
+      <div id="cal-pad" hidden><div id="cal-dot"></div></div>
+      <p id="cal-hint" class="dim"></p>
+      <p id="cal-err" class="err"></p>
+      <button id="cal-btn"></button>
+      <button id="cal-skip" class="linkish">Skip calibration</button>
     </div>
   </div>
 </div>

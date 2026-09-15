@@ -53,10 +53,32 @@ was flown from an absolute mouse position, and a tilt sensor is the same kind
 of input. Tap Start while holding the phone comfortably to set the neutral
 position. Tipping the far edge of the handset down flies away from you.
 
-If the steering comes out backwards, the title screen has a toggle for each
-axis and remembers the choice. Handsets differ in which way they report tilt,
-and the screen orientation angle is defined differently across platforms, so
-this is a switch rather than a guess.
+### Tilt is calibrated, not guessed
+
+Working out which way a phone is tilted from `deviceorientation` is a thicket.
+`beta` and `gamma` are reported in the handset's own frame, the screen
+orientation angle is defined differently across platforms, and none of it
+knows how the player is actually holding the thing. Every fixed formula is a
+guess that is wrong on some devices.
+
+So the game does not guess. On first run it asks you to demonstrate two
+directions — *away from me* and *to my right* — and those two vectors become
+the basis it solves against:
+
+```
+B = [ right.gamma  away.gamma ]        stick = B⁻¹ · (tilt − neutral)
+    [ right.beta   away.beta  ]
+```
+
+Whatever the sensor reports, whichever way up the phone is, however it is
+held, the mapping comes out right because it was measured. The demonstrated
+throw also sets the sensitivity, so a small flick and a big heave both give
+controls that suit the person who calibrated them.
+
+The demonstration steps capture themselves once a tilt is held still for about
+half a second — tapping while holding the phone at an angle would mean looking
+away from the screen at the moment it matters. Calibration is saved, and can
+be redone from the title card.
 
 If the device has no motion sensor, or permission is refused, steering falls
 back to dragging on the screen and an on-screen thrust pad appears.

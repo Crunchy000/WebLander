@@ -7,21 +7,12 @@
 // a compromise here, it is arguably the more natural fit of the two.
 
 import { clamp } from './maths.js';
+import { TiltMapper } from './tilt.js';
 
-// Degrees of tilt for full stick deflection -- enough travel to be
-// controllable without having to wave the handset around.
+// Degrees of tilt for full stick deflection, used only by the rough fallback
+// mapping below. Once the player has calibrated, their own demonstrated throw
+// sets this instead.
 const TILT_RANGE = 22;
-
-function loadFlag(key, dflt) {
-  try {
-    const v = localStorage.getItem(key);
-    return v === null ? dflt : v === '1';
-  } catch { return dflt; }
-}
-
-function saveFlag(key, on) {
-  try { localStorage.setItem(key, on ? '1' : '0'); } catch { /* private mode */ }
-}
 
 export class Input {
   constructor(canvas) {
@@ -36,11 +27,11 @@ export class Input {
     // "Away" is up the screen, towards the horizon.
     this.stick = { x: 0, y: 0 };
 
-    // Per-axis tilt inversion, remembered between sessions. Which way a
-    // handset reports its tilt depends on the device and on how the screen
-    // orientation angle is defined, so these are exposed rather than guessed.
-    this.invertX = loadFlag('weblander.invertX', false);
-    this.invertY = loadFlag('weblander.invertY', false);
+    // Tilt mapping. If the player has calibrated, this holds the basis
+    // measured from the directions they demonstrated; otherwise steering
+    // falls back to a derived guess, which is right on some handsets and
+    // wrong on others -- hence the calibration.
+    this.tilt = new TiltMapper();
     this.thrust = 0;      // 0 none, 1 hover, 2 full
     this.fire = false;
     this.startPressed = false;
@@ -197,8 +188,13 @@ export class Input {
 
   // Take the current orientation as "stick centred", so the game is playable
   // however the player happens to be holding the phone.
+  // Re-centre on the current hold. Leaves a completed calibration alone: its
+  // neutral was captured as part of the basis and must stay consistent with
+  // it, or the mapping shears.
   calibrateTilt() {
-    if (this.tiltRaw) this.tiltZero = { ...this.tiltRaw };
+    if (!this.tiltRaw) return;
+    this.tiltZero = { ...this.tiltRaw };
+    if (!this.tilt.calibrated) this.tilt.setZero(this.tiltRaw);
   }
 
   // How far the picture is turned from the handset's natural orientation.
@@ -210,44 +206,41 @@ export class Input {
   }
 
   _tiltStick() {
-    if (!this.tiltEnabled || !this.tiltRaw || !this.tiltZero) return null;
+    if (!this.tiltEnabled || !this.tiltRaw) return null;
 
-    // Wrap, so crossing +/-180 does not send the craft flying.
+    // Calibrated: solve against the basis the player demonstrated. This is
+    // the path that actually works across devices.
+    const mapped = this.tilt.map(this.tiltRaw);
+    if (mapped) {
+      this.tiltDebug = {
+        beta: Math.round(this.tiltRaw.beta), gamma: Math.round(this.tiltRaw.gamma),
+        x: +mapped.x.toFixed(2), y: +mapped.y.toFixed(2), mode: 'calibrated',
+      };
+      return mapped;
+    }
+
+    // Uncalibrated fallback: assume the common convention and rotate by the
+    // screen angle. Good enough to fly with until calibration is done.
+    if (!this.tiltZero) return null;
+
     const wrap = (d) => (d > 180 ? d - 360 : d < -180 ? d + 360 : d);
     const dBeta = wrap(this.tiltRaw.beta - this.tiltZero.beta);
     const dGamma = wrap(this.tiltRaw.gamma - this.tiltZero.gamma);
 
-    // Tilt in the handset's own frame, in its natural orientation:
-    //   right -- the right-hand edge dipping down       (+gamma)
-    //   away  -- the top edge tipping away from you     (-beta)
     const right = dGamma;
     const away = -dBeta;
 
-    // Turn that into screen space. The sensor reports in the handset's frame
-    // regardless of which way up the picture is, so playing in landscape
-    // swaps the two axes unless they are rotated to match -- which is why
-    // left/right and forwards/backwards can end up wired to each other.
     const rad = (this.screenAngle() * Math.PI) / 180;
     const c = Math.cos(rad), sn = Math.sin(rad);
-    let sx = (right * c + away * sn) / TILT_RANGE;
-    let sy = (-right * sn + away * c) / TILT_RANGE;
-
-    // User overrides last, in screen space, so flipping one axis can never
-    // disturb the other.
-    if (this.invertX) sx = -sx;
-    if (this.invertY) sy = -sy;
+    const sx = (right * c + away * sn) / TILT_RANGE;
+    const sy = (-right * sn + away * c) / TILT_RANGE;
 
     this.tiltDebug = {
       beta: Math.round(dBeta), gamma: Math.round(dGamma),
-      x: +sx.toFixed(2), y: +sy.toFixed(2), angle: this.screenAngle(),
+      x: +sx.toFixed(2), y: +sy.toFixed(2), mode: 'uncalibrated',
     };
 
     return { x: clamp(sx, -1, 1), y: clamp(sy, -1, 1) };
-  }
-
-  setInvert(axis, on) {
-    if (axis === 'x') this.invertX = on; else this.invertY = on;
-    saveFlag('weblander.invert' + axis.toUpperCase(), on);
   }
 
   // -- per-frame ------------------------------------------------------------

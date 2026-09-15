@@ -4,6 +4,7 @@ import { Renderer } from './renderer.js';
 import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { Game, STEP_MS } from './game.js';
+import { Calibration } from './calibrate.js';
 
 const canvas = document.getElementById('screen');
 const overlay = document.getElementById('overlay');
@@ -28,19 +29,18 @@ if (input.hasTouch) {
   document.getElementById('controls-touch').hidden = false;
 }
 
-// Tilt axis toggles. These are exposed because which way a handset reports
-// its tilt varies by device and by how the screen orientation angle is
-// defined, so it is better to let the player correct it in one tap than to
-// guess on their behalf.
-for (const [id, axis] of [['inv-x', 'x'], ['inv-y', 'y']]) {
-  const btn = document.getElementById(id);
-  if (!btn) continue;
-  const on = axis === 'x' ? input.invertX : input.invertY;
-  btn.setAttribute('aria-pressed', String(on));
-  btn.addEventListener('click', () => {
-    const next = btn.getAttribute('aria-pressed') !== 'true';
-    btn.setAttribute('aria-pressed', String(next));
-    input.setInvert(axis, next);
+const calibration = new Calibration(input, input.tilt);
+
+// Recalibrate on demand from the title card.
+const calOpen = document.getElementById('cal-open');
+if (calOpen) {
+  calOpen.addEventListener('click', async () => {
+    if (!input.tiltEnabled) {
+      const ok = await input.enableTilt();
+      if (!ok) { document.getElementById('tiltnote').hidden = false; return; }
+    }
+    input.tilt.clear();
+    calibration.start(() => {});
   });
 }
 
@@ -51,7 +51,7 @@ setInterval(() => {
   input.sample();
   const d = input.tiltDebug;
   readout.textContent = d
-    ? `tilt  beta ${d.beta}°  gamma ${d.gamma}°  screen ${d.angle}°  ->  x ${d.x}  y ${d.y}`
+    ? `tilt  b ${d.beta}  g ${d.gamma}  ->  x ${d.x}  y ${d.y}  (${d.mode})`
     : 'tilt: waiting for sensor…';
 }, 150);
 
@@ -69,16 +69,28 @@ startBtn.addEventListener('click', async () => {
       input.calibrateTilt();
       // Tilt steers and touching anywhere thrusts, so no buttons are needed.
       touchPad.hidden = true;
+
+      if (!input.tilt.calibrated) {
+        // First run on this handset: measure the tilt mapping rather than
+        // hand the player controls that may well be wired up backwards.
+        overlay.hidden = true;
+        calibration.start(() => beginPlay());
+        return;
+      }
     }
   }
 
+  beginPlay();
+});
+
+function beginPlay() {
   overlay.hidden = true;
   game.newGame();
 
   if (canvas.requestFullscreen && input.hasTouch) {
     canvas.requestFullscreen?.().catch(() => {});
   }
-});
+}
 
 // Pause when the tab is hidden, so the ship is not quietly falling out of the
 // sky while you read your email.
@@ -117,4 +129,4 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 // Expose for debugging from the console.
-window.lander = { game, input, audio, renderer };
+window.lander = { game, input, audio, renderer, calibration };

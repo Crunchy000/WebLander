@@ -121,6 +121,108 @@ html, body {
 
 #start:hover { background: #9fc; }
 
+/* ---- calibration ---- */
+
+#calibrate {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  background: #000;
+  padding: 24px 20px;
+  text-align: center;
+}
+
+#calibrate[hidden] { display: none; }
+
+#cal-panel { max-width: 22em; }
+
+#cal-panel h2 {
+  margin: 0 0 .6em;
+  font-size: clamp(20px, 6vw, 28px);
+  letter-spacing: .16em;
+  color: #9fc;
+}
+
+#cal-panel p { margin: .6em 0; }
+#cal-panel b { color: #cfe; }
+
+/* Progress towards a captured reading. */
+#cal-track {
+  height: 6px;
+  margin: 1.2em 0 .6em;
+  background: rgba(110, 255, 150, .16);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+#cal-bar {
+  height: 100%;
+  width: 0;
+  background: var(--ink);
+  transition: width .08s linear;
+}
+
+/* Live preview of where the stick is pointing. */
+#cal-pad {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  margin: 1.2em auto .6em;
+  border: 1px solid rgba(110, 255, 150, .35);
+  border-radius: 6px;
+  background:
+    linear-gradient(rgba(110,255,150,.18), rgba(110,255,150,.18)) 50% 0/1px 100% no-repeat,
+    linear-gradient(rgba(110,255,150,.18), rgba(110,255,150,.18)) 0 50%/100% 1px no-repeat;
+}
+
+#cal-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow: 0 0 10px rgba(110, 255, 150, .8);
+}
+
+#cal-btn {
+  display: block;
+  width: 100%;
+  margin-top: 1.2em;
+  padding: .8em 1em;
+  font: 600 15px/1 ui-monospace, monospace;
+  letter-spacing: .14em;
+  color: #000;
+  background: var(--ink);
+  border: 0;
+  border-radius: 3px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#cal-btn[hidden] { display: none; }
+
+.linkish {
+  margin-top: 1em;
+  padding: .4em;
+  font: 400 12px/1 ui-monospace, monospace;
+  color: #5a7;
+  background: none;
+  border: 0;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.err {
+  min-height: 1.2em;
+  font-size: 12px;
+  color: #f97;
+}
+
 /* ---- tilt options on the title card ---- */
 
 #tiltopts {
