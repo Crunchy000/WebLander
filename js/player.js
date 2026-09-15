@@ -259,7 +259,7 @@ export class Player {
       this.fuel -= thrust === 2 ? FUEL_BURN_FULL : FUEL_BURN_HOVER;
       if (this.fuel < 0) this.fuel = 0;
 
-      this.emitExhaust(up, thrust);
+      if (AIRFRAME !== 'uav') this.emitExhaust(up, thrust);
     }
 
     // Gravity, then damping, then move.
@@ -428,8 +428,8 @@ export class Player {
     }
 
     // A flame licking out of the engine while the motor is lit. The UAV lifts
-    // on rotors, so it gets no rocket plume -- its exhaust particles read as
-    // downwash instead.
+    // on rotors, so it carries no visible thrust at all -- the spinning props
+    // are the only cue that the motors are running.
     if (this.thrusting && AIRFRAME !== 'uav') {
       const up = matApply(this.matrix, 0, -1, 0);
       const len = (this.thrusting === 2 ? 0.75 : 0.4) * (0.7 + rnd() * 0.6);
