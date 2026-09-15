@@ -7,19 +7,26 @@
 // to spot and easy to line up on, and the interest is in the sinking rather
 // than the hunt.
 
-import { TILE, matFromAim, rnd, rndSigned, rndInt } from './maths.js';
+import { TILE, matFromAim, matMul, matRotZ, rnd, rndSigned, rndInt } from './maths.js';
 import { Model, shade, facet, drawModel } from './model.js';
 import { landAltitude, SEA_LEVEL } from './landscape.js';
 import { spawnExplosion, spawnSparks, spawnSmoke, spawn, P_GRAVITY, P_FADE } from './particles.js';
 
 export const MAX_BOATS = 6;
-export const BOAT_SCORE = 200;
+export const BOAT_SCORE = 400;
+
+// Hulls take two bombs. One puts her down by the head, smoking and slowed;
+// the second finishes her. A ship should cost more than a tank to kill.
+export const BOAT_HP = 2;
+
+// Everything scales from here, so the whole vessel grows in one place.
+const S = 1.26;
 
 const SPAWN_MIN = 15 * TILE;
 const SPAWN_MAX = 30 * TILE;
 const RETIRE = 48 * TILE;
-const HIT_RADIUS = 1.25;        // a bigger target than a tank
-const BLAST_RADIUS = 2.6;
+const HIT_RADIUS = 1.45;        // a bigger target than a tank
+const BLAST_RADIUS = 2.8;
 const SINK_TIME = 260;          // frames from hit to gone
 const CLEARANCE = 2.2 * TILE;   // open water needed around a spawn
 
@@ -68,7 +75,7 @@ const STATIONS = [
 
 function buildBoat(burnt) {
   const m = new Model();
-  const v = (x, y, z) => m.vert(x, y, z);
+  const v = (x, y, z) => m.vert(x * S, y * S, z * S);
   patchN = burnt ? 0 : 3;              // a different shuffle for each build
   const col = () => (burnt ? (patchN++ % 2 ? CHAR : CHAR_B) : patch());
 
@@ -184,6 +191,8 @@ function placeBoat(b, px, pz) {
     b.turnTimer = 120 + rndInt(240);
     b.phase = rnd() * Math.PI * 2;      // where she is in her roll
     b.sink = 0;
+    b.damage = 0;
+    b.list = 0;
     b.wakeTick = rndInt(8);
     return true;
   }
@@ -221,6 +230,14 @@ export function updateBoats(player, game) {
         b.live = false;
       }
       continue;
+    }
+
+    // A damaged hull smokes, lists further over, and loses way.
+    if (b.damage > 0) {
+      b.list += (b.listTarget - b.list) * 0.03;
+      if ((b.sink = (b.sink | 0) + 1) % 9 === 0) {
+        spawnSmoke(b.x, (SEA_LEVEL - TILE * 0.8) | 0, b.z);
+      }
     }
 
     // Steaming. Alter course now and then.
@@ -275,10 +292,35 @@ export function boatBlast(bx, by, bz, game) {
     if (!b.live || b.state !== AFLOAT) continue;
     const dx = (bx - b.x) / TILE, dz = (bz - b.z) / TILE;
     if (dx * dx + dz * dz > BLAST_RADIUS * BLAST_RADIUS) continue;
-    sinkBoat(b, game);
+    damageBoat(b, game);
     hit++;
   }
   return hit;
+}
+
+function damageBoat(b, game) {
+  b.damage++;
+
+  if (b.damage >= BOAT_HP) {
+    sinkBoat(b, game);
+    return;
+  }
+
+  // Hurt, not finished. She lists, slows, and starts to burn.
+  const mid = (SEA_LEVEL - TILE * 0.5) | 0;
+  spawnExplosion(b.x, mid, b.z, 18, TILE * 0.032, null);
+  spawnSparks(b.x, mid, b.z, 10);
+  for (let i = 0; i < 12; i++) {
+    const a = rnd() * Math.PI * 2, sp = TILE * (0.006 + rnd() * 0.012);
+    spawn(b.x, SEA_LEVEL, b.z,
+          Math.cos(a) * sp, -(TILE * 0.014 + rnd() * TILE * 0.02), Math.sin(a) * sp,
+          [222, 238, 250], 28 + rndInt(20), P_GRAVITY | P_FADE, 2);
+  }
+
+  b.listTarget = (rndSigned() > 0 ? 1 : -1) * (0.16 + rnd() * 0.10);
+  b.speed *= 0.45;
+  b.sink = 0;
+  game.onBoatHit(b.x, mid, b.z);
 }
 
 function sinkBoat(b, game) {
@@ -297,7 +339,7 @@ function sinkBoat(b, game) {
 
   b.state = SINKING;
   b.sink = 0;
-  b.listDir = rndSigned() > 0 ? 1 : -1;
+  if (!b.listTarget) b.listTarget = rndSigned() > 0 ? 0.3 : -0.3;
   game.addScore(BOAT_SCORE);
   game.onBoatSunk(b.x, mid, b.z);
 }
@@ -305,6 +347,8 @@ function sinkBoat(b, game) {
 // --- drawing ---------------------------------------------------------------
 
 const boatMat = new Float64Array(9);
+const aimMat = new Float64Array(9);
+const listMat = new Float64Array(9);
 
 export function boatsInRow(zLo, zHi, out) {
   for (const b of boats) {
@@ -325,7 +369,16 @@ export function drawBoat(rd, b, camX, camY, camZ) {
     y = (SEA_LEVEL + t * t * TILE * 1.9) | 0;
   }
 
-  matFromAim(b.heading, pitch, boatMat);
+  let list = b.list || 0;
+  if (b.state === SINKING) {
+    const t = b.sink / SINK_TIME;
+    list = (b.list || 0) + (b.listTarget || 0.3) * t * 1.6;
+  }
+
+  matFromAim(b.heading, pitch, aimMat);
+  matRotZ(list, listMat);
+  matMul(aimMat, listMat, boatMat);
+
   drawModel(rd, b.state === SINKING ? BOAT_WRECK : BOAT, boatMat,
             b.x, y, b.z, camX, camY, camZ);
 }

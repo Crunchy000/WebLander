@@ -24,8 +24,19 @@ export class Audio {
     this.ctx = ctx;
 
     this.master = ctx.createGain();
-    this.master.gain.value = 0.32;
-    this.master.connect(ctx.destination);
+    this.master.gain.value = 0.46;
+
+    // Overlapping blasts used to sum past full scale and clip. A limiter
+    // catches the peaks, which is what makes it safe to drive everything
+    // harder without it turning to mush.
+    this.limiter = ctx.createDynamicsCompressor();
+    this.limiter.threshold.value = -8;
+    this.limiter.knee.value = 6;
+    this.limiter.ratio.value = 12;
+    this.limiter.attack.value = 0.003;
+    this.limiter.release.value = 0.22;
+
+    this.master.connect(this.limiter).connect(ctx.destination);
 
     // A second of white noise, reused by every percussive effect.
     const len = ctx.sampleRate;
@@ -63,7 +74,7 @@ export class Audio {
 
   setMuted(m) {
     this.muted = m;
-    if (this.master) this.master.gain.value = m ? 0 : 0.32;
+    if (this.master) this.master.gain.value = m ? 0 : 0.46;
   }
 
   // Follow the throttle: 0 off, 1 hover, 2 full.
@@ -93,39 +104,54 @@ export class Audio {
     src.stop(t + dur);
   }
 
-  // A tank going up: three layers, because a single noise burst reads as a
-  // pop rather than a detonation. A low sine drop supplies the thump you feel,
-  // a long filtered noise burst is the blast itself, and a second, quieter
-  // burst a moment later is the debris coming back down.
-  bigBoom() {
+  // One detonation, sized by `scale`. Three layers, because a single noise
+  // burst reads as a pop however loud it is: a sub-bass drop for the thump
+  // you feel, a long filtered blast for the body of it, and quieter bursts
+  // behind for debris coming back down.
+  _boom(scale = 1) {
     if (!this.enabled) return;
     const ctx = this.ctx, t = ctx.currentTime;
 
-    // Thump: a low tone dropping fast.
+    // Sub-bass thump.
     const o = ctx.createOscillator();
     o.type = 'sine';
-    o.frequency.setValueAtTime(110, t);
-    o.frequency.exponentialRampToValueAtTime(28, t + 0.45);
+    o.frequency.setValueAtTime(130 * (1 / scale), t);
+    o.frequency.exponentialRampToValueAtTime(26, t + 0.5 * scale);
     const og = ctx.createGain();
     og.gain.setValueAtTime(0.0001, t);
-    og.gain.exponentialRampToValueAtTime(0.95, t + 0.015);
-    og.gain.exponentialRampToValueAtTime(0.0001, t + 0.7);
+    og.gain.exponentialRampToValueAtTime(1.7 * scale, t + 0.012);
+    og.gain.exponentialRampToValueAtTime(0.0001, t + 0.85 * scale);
     o.connect(og).connect(this.master);
     o.start(t);
-    o.stop(t + 0.75);
+    o.stop(t + 0.9 * scale);
 
-    // Blast: broad noise, opening then closing.
-    this._burst(0.9, 1400, 'lowpass', 1.0, 45);
+    // A second, lower oscillator an octave down for weight.
+    const o2 = ctx.createOscillator();
+    o2.type = 'triangle';
+    o2.frequency.setValueAtTime(64 * (1 / scale), t);
+    o2.frequency.exponentialRampToValueAtTime(19, t + 0.6 * scale);
+    const o2g = ctx.createGain();
+    o2g.gain.setValueAtTime(0.0001, t);
+    o2g.gain.exponentialRampToValueAtTime(1.2 * scale, t + 0.02);
+    o2g.gain.exponentialRampToValueAtTime(0.0001, t + 1.0 * scale);
+    o2.connect(o2g).connect(this.master);
+    o2.start(t);
+    o2.stop(t + 1.05 * scale);
 
-    // Debris, a beat later and quieter.
-    setTimeout(() => this._burst(0.55, 2600, 'bandpass', 0.30, 300), 130);
-    setTimeout(() => this._burst(0.40, 900, 'lowpass', 0.22, 120), 300);
+    // The blast itself.
+    this._burst(1.1 * scale, 1800, 'lowpass', 1.9 * scale, 40);
+    // Debris.
+    setTimeout(() => this._burst(0.6 * scale, 2800, 'bandpass', 0.7 * scale, 260), 120);
+    setTimeout(() => this._burst(0.5 * scale, 1000, 'lowpass', 0.5 * scale, 110), 300);
   }
 
+  // A tank or a ship going up.
+  bigBoom() { this._boom(1.25); }
+
   shot()      { this._burst(0.09, 2200, 'bandpass', 0.35, 600); }
-  blast()     { this._burst(0.30, 900, 'lowpass', 0.55, 120); }
-  explosion() { this._burst(0.75, 700, 'lowpass', 0.9, 60); }
-  splash()    { this._burst(0.25, 3000, 'bandpass', 0.4, 900); }
+  blast()     { this._boom(0.62); }
+  explosion() { this._boom(0.95); }
+  splash()    { this._burst(0.45, 3200, 'bandpass', 0.8, 700); }
 
   tone(freq, dur = 0.12, type = 'square', gain = 0.22) {
     if (!this.enabled) return;
@@ -145,7 +171,7 @@ export class Audio {
   charge()    { this.tone(1100, 0.05, 'sine', 0.12); }
 
   // A tank's gun going off in the distance.
-  tankGun()   { this._burst(0.22, 1100, 'lowpass', 0.55, 160); }
+  tankGun()   { this._boom(0.34); }
   gameOver()  {
     [440, 370, 294, 220].forEach((f, i) => setTimeout(() => this.tone(f, 0.3, 'square', 0.2), i * 180));
   }

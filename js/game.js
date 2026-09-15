@@ -93,6 +93,11 @@ export class Game {
   }
 
   // A tank shell found the craft while it sat on the ground.
+  onBoatHit(x, y, z) {
+    this.audio.explosion();
+    this.setMessage('SHIP HIT', 60);
+  }
+
   onBoatSunk(x, y, z) {
     this.audio.bigBoom();
     this.setMessage('SHIP SUNK  +' + BOAT_SCORE, 90);

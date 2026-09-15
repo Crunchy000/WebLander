@@ -161,6 +161,15 @@ export function matRotY(t, out = new Float64Array(9)) {
   return out;
 }
 
+// Rotation about the z-axis -- a hull listing over as she floods.
+export function matRotZ(t, out = new Float64Array(9)) {
+  const s = Math.sin(t), c = Math.cos(t);
+  out[0] = c; out[1] = -s; out[2] = 0;
+  out[3] = s; out[4] = c;  out[5] = 0;
+  out[6] = 0; out[7] = 0;  out[8] = 1;
+  return out;
+}
+
 // Transform a vector by a matrix. Operates on plain numbers; callers working
 // in fixed point simply pass fixed-point components through.
 export function matApply(m, x, y, z, out = [0, 0, 0]) {
