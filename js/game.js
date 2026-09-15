@@ -380,7 +380,7 @@ export class Game {
 
     // Charge meter.
     const BAR_W = 92, BAR_H = 6, bx = 4, by = SCREEN_H - 12;
-    drawText(rd, p.charging ? 'CHARGING' : 'CHARGE', bx, by - 9,
+    drawText(rd, p.charging ? 'CHARGING' : 'BATTERY', bx, by - 9,
              p.charging ? [120, 230, 255] : DIM);
     rd.rect(bx - 1, by - 1, BAR_W + 2, BAR_H + 2, [40, 60, 45]);
     const frac = Math.max(0, p.charge / CHARGE_MAX);

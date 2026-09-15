@@ -103,8 +103,8 @@ export function spawnExhaust(px, py, pz, dvx, dvy, dvz, spread) {
 // and lets gravity do the aiming. Heavier and slower-lived than a bullet, and
 // drawn large enough to follow down.
 export function spawnBomb(px, py, pz, bvx, bvy, bvz) {
-  return spawn(px, py, pz, bvx, bvy, bvz, [58, 62, 74], 160,
-               P_GRAVITY | P_BULLET | P_SPLASH, 3);
+  return spawn(px, py, pz, bvx, bvy, bvz, [96, 102, 118], 160,
+               P_GRAVITY | P_BULLET | P_SPLASH, 5);
 }
 
 // A ball of debris flung out in every direction.
@@ -228,7 +228,9 @@ export function drawParticles(rd, camX, camY, camZ) {
     else if (s > 0.55) { w = 2; h = 2; }
     else if (s > 0.3) { w = 2; h = 1; }
     if (size[i] === 1 && w > 2) { w = 2; h = 1; }
-    if (size[i] >= 3) { w++; h++; }
+    // Sizes above 2 scale up rather than adding a fixed pixel, so a bomb can
+    // be genuinely chunky and still be recognisable at the far end of the map.
+    if (size[i] >= 3) { const g = size[i] - 2; w += g; h += g; }
 
     let r = cr[i], g = cg[i], b = cb[i];
     if (flags[i] & P_FADE) {

@@ -284,7 +284,7 @@ export class Player {
     if (fire && this.fireCooldown === 0) {
       this.fire();
       game.onShot();
-      this.fireCooldown = 20;
+      this.fireCooldown = 45;
     }
 
     this.checkGround(game);
