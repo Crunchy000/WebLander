@@ -95,12 +95,12 @@ export class Game {
   // A tank shell found the craft while it sat on the ground.
   onBoatHit(x, y, z) {
     this.audio.explosion();
-    this.setMessage('DRONE HIT', 60);
+    this.setMessage('SHIP HIT', 60);
   }
 
   onBoatSunk(x, y, z) {
     this.audio.bigBoom();
-    this.setMessage('DRONE SUNK  +' + BOAT_SCORE, 90);
+    this.setMessage('SHIP SUNK  +' + BOAT_SCORE, 90);
   }
 
   onShipGoesUnder(x, y, z) {
@@ -431,7 +431,7 @@ export class Game {
     if (frac > 0) rd.rect(bx, by, Math.max(1, Math.round(BAR_W * frac)), BAR_H, barCol);
 
     // Lives, as a row of pips.
-    const lifeText = 'SHIPS ' + Math.max(0, this.lives - 1);
+    const lifeText = 'DRONES ' + Math.max(0, this.lives - 1);
     drawText(rd, lifeText, SCREEN_W - 4 - textWidth(lifeText), SCREEN_H - 12, DIM);
 
     // Altitude, which matters most when you are trying to put down.
