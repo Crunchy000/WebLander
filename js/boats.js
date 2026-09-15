@@ -401,7 +401,7 @@ export function boatsInRow(zLo, zHi, out) {
   return out;
 }
 
-export function drawBoat(rd, b, camX, camY, camZ) {
+export function drawBoat(rd, b, camX, camY, camZ, fog = 0) {
   let y = SEA_LEVEL;
   let pitch = Math.sin(b.phase) * 0.035;          // gentle scend
 
@@ -423,5 +423,5 @@ export function drawBoat(rd, b, camX, camY, camZ) {
   matMul(aimMat, listMat, boatMat);
 
   drawModel(rd, b.state === SINKING ? BOAT_WRECK : BOAT, boatMat,
-            b.x, y, b.z, camX, camY, camZ);
+            b.x, y, b.z, camX, camY, camZ, fog);
 }

@@ -2,7 +2,8 @@
 
 import { TILE, rndInt, rnd } from './maths.js';
 import {
-  landAltitude, tileColour, SKY_COLOUR, SEA_LEVEL, LAUNCHPAD_ALT,
+  landAltitude, tileColour, SKY_COLOUR, SKY_TOP, SKY_MID, SKY_HORIZON,
+  FOG_COLOUR, FOG_MAX, SEA_LEVEL, LAUNCHPAD_ALT,
   TILES_X, TILES_Z, LANDSCAPE_X, LANDSCAPE_Z, LANDSCAPE_Z_MID,
   UNDERCARRIAGE_Y,
 } from './landscape.js';
@@ -277,6 +278,12 @@ export class Game {
     const p = this.player;
     const eyeX = p.camX, eyeY = p.camY, eyeZ = p.camZ;
 
+    // Sky first, in two bands so the falloff has a bend in it rather than
+    // being a straight ramp from top to bottom.
+    rd.gradientBand(0, 58, SKY_TOP, SKY_MID);
+    rd.gradientBand(58, 120, SKY_MID, SKY_HORIZON);
+    rd.gradientBand(120, SCREEN_H, SKY_HORIZON, SKY_HORIZON);
+
     this.drawLandscape(eyeX, eyeY, eyeZ);
     drawParticles(rd, eyeX, eyeY, eyeZ);
     drawShells(rd, eyeX, eyeY, eyeZ);
@@ -371,15 +378,17 @@ export class Game {
   }
 
   flushObjects(row, eyeX, eyeY, eyeZ) {
+    const haze = fogFor(row);
+
     const shipping = this.pendingBoats[row];
     if (shipping && shipping.length) {
-      for (const b of shipping) drawBoat(this.rd, b, eyeX, eyeY, eyeZ);
+      for (const b of shipping) drawBoat(this.rd, b, eyeX, eyeY, eyeZ, haze);
       shipping.length = 0;
     }
 
     const armour = this.pendingTanks[row];
     if (armour && armour.length) {
-      for (const t of armour) drawTank(this.rd, t, eyeX, eyeY, eyeZ);
+      for (const t of armour) drawTank(this.rd, t, eyeX, eyeY, eyeZ, haze);
       armour.length = 0;
     }
 
@@ -395,7 +404,7 @@ export class Game {
       const base = landAltitude(wx, wz);
       if (base >= SEA_LEVEL) continue;
 
-      drawModel(this.rd, model, null, wx, base, wz, eyeX, eyeY, eyeZ);
+      drawModel(this.rd, model, null, wx, base, wz, eyeX, eyeY, eyeZ, fogFor(row));
 
       // Wrecks smoulder.
       if (isWreck(type) && (this.smokeTick + tx * 7 + tz * 13) % 11 === 0) {
@@ -459,6 +468,12 @@ export class Game {
       drawTextCentred(rd, 'PRESS START', CENTRE_X, 142, DIM);
     }
   }
+}
+
+// Haze for a landscape row, matching the ramp the terrain palette uses.
+function fogFor(row) {
+  const t = 1 - (row - 1) / (TILES_Z - 2);
+  return Math.max(0, Math.min(1, FOG_MAX * t * t));
 }
 
 function pad(n, width) {

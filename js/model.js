@@ -7,6 +7,7 @@
 // Remember that +y points DOWN, so the top of a model has a negative y.
 
 import { TILE, matApply } from './maths.js';
+import { FOG_COLOUR } from './landscape.js';
 import { project } from './renderer.js';
 
 // --- model construction ----------------------------------------------------
@@ -167,7 +168,26 @@ const pt = { x: 0, y: 0 };
 // Draw a model's faces back to front. With only a dozen or so faces per
 // object a straight depth sort is cheaper than anything cleverer, and it
 // copes with the concave shapes (legs, fins) that culling alone would not.
-export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ) {
+// Blend a face colour towards the haze. Cached, because the same handful of
+// colours are asked for at the same handful of distances every frame.
+const hazeCache = new Map();
+function hazed(col, fog) {
+  const q = Math.round(fog * 24);
+  const key = col[0] + ',' + col[1] + ',' + col[2] + ',' + q;
+  let out = hazeCache.get(key);
+  if (out === undefined) {
+    const f = q / 24;
+    out = [
+      Math.round(col[0] + (FOG_COLOUR[0] - col[0]) * f),
+      Math.round(col[1] + (FOG_COLOUR[1] - col[1]) * f),
+      Math.round(col[2] + (FOG_COLOUR[2] - col[2]) * f),
+    ];
+    hazeCache.set(key, out);
+  }
+  return out;
+}
+
+export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ, fog = 0) {
   const verts = model.verts;
   const n = verts.length / 3;
 
@@ -211,7 +231,8 @@ export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ) {
   order.sort((a, b) => b[0] - a[0]);
 
   for (const [, f] of order) {
-    const { idx, col } = faces[f];
+    const { idx } = faces[f];
+    const col = fog > 0.01 ? hazed(faces[f].col, fog) : faces[f].col;
     const i0 = idx[0] * 3, i1 = idx[1] * 3, i2 = idx[2] * 3;
     if (idx.length === 3) {
       rd.tri(scratch[i0], scratch[i0 + 1], scratch[i1], scratch[i1 + 1],

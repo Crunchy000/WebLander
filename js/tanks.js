@@ -472,7 +472,7 @@ export function tanksInRow(zLo, zHi, out) {
   return out;
 }
 
-export function drawTank(rd, t, camX, camY, camZ) {
+export function drawTank(rd, t, camX, camY, camZ, fog = 0) {
   const ground = landAltitude(t.x, t.z);
 
   // Pitch the hull to sit along the slope it is standing on.
@@ -486,17 +486,17 @@ export function drawTank(rd, t, camX, camY, camZ) {
   matFromAim(t.heading, pitch, hullMat);
   const wrecked = t.state !== ALIVE;
   drawModel(rd, wrecked ? HULL_WRECK : HULL, hullMat,
-            t.x, ground, t.z, camX, camY, camZ);
+            t.x, ground, t.z, camX, camY, camZ, fog);
 
   if (t.state === ALIVE) {
     matRotY(t.turret, turMat);
     const seat = matApply(hullMat, 0, -0.30 * TILE, -0.06 * TILE);
     drawModel(rd, TURRET_M, turMat,
               (t.x + seat[0]) | 0, (ground + seat[1]) | 0, (t.z + seat[2]) | 0,
-              camX, camY, camZ);
+              camX, camY, camZ, fog);
   } else {
     // Detached turret, wherever it has got to.
     matRotY(t.tspin, turMat);
-    drawModel(rd, TURRET_WRECK, turMat, t.tx, t.ty, t.tz, camX, camY, camZ);
+    drawModel(rd, TURRET_WRECK, turMat, t.tx, t.ty, t.tz, camX, camY, camZ, fog);
   }
 }

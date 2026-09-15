@@ -152,6 +152,19 @@ export class Renderer {
     this.vertex(x3, y3, r, g, b);
   }
 
+  // A vertical gradient band. The shader already interpolates per-vertex
+  // colour, so a gradient costs exactly the same as a flat quad.
+  gradientBand(y0, y1, colTop, colBottom) {
+    if (this.full) return;
+    const [r0, g0, b0] = colTop, [r1, g1, b1] = colBottom;
+    this.vertex(0, y0, r0, g0, b0);
+    this.vertex(SCREEN_W, y0, r0, g0, b0);
+    this.vertex(SCREEN_W, y1, r1, g1, b1);
+    this.vertex(0, y0, r0, g0, b0);
+    this.vertex(SCREEN_W, y1, r1, g1, b1);
+    this.vertex(0, y1, r1, g1, b1);
+  }
+
   // An axis-aligned rectangle in pixel space -- particles and HUD furniture.
   rect(x, y, w, h, col) {
     this.quad(x, y, x + w, y, x + w, y + h, x, y + h, col);

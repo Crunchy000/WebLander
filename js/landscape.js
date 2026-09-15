@@ -191,9 +191,40 @@ export function tileColour(prevAlt, alt, row) {
     rgb = vidcToRgb(byte);
     colourCache.set(byte, rgb);
   }
-  return rgb;
+
+  // Haze, applied after the palette so the quantisation still happens on the
+  // real colour. Row 1 is the far edge and TILES_Z-1 is underfoot; squaring
+  // the ramp keeps the near ground clean and piles the haze into the
+  // distance, which is how aerial perspective actually behaves.
+  const t = 1 - (row - 1) / (TILES_Z - 2);
+  const fog = FOG_MAX * t * t;
+  if (fog < 0.01) return rgb;
+
+  const key = byte | (Math.round(fog * 32) << 9);
+  let hazed = colourCache.get(key);
+  if (hazed === undefined) {
+    hazed = [
+      Math.round(rgb[0] + (FOG_COLOUR[0] - rgb[0]) * fog),
+      Math.round(rgb[1] + (FOG_COLOUR[1] - rgb[1]) * fog),
+      Math.round(rgb[2] + (FOG_COLOUR[2] - rgb[2]) * fog),
+    ];
+    colourCache.set(key, hazed);
+  }
+  return hazed;
 }
 
-// The sky. The original clears to black; a very dark blue reads better on a
-// modern panel without changing the character of the scene.
-export const SKY_COLOUR = [0, 0, 0];
+// The sky, as a gradient from the top of the screen down to the horizon, and
+// the haze that distant land fades into. The fog colour is deliberately the
+// same as the sky at the horizon: that is the whole trick, because it makes
+// far-off ground dissolve into the sky rather than ending at a hard line,
+// which also hides the edge of the fixed landscape grid.
+export const SKY_TOP     = [  6,  10,  26];
+export const SKY_MID     = [ 30,  38,  78];
+export const SKY_HORIZON = [108,  96, 126];
+export const FOG_COLOUR  = SKY_HORIZON;
+
+// How much of the far edge is lost to haze. Enough to soften the grid edge,
+// not so much that the landscape turns to soup.
+export const FOG_MAX = 0.62;
+
+export const SKY_COLOUR = SKY_TOP;
