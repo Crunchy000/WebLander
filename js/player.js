@@ -31,6 +31,10 @@ export const GRAVITY_START = 0x02800;
 // the ground, not cruising above it. The engines cut out just above that, so
 // climbing is self-limiting and the landscape always stays in frame.
 export const HIGHEST_ALTITUDE = -(TILE * 3);
+
+// Where lift starts fading rather than where it stops. A tile and a bit of
+// warning is enough to feel the air thinning and back off.
+const CEILING_SOFT = HIGHEST_ALTITUDE + TILE * 1.2;
 // Battery capacity. Doubled from the original tank so a sortie lasts about
 // twice as long; the charge rate is doubled to match, so topping up still
 // takes the same time on the ground.
@@ -253,20 +257,43 @@ export class Player {
 
     matFromAim(this.leanDir, this.lean, this.matrix);
 
-    // Flat battery, or too high for the rotors to bite, means no thrust.
+    // A flat battery means no thrust at all. Remembering that it was asked
+    // for lets the HUD say so, rather than the machine simply going quiet.
+    this.flat = thrust > 0 && this.charge <= 0;
     if (this.charge <= 0) thrust = 0;
-    if (this.y < HIGHEST_ALTITUDE) thrust = 0;
+
+    // The ceiling is a soft one.
+    //
+    // It used to be a switch: above a fixed height thrust became zero, the
+    // rotors stopped and the engine went silent, and you fell. Worse, the
+    // height was measured in world y while the instrument reads height above
+    // ground -- so the same ALT gave lift over a valley and none over a hill,
+    // which is exactly the kind of thing that feels like a glitch rather than
+    // a limit. Measured: cut at ALT 7.5 in one place and ALT 3.7 in another.
+    //
+    // Now the lift fades out across the last tile or so. The rotors keep
+    // turning and the engine keeps running, so it reads as thin air to push
+    // against instead of a failure, and the HUD names it.
+    let lift = 1;
+    this.ceiling = 0;
+    if (thrust && this.y < CEILING_SOFT) {
+      lift = Math.max(0, (this.y - HIGHEST_ALTITUDE) / (CEILING_SOFT - HIGHEST_ALTITUDE));
+      this.ceiling = 1 - lift;
+    }
     this.thrusting = thrust;
 
     if (thrust) {
-      const power = thrust === 2 ? THRUST_FULL : THRUST_HOVER;
+      const power = (thrust === 2 ? THRUST_FULL : THRUST_HOVER) * lift;
       // "Up" in ship space is -y, since y points down.
       const up = matApply(this.matrix, 0, -1, 0);
       this.vx = (this.vx + up[0] * power) | 0;
       this.vy = (this.vy + up[1] * power) | 0;
       this.vz = (this.vz + up[2] * power) | 0;
 
-      this.charge -= thrust === 2 ? DRAW_FULL : DRAW_HOVER;
+      // Rotors turning still cost something, but pushing at a ceiling for no
+      // lift should not drain the pack at the full rate.
+      const draw = thrust === 2 ? DRAW_FULL : DRAW_HOVER;
+      this.charge -= draw * (0.35 + 0.65 * lift);
       if (this.charge < 0) this.charge = 0;
 
       if (AIRFRAME === 'uav') this.rotorWash();

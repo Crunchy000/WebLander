@@ -621,6 +621,16 @@ export class Game {
       const alt = Math.max(0, p.altitude / TILE);
       const txt = 'ALT ' + alt.toFixed(1);
       drawText(rd, txt, SCREEN_W - 4 - textWidth(txt), 14, DIM);
+
+      // Say why the machine is not climbing. Both of these used to happen in
+      // silence, which is how a limit gets mistaken for a fault.
+      if (p.flat) {
+        drawText(rd, 'BATTERY FLAT', SCREEN_W - 4 - textWidth('BATTERY FLAT'), 24,
+                 [255, 90, 70]);
+      } else if (p.ceiling > 0.12) {
+        drawText(rd, 'CEILING', SCREEN_W - 4 - textWidth('CEILING'), 24,
+                 [255, 200, 90]);
+      }
     }
 
     if (this.state === STATE.PLAYING && p.protected) {
