@@ -67,6 +67,16 @@ export class Renderer {
       preserveDrawingBuffer: false,
       powerPreference: 'low-power',
     };
+    // The buffer size is set here, not in the markup. They used to be written
+    // in both places, and a browser holding a cached copy of this file while
+    // serving fresh HTML got a canvas one size and a viewport another: the
+    // clear filled the whole buffer with sky and the drawing only covered part
+    // of it, leaving a solid slab of sky colour down one side. Sizing it from
+    // the same constant the viewport uses means the two cannot disagree, and a
+    // stale mix now just renders a narrower picture correctly.
+    canvas.width = SCREEN_W;
+    canvas.height = SCREEN_H;
+
     const gl = canvas.getContext('webgl', opts) || canvas.getContext('experimental-webgl', opts);
     if (!gl) throw new Error('WebGL is not available in this browser.');
     this.gl = gl;
@@ -106,6 +116,9 @@ export class Renderer {
     gl.disable(gl.CULL_FACE);
     gl.disable(gl.BLEND);
     gl.viewport(0, 0, SCREEN_W, SCREEN_H);
+
+    // ... and the stylesheet needs the shape of it to letterbox correctly.
+    document.documentElement.style.setProperty('--screen-aspect', String(SCREEN_W / SCREEN_H));
   }
 
   begin(clear) {

@@ -182,7 +182,12 @@ export class Input {
     // fail noisily.
     if (this.hasTouch || this.padConnected || this.locked) return;
     try {
-      this.canvas.requestPointerLock?.();
+      // Newer browsers return a promise here, so the rejection has to be
+      // caught as well as the throw. Without both, a refusal -- which is
+      // routine, it needs a fresh user gesture -- surfaces as an unhandled
+      // error in the console.
+      const r = this.canvas.requestPointerLock?.();
+      if (r && typeof r.catch === 'function') r.catch(() => {});
     } catch { /* not now, then */ }
   }
 

@@ -108,10 +108,13 @@ function beginPlay() {
   overlay.hidden = true;
   game.newGame();
 
-  // Both of these need the gesture that got us here, so they happen now or
-  // not at all. Losing either is survivable; neither is worth an error.
-  fullscreenOn();
+  // Both of these need the gesture that got us here. The pointer goes first:
+  // asking for it after the fullscreen transition has begun is the case
+  // browsers most often refuse. Either one failing is survivable -- a click
+  // on the canvas grabs the pointer, F toggles fullscreen -- so neither is
+  // worth an error.
   input.grabPointer();
+  fullscreenOn();
 }
 
 // Leaving fullscreen drops the pointer as well, so offer it back on the next

@@ -13,7 +13,9 @@
 <body>
 
 <div id="stage">
-  <canvas id="screen" width="456" height="256"></canvas>
+  <!-- Size is set by the renderer, from the same constants as the GL
+       viewport, so the two can never disagree. -->
+  <canvas id="screen"></canvas>
 
   <!-- Touch controls, shown only on devices with a touchscreen -->
   <div id="touch" hidden>
