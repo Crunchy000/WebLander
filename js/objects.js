@@ -14,7 +14,7 @@ import { landAltitude, isOnLaunchpad, SEA_LEVEL, TILES_X, TILES_Z } from './land
 // How much bigger the trees are than the shapes below describe. The models
 // are left at their original proportions and resized from this one number,
 // so the family keeps its relative sizes however it is tuned.
-const TREE = 2.5;
+const TREE = 1.5;
 
 const TRUNK  = [102, 68, 34];
 const LEAF   = [34, 153, 51];
@@ -157,12 +157,14 @@ export function objectAt(tx, tz) {
 
   const type = SPAWN_TABLE[(h >>> 8) % SPAWN_TABLE.length];
 
-  // Above the treeline only the small tree grows. This is what real high
-  // ground looks like, and it is also what keeps the game flyable: at this
-  // size a tall tree on the very highest peak would stand above the drone's
-  // ceiling, so there would be no way over it -- and nothing on screen to
-  // tell you that before you tried. It costs a quarter of a percent of the
-  // land area.
+  // Above the treeline only the small tree grows, because that is what real
+  // high ground looks like. At the current tree scale it is decoration: a
+  // tall tree clears the drone's ceiling anywhere in the world. It earns its
+  // keep at larger scales, where a tall tree on the very highest peak would
+  // otherwise stand above the ceiling with no way over it and nothing on
+  // screen to warn you -- so raising TREE stays safe as far as 3.0 without
+  // having to work that out again. It costs a quarter of a percent of the
+  // land area either way.
   if (alt < TREE_LINE && (type === OBJ.TALL_TREE || type === OBJ.FIR_TREE)) {
     return OBJ.SMALL_TREE;
   }
