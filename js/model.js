@@ -86,6 +86,16 @@ export class Model {
     if (capCol) this.face(top.slice(), capCol);
     return this;
   }
+
+  // Resize the whole model about its own origin. Lets a family of models --
+  // the trees, say -- be tuned from a single number instead of having every
+  // dimension inside them multiplied by hand.
+  scale(f) {
+    for (let i = 0; i < this.verts.length; i++) this.verts[i] = (this.verts[i] * f) | 0;
+    this.height = (this.height * f) | 0;
+    this.radius = (this.radius * f) | 0;
+    return this;
+  }
 }
 
 export function shade(col, f) {

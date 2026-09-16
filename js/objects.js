@@ -11,6 +11,11 @@ import { landAltitude, isOnLaunchpad, SEA_LEVEL, TILES_X, TILES_Z } from './land
 
 // --- the models ------------------------------------------------------------
 
+// How much bigger the trees are than the shapes below describe. The models
+// are left at their original proportions and resized from this one number,
+// so the family keeps its relative sizes however it is tuned.
+const TREE = 2.5;
+
 const TRUNK  = [102, 68, 34];
 const LEAF   = [34, 153, 51];
 const LEAF2  = [51, 170, 68];
@@ -22,7 +27,7 @@ function smallLeafyTree() {
   m.box(0.07, 0, 0.34, 0.07, TRUNK, TRUNK);
   m.drum(0.16, 0.26, 0.28, 0.58, 6, LEAF, shade(LEAF2, 1.15));
   m.cone(0.2, 0.55, 0.78, 6, LEAF2);
-  return m;
+  return m.scale(TREE);
 }
 
 function tallLeafyTree() {
@@ -30,7 +35,7 @@ function tallLeafyTree() {
   m.box(0.08, 0, 0.55, 0.08, TRUNK, TRUNK);
   m.drum(0.2, 0.32, 0.45, 0.9, 6, LEAF, shade(LEAF2, 1.15));
   m.cone(0.24, 0.86, 1.2, 6, LEAF2);
-  return m;
+  return m.scale(TREE);
 }
 
 function firTree() {
@@ -39,7 +44,7 @@ function firTree() {
   m.cone(0.3, 0.18, 0.62, 7, FIR);
   m.cone(0.22, 0.55, 0.92, 7, shade(FIR, 1.2));
   m.cone(0.13, 0.86, 1.15, 7, shade(FIR, 1.35));
-  return m;
+  return m.scale(TREE);
 }
 
 // What is left after something is destroyed: a blackened stump.
@@ -51,7 +56,7 @@ function remains(lean) {
   const spur = new Model();
   spur.cone(0.11, 0.26, 0.52, 4, shade(CHAR, 1.3));
   mergeAt(m, spur, lean * 0.13, 0, 0);
-  return m;
+  return m.scale(TREE);
 }
 
 
@@ -94,6 +99,9 @@ export function isBlocks(type) {
 export function structureIndex(type) {
   return type - OBJ.BLOCKS_0;
 }
+
+// Ground higher than this carries only the small tree -- see objectAt.
+const TREE_LINE = (TILE * 0.8) | 0;
 
 // Types that can be spawned onto the map, with their relative frequency.
 //
@@ -147,7 +155,19 @@ export function objectAt(tx, tz) {
   const wreck = destroyed.get(KEY(tx, tz));
   if (wreck !== undefined) return wreck;
 
-  return SPAWN_TABLE[(h >>> 8) % SPAWN_TABLE.length];
+  const type = SPAWN_TABLE[(h >>> 8) % SPAWN_TABLE.length];
+
+  // Above the treeline only the small tree grows. This is what real high
+  // ground looks like, and it is also what keeps the game flyable: at this
+  // size a tall tree on the very highest peak would stand above the drone's
+  // ceiling, so there would be no way over it -- and nothing on screen to
+  // tell you that before you tried. It costs a quarter of a percent of the
+  // land area.
+  if (alt < TREE_LINE && (type === OBJ.TALL_TREE || type === OBJ.FIR_TREE)) {
+    return OBJ.SMALL_TREE;
+  }
+
+  return type;
 }
 
 // The exact spot an object stands on within its tile, so they are not all
