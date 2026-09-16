@@ -110,6 +110,16 @@ function frame(now) {
   last = now;
   if (paused) return;
 
+  // On a console the title screen has to be dismissable from the pad. Edge on
+  // Xbox does give you a cursor you can drive to the button, but nobody picks
+  // up a controller expecting to point at things, so any button starts the
+  // game. Going through the button's own handler rather than beginPlay keeps
+  // the audio unlock and the touch branches on one path.
+  if (!overlay.hidden) {
+    input.sample();
+    if (input.padAnyButton) { startBtn.click(); return; }
+  }
+
   // Never try to catch up more than a few frames; if the tab was in the
   // background for a minute, just carry on from here.
   if (dt > 250) dt = STEP_MS;

@@ -45,6 +45,15 @@ export class Input {
     this.tiltZero = null;         // neutral orientation, set on start
     this.tiltRaw = null;
 
+    // Gamepad. Nothing to bind: the API is polled, not evented, so the whole
+    // of it lives in _pollPad below.
+    this.padStick = { x: 0, y: 0 };
+    this.padActive = false;
+    this.padThrust = 0;
+    this.padFire = false;
+    this.padAnyButton = false;
+    this._padStartWas = false;
+
     this._bindKeyboard();
     this._bindMouse();
     this._bindTouch();
@@ -248,6 +257,73 @@ export class Input {
     return { x: sx, y: sy };
   }
 
+  // -- gamepad --------------------------------------------------------------
+  //
+  // The standard mapping, which is what an Xbox pad reports in every browser
+  // that supports the API: A 0, B 1, X 2, Y 3, LB 4, RB 5, LT 6, RT 7,
+  // View 8, Menu 9, and the d-pad 12-15.
+  //
+  // Nothing is bound or registered. getGamepads is a poll, and a pad that is
+  // unplugged mid-flight simply stops answering, which is the behaviour we
+  // want anyway.
+  _pollPad() {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    let pad = null;
+    for (const p of pads) {
+      if (p && p.connected) { pad = p; break; }
+    }
+    if (!pad) {
+      this.padActive = false;
+      this.padAnyButton = false;
+      this.padThrust = 0;
+      this.padFire = false;
+      return;
+    }
+
+    const btn = (i) => (pad.buttons[i] ? pad.buttons[i].value > 0.25 || pad.buttons[i].pressed : false);
+    const axis = (i) => (pad.axes.length > i ? pad.axes[i] : 0);
+
+    // Left stick, or the d-pad if that is what they are using. Screen y runs
+    // down and the stick reports up as negative, so the sign flips to meet the
+    // one convention every input here has to produce: y > 0 leans away.
+    let x = axis(0), y = -axis(1);
+    if (btn(14)) x = -1; else if (btn(15)) x = 1;
+    if (btn(12)) y = 1; else if (btn(13)) y = -1;
+
+    // Deadzone on the magnitude, not per axis. Squaring it off would make the
+    // corners reachable and the cardinals sticky, which is the same mistake
+    // the tilt mapper made and the same fix.
+    const DEAD = 0.16;
+    let m = Math.hypot(x, y);
+    if (m < DEAD) {
+      x = y = 0;
+    } else {
+      // Rescale so the stick still reaches full deflection after the deadzone
+      // is taken out of the bottom of its travel.
+      const k = Math.min(1, (m - DEAD) / (0.95 - DEAD)) / m;
+      x *= k; y *= k;
+      m = Math.hypot(x, y);
+      if (m > 1) { x /= m; y /= m; }
+    }
+    this.padStick.x = x;
+    this.padStick.y = y;
+
+    // Right trigger or A for full power, left trigger or X to hover.
+    this.padThrust = (btn(7) || btn(0)) ? 2 : (btn(6) || btn(2)) ? 1 : 0;
+    this.padFire = btn(5) || btn(1) || btn(4);
+
+    let any = false;
+    for (const b of pad.buttons) if (b && (b.pressed || b.value > 0.5)) { any = true; break; }
+    this.padAnyButton = any;
+
+    // Menu starts a game, on the press rather than while it is held.
+    const startNow = btn(9) || btn(8);
+    if (startNow && !this._padStartWas) this.startPressed = true;
+    this._padStartWas = startNow;
+
+    this.padActive = x !== 0 || y !== 0 || this.padThrust > 0 || any;
+  }
+
   // -- per-frame ------------------------------------------------------------
 
   sample() {
@@ -260,9 +336,13 @@ export class Input {
     this.keyStick.y += (ky - this.keyStick.y) * RATE;
     const keyActive = kx !== 0 || ky !== 0 || Math.hypot(this.keyStick.x, this.keyStick.y) > 0.01;
 
+    this._pollPad();
+
     const tilt = this._tiltStick();
 
-    if (tilt) {
+    if (this.padActive) {
+      this.stick = this.padStick;
+    } else if (tilt) {
       this.stick = tilt;
     } else if (this.dragStick) {
       this.stick = this.dragStick;
@@ -277,9 +357,11 @@ export class Input {
     if (this.touchThrust || this.tapThrust) thrust = 2;
     if (k.has('KeyZ') || k.has('Space')) thrust = 2;
     else if (k.has('KeyX')) thrust = thrust || 1;
+    if (this.padThrust) thrust = this.padThrust;
     this.thrust = thrust;
 
-    this.fire = this.mouseFire || this.touchFire || k.has('KeyC') || k.has('ShiftLeft');
+    this.fire = this.mouseFire || this.touchFire || this.padFire
+      || k.has('KeyC') || k.has('ShiftLeft');
 
     return this;
   }
