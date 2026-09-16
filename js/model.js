@@ -7,7 +7,7 @@
 // Remember that +y points DOWN, so the top of a model has a negative y.
 
 import { TILE, matApply } from './maths.js';
-import { FOG_COLOUR } from './landscape.js';
+import { FOG_COLOUR, landAltitude, tileColour, SEA_LEVEL } from './landscape.js';
 import { project } from './renderer.js';
 
 // --- model construction ----------------------------------------------------
@@ -242,5 +242,70 @@ export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ, fog =
       rd.quad(scratch[i0], scratch[i0 + 1], scratch[i1], scratch[i1 + 1],
               scratch[i2], scratch[i2 + 1], scratch[i3], scratch[i3 + 1], col);
     }
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// Contact shadows
+// ---------------------------------------------------------------------------
+
+const shadowPt = { x: 0, y: 0 };
+const shadowRing = [];
+
+// A shadow blob on the ground.
+//
+// There is no depth buffer and no blending here, so this cannot be a
+// translucent quad: instead it samples the ground colour underneath and
+// draws a darkened version of it, which is why a shadow on grass, sand and
+// concrete each come out the right hue rather than a uniform grey smear.
+//
+// Each rim point is placed at its own ground height, so the blob drapes over
+// slopes instead of hovering as a flat disc cutting into the hillside.
+export function drawShadow(rd, wx, wz, radius, strength, camX, camY, camZ, row, fog = 0) {
+  if (strength <= 0.02 || radius <= 0) return;
+
+  const ground = landAltitude(wx | 0, wz | 0);
+  if (ground >= SEA_LEVEL) return;          // nothing to fall on out at sea
+
+  // Ground colour here, darkened. Passing the same altitude twice gives a
+  // flat-lit sample, which is what we want -- the shadow should not inherit
+  // the slope shading of whichever tile it happens to sit on.
+  const base = tileColour(ground, ground, row);
+  let col = [
+    Math.round(base[0] * (1 - strength * 0.62)),
+    Math.round(base[1] * (1 - strength * 0.62)),
+    Math.round(base[2] * (1 - strength * 0.66)),
+  ];
+  if (fog > 0.01) {
+    col = [
+      Math.round(col[0] + (FOG_COLOUR[0] - col[0]) * fog),
+      Math.round(col[1] + (FOG_COLOUR[1] - col[1]) * fog),
+      Math.round(col[2] + (FOG_COLOUR[2] - col[2]) * fog),
+    ];
+  }
+
+  const SEG = 8;
+  const LIFT = TILE * 0.012;                // just clear of the ground
+
+  // Centre.
+  if (!project((wx - camX) | 0, (ground - LIFT - camY) | 0, (wz - camZ) | 0, shadowPt)) return;
+  const cx = shadowPt.x, cy = shadowPt.y;
+
+  shadowRing.length = 0;
+  for (let i = 0; i < SEG; i++) {
+    const a = (i / SEG) * Math.PI * 2;
+    const px = (wx + Math.cos(a) * radius) | 0;
+    const pz = (wz + Math.sin(a) * radius) | 0;
+    const py = landAltitude(px, pz);
+    if (py >= SEA_LEVEL) return;            // straddling the shoreline
+    if (!project((px - camX) | 0, (py - LIFT - camY) | 0, (pz - camZ) | 0, shadowPt)) return;
+    shadowRing.push(shadowPt.x, shadowPt.y);
+  }
+
+  for (let i = 0; i < SEG; i++) {
+    const j = (i + 1) % SEG;
+    rd.tri(cx, cy, shadowRing[i * 2], shadowRing[i * 2 + 1],
+           shadowRing[j * 2], shadowRing[j * 2 + 1], col);
   }
 }

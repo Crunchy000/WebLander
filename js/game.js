@@ -9,7 +9,7 @@ import {
 } from './landscape.js';
 import { project, SCREEN_W, SCREEN_H, CENTRE_X } from './renderer.js';
 import { Player, GRAVITY_START, CHARGE_MAX } from './player.js';
-import { drawModel } from './model.js';
+import { drawModel, drawShadow } from './model.js';
 import {
   MODELS, OBJ_SCORE, objectAt, objectOffset, destroyObject, isWreck,
   resetObjects,
@@ -308,6 +308,9 @@ export class Game {
     const fracX = (eyeX - xCameraTile) | 0;
     const fracZ = (zCamera - zCameraTile) | 0;
 
+    const eyeShadowZ = this.player.z;
+    this.shadowRow = -1;
+
     for (const list of this.pending) list.length = 0;
     for (const list of this.pendingTanks) list.length = 0;
     for (const list of this.pendingBoats) list.length = 0;
@@ -324,6 +327,9 @@ export class Game {
       if (j > 0) {
         tanksInRow(worldZ, (worldZ + TILE) | 0, this.pendingTanks[j]);
         boatsInRow(worldZ, (worldZ + TILE) | 0, this.pendingBoats[j]);
+        // The craft's shadow belongs to whichever row the ground under it
+        // is in, so it is drawn with that row and hidden by hills in front.
+        if (eyeShadowZ >= worldZ && eyeShadowZ < worldZ + TILE) this.shadowRow = j;
       }
 
       let prevAlt = 0;
@@ -380,6 +386,20 @@ export class Game {
   flushObjects(row, eyeX, eyeY, eyeZ) {
     const haze = fogFor(row);
 
+    // The craft's own shadow: it grows and fades as you climb, which is the
+    // cue that was missing when judging height on an approach.
+    if (row === this.shadowRow && this.state === STATE.PLAYING && !this.player.dead) {
+      const p = this.player;
+      const altTiles = Math.max(0, p.altitude / TILE);
+      if (altTiles < SHADOW_FADE) {
+        const t = altTiles / SHADOW_FADE;
+        drawShadow(this.rd, p.x, p.z,
+          TILE * (0.46 + 0.62 * t),        // spreads with height
+          (1 - t) * 0.92,                  // and fades
+          eyeX, eyeY, eyeZ, row, haze);
+      }
+    }
+
     const shipping = this.pendingBoats[row];
     if (shipping && shipping.length) {
       for (const b of shipping) drawBoat(this.rd, b, eyeX, eyeY, eyeZ, haze);
@@ -388,7 +408,10 @@ export class Game {
 
     const armour = this.pendingTanks[row];
     if (armour && armour.length) {
-      for (const t of armour) drawTank(this.rd, t, eyeX, eyeY, eyeZ, haze);
+      for (const t of armour) {
+        drawShadow(this.rd, t.x, t.z, TILE * 0.62, 0.8, eyeX, eyeY, eyeZ, row, haze);
+        drawTank(this.rd, t, eyeX, eyeY, eyeZ, haze);
+      }
       armour.length = 0;
     }
 
@@ -404,7 +427,8 @@ export class Game {
       const base = landAltitude(wx, wz);
       if (base >= SEA_LEVEL) continue;
 
-      drawModel(this.rd, model, null, wx, base, wz, eyeX, eyeY, eyeZ, fogFor(row));
+      drawShadow(this.rd, wx, wz, model.radius * 0.85, 0.7, eyeX, eyeY, eyeZ, row, haze);
+      drawModel(this.rd, model, null, wx, base, wz, eyeX, eyeY, eyeZ, haze);
 
       // Wrecks smoulder.
       if (isWreck(type) && (this.smokeTick + tx * 7 + tz * 13) % 11 === 0) {
@@ -471,6 +495,9 @@ export class Game {
 }
 
 // Haze for a landscape row, matching the ramp the terrain palette uses.
+// Height, in tiles, at which the craft's shadow has faded out entirely.
+const SHADOW_FADE = 7.0;
+
 function fogFor(row) {
   const t = 1 - (row - 1) / (TILES_Z - 2);
   return Math.max(0, Math.min(1, FOG_MAX * t * t));
