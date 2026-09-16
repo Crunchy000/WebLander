@@ -47,7 +47,13 @@ export class Input {
     // wants a tilt sensor -- so the touch interface is gated on both.
     this.hasTouch = matchMedia('(pointer: coarse)').matches && (navigator.maxTouchPoints || 0) > 0;
     this.padConnected = this._anyPad();
+    this.padUsed = false;
     this.onPadChange = null;
+
+    // A real mouse, as opposed to a gamepad or a remote pretending to be one.
+    // A console has no fine pointer, which is how we know a pad there should
+    // be trusted from the moment it is seen rather than once it is waggled.
+    this.finePointer = matchMedia('(pointer: fine)').matches;
 
     addEventListener('gamepadconnected', () => this._padChanged(true));
     addEventListener('gamepaddisconnected', () => this._padChanged(this._anyPad()));
@@ -81,7 +87,21 @@ export class Input {
   _padChanged(now) {
     if (now === this.padConnected) return;
     this.padConnected = now;
+    if (!now) this.padUsed = false;
     this.onPadChange?.(now);
+  }
+
+  // Should the pad be steering, including while it sits perfectly still?
+  //
+  // Taking it only when the stick is deflected looked reasonable and flies
+  // horribly: a centred pad hands control straight back to the mouse, and on
+  // a console the cursor is parked wherever it was last left, so the craft
+  // leans towards it between every nudge. A plugged-in pad owns the stick.
+  //
+  // On a desktop, where someone may have a pad connected and still want the
+  // mouse, it only takes over once it has actually been touched.
+  get padOwns() {
+    return this.padConnected && (this.padUsed || !this.finePointer);
   }
 
   // Which control help and which on-screen furniture this device should get.
@@ -403,6 +423,7 @@ export class Input {
     this._padStartWas = startNow;
 
     this.padActive = x !== 0 || y !== 0 || this.padThrust > 0 || any;
+    if (this.padActive) this.padUsed = true;
   }
 
   // -- per-frame ------------------------------------------------------------
@@ -421,7 +442,7 @@ export class Input {
 
     const tilt = this._tiltStick();
 
-    if (this.padActive) {
+    if (this.padOwns) {
       this.stick = this.padStick;
     } else if (tilt) {
       this.stick = tilt;

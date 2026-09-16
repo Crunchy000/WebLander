@@ -23,11 +23,20 @@ const input = new Input(canvas);
 const audio = new Audio();
 const game = new Game(renderer, input, audio);
 
-// Show the right control help, and the touch pad, for this device.
-if (input.hasTouch) {
-  document.getElementById('controls-desktop').hidden = true;
-  document.getElementById('controls-touch').hidden = false;
+// Show the right control help for this device, and redo it if a pad turns up
+// later: on a console the pad exists before the page does, but the browser
+// may not admit to it until the first button press.
+function showControlHelp() {
+  const touch = input.touchUi;
+  document.getElementById('controls-desktop').hidden = touch;
+  document.getElementById('controls-touch').hidden = !touch;
+  // Focused, so a console's A button activates it natively. That native
+  // press carries user activation; a click synthesised from a gamepad poll
+  // does not, which is why fullscreen needed cursor mode to work.
+  if (!overlay.hidden) startBtn.focus();
 }
+showControlHelp();
+input.onPadChange = () => showControlHelp();
 
 const calibration = new Calibration(input, input.tilt);
 
@@ -58,7 +67,7 @@ setInterval(() => {
 startBtn.addEventListener('click', async () => {
   audio.start();
 
-  if (input.hasTouch) {
+  if (input.touchUi) {
     const ok = await input.enableTilt();
     if (!ok) {
       // No motion sensor, or permission refused: drag to steer instead, which
