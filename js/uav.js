@@ -11,8 +11,8 @@
 // bearing, you need to read its heading at a glance.
 
 import { TILE, matMul, matRotY, matApply } from './maths.js';
-import { Model, shade, facet, drawModel, drawLamp } from './model.js';
-import { sky } from './daylight.js';
+import { Model, facet, drawModel, recolour } from './model.js';
+import { sky, beacon } from './daylight.js';
 
 // --- palette ---------------------------------------------------------------
 
@@ -232,38 +232,60 @@ function buildDisc() {
   return m;
 }
 
+// Navigation lights, in the colours every aircraft carries them in: red to
+// port, green to starboard, white aft. They are on a machine that can face
+// any bearing over a landscape with no landmarks, so after dark they are the
+// only thing telling you which way you are pointing -- the arm colours that
+// do that job by day are invisible then.
+//
+// They are not lamps hung off the airframe. A lamp has to be drawn as a
+// screen-space square, and at this resolution a square with a halo round it
+// reads as a sticker rather than as light. Instead the motor pod itself takes
+// the colour for a few frames: the machine winks, and between winks there is
+// nothing extra on screen at all.
+const NAV_RED   = [255,  48,  40];
+const NAV_GREEN = [ 60, 255, 110];
+
+function lit(col) {
+  return (base) => [
+    Math.round(base[0] * 0.25 + col[0] * 0.75),
+    Math.round(base[1] * 0.25 + col[1] * 0.75),
+    Math.round(base[2] * 0.25 + col[2] * 0.75),
+  ];
+}
+
+// Roughly one wink a second.
+const BLINK_PERIOD = 55;
+const BLINK_FLASH = 4;
+
 export const UAV_BODY = buildBody();
 export const UAV_DISC = buildDisc();
 export const UAV_POD = buildPod();
 export const UAV_ROTOR = buildRotor();
 
+// Lit variants of the pod, built once. They share the pod's vertices.
+const POD_STBD = recolour(UAV_POD, lit(NAV_GREEN), true);
+const POD_PORT = recolour(UAV_POD, lit(NAV_RED), true);
+
+// Both arms down a side carry that side's colour, not just the front pair.
+// This camera only ever looks from behind, so a light on the front arm alone
+// spends most of its life hidden behind the rear motor in front of it -- and
+// lighting the whole side is the convention anyway. Flying away you see red
+// to the left and green to the right; coming back at you they swap, which is
+// exactly how the rig is meant to be read.
+//
+// Arms are indexed front right, front left, rear right, rear left.
+const POD_LIT = [POD_STBD, POD_PORT, POD_STBD, POD_PORT];
+
 const rotMat = new Float64Array(9);
 const spinMat = new Float64Array(9);
 
-// Navigation lights, in the colours every aircraft carries them in: red to
-// port, green to starboard, white aft. They are on a machine that can face
-// any bearing over a landscape with no landmarks, so at night they are the
-// only thing telling you which way you are pointing -- the arm colours that
-// do that job by day are invisible in the dark.
-const NAV_RED   = [255,  48,  40];
-const NAV_GREEN = [ 60, 255, 110];
-const NAV_WHITE = [255, 255, 246];
-
-// Which lamp sits on which arm. The arms are indexed as ARMS is: front
-// right, front left, rear right, rear left.
-const NAV_COLS = [NAV_GREEN, NAV_RED, NAV_WHITE, NAV_WHITE];
-
-let strobeTick = 0;
 
 export function drawUav(rd, p, camX, camY, camZ) {
   drawModel(rd, UAV_BODY, p.matrix, p.x, p.y, p.z, camX, camY, camZ);
 
   const spin = p.rotorSpin || 0;
-  const lamp = sky.lamp;
-  // The rear pair blink together, twice a second, the way an anti-collision
-  // beacon does. The steady pair do not.
-  strobeTick++;
-  const strobe = (strobeTick % 50) < 8;
+  const wink = sky.lamp > 0.05 && beacon(BLINK_PERIOD, BLINK_FLASH);
 
   for (let i = 0; i < ARMS.length; i++) {
     const { a } = ARMS[i];
@@ -275,7 +297,7 @@ export function drawUav(rd, p, camX, camY, camZ) {
     const wy = (p.y + off[1]) | 0;
     const wz = (p.z + off[2]) | 0;
 
-    drawModel(rd, UAV_POD, p.matrix, wx, wy, wz, camX, camY, camZ);
+    drawModel(rd, wink ? POD_LIT[i] : UAV_POD, p.matrix, wx, wy, wz, camX, camY, camZ);
 
     // Under power the blades are turning too fast to resolve, so lay the
     // swept disc down first and draw the blades over it.
@@ -289,24 +311,5 @@ export function drawUav(rd, p, camX, camY, camZ) {
     matRotY(spin * dir, spinMat);
     matMul(p.matrix, spinMat, rotMat);
     drawModel(rd, UAV_ROTOR, rotMat, wx, wy, wz, camX, camY, camZ);
-
-    // The lamp hangs just under the motor pod, clear of the disc.
-    if (lamp > 0.05) {
-      const aft = i >= 2;
-      if (!aft || strobe) {
-        const drop = matApply(p.matrix, 0, 0.11 * SCALE * TILE, 0);
-        drawLamp(rd, (wx + drop[0]) | 0, (wy + drop[1]) | 0, (wz + drop[2]) | 0,
-                 camX, camY, camZ, 0.085 * SCALE, NAV_COLS[i]);
-      }
-    }
-  }
-
-  // A landing lamp on the belly, pointing down. It is what actually makes
-  // flying at night possible: the pool it throws is the only thing showing
-  // you where the ground is.
-  if (lamp > 0.05) {
-    const belly = matApply(p.matrix, 0, BELLY * SCALE * TILE * 0.72, 0.16 * SCALE * TILE);
-    drawLamp(rd, (p.x + belly[0]) | 0, (p.y + belly[1]) | 0, (p.z + belly[2]) | 0,
-             camX, camY, camZ, 0.07 * SCALE, [255, 244, 210]);
   }
 }

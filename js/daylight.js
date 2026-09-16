@@ -47,6 +47,7 @@ export const sky = {
   lamp: 0,            // how strongly vehicle lights read
   sunStrength: 1,     // how hard shadows are cast
   sunOffX: 0,         // which way shadows lean, -1 (left) to 1 (right)
+  tick: 0,            // frames since the world started, for blinking things
   epoch: -1,          // bumped when the tint changes enough to matter
 };
 
@@ -119,7 +120,18 @@ export function setPhase(phase) {
 
 // Advance the clock. `ms` is wall-clock milliseconds since the last step.
 export function advanceDay(ms) {
+  sky.tick++;
   setPhase(sky.phase + ms / DAY_LENGTH);
+}
+
+// Is a beacon lit this frame? Everything that blinks shares one clock and
+// separates itself with `offset`, so a harbour full of shipping does not
+// pulse in unison.
+//
+// The flash is brief on purpose: a light you can see the whole time reads as
+// a lamp bolted to the model, which is exactly what this replaced.
+export function beacon(period, flash, offset = 0) {
+  return (sky.tick + offset) % period < flash;
 }
 
 // --- the sun and the moon --------------------------------------------------

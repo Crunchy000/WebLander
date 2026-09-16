@@ -106,6 +106,28 @@ export function shade(col, f) {
   ];
 }
 
+// A copy of a model with its face colours passed through a mapping. The
+// vertices are shared, not copied: only the face list is rebuilt, so a lit
+// variant of a part costs a few objects rather than a second copy of its
+// geometry.
+// `glow` marks the faces the mapping actually changed as emissive, so they
+// skip the time-of-day tint when they are drawn. A navigation light has to:
+// it is a light source, and running it through the same tint as the airframe
+// makes it darker than the machine carrying it at precisely the hour it is
+// meant to show.
+export function recolour(model, fn, glow = false) {
+  const out = new Model();
+  out.verts = model.verts;
+  out.height = model.height;
+  out.radius = model.radius;
+  out.faces = model.faces.map((f) => {
+    const col = fn(f.col);
+    if (!col) return f;
+    return glow ? { idx: f.idx, col, glow: true } : { idx: f.idx, col };
+  });
+  return out;
+}
+
 // Copy one model's geometry into another, offset by (dx, dy, dz) in tiles.
 export function mergeAt(dst, src, dx, dy, dz) {
   const base = dst.verts.length / 3;
@@ -223,8 +245,9 @@ export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ, fog =
   order.sort((a, b) => b[0] - a[0]);
 
   for (const [, f] of order) {
-    const { idx } = faces[f];
-    const col = litColour(faces[f].col, fog);
+    const face = faces[f];
+    const { idx } = face;
+    const col = face.glow ? emissive(face.col, fog) : litColour(face.col, fog);
     const i0 = idx[0] * 3, i1 = idx[1] * 3, i2 = idx[2] * 3;
     if (idx.length === 3) {
       rd.tri(scratch[i0], scratch[i0 + 1], scratch[i1], scratch[i1 + 1],

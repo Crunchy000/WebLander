@@ -7,9 +7,9 @@
 // to spot and easy to line up on, and the interest is in the sinking rather
 // than the hunt.
 
-import { TILE, matFromAim, matMul, matRotZ, matApply, rnd, rndSigned, rndInt } from './maths.js';
-import { Model, shade, facet, drawModel, drawLamp } from './model.js';
-import { sky } from './daylight.js';
+import { TILE, matFromAim, matMul, matRotZ, rnd, rndSigned, rndInt } from './maths.js';
+import { Model, facet, drawModel, recolour } from './model.js';
+import { sky, beacon } from './daylight.js';
 import { landAltitude, SEA_LEVEL } from './landscape.js';
 import { spawnExplosion, spawnSparks, spawnSmoke, spawn, P_GRAVITY, P_FADE } from './particles.js';
 
@@ -57,6 +57,11 @@ const CHAR   = [ 44,  40,  40];
 const CHAR_B = [ 70,  64,  60];
 const DOOR   = [ 36,  32,  40];   // the shaded arch of the doorway
 const CAP    = [248, 248, 250];   // wheelhouse roof
+
+// Where the masthead light sits, worked out while the hull is being built --
+// facet() shades a colour before it stores it, so these faces cannot be found
+// afterwards by looking for CAP.
+const capFaces = [];
 
 // Walk the palette with a stride coprime to its length, so neighbouring
 // panels never land on the same colour.
@@ -106,6 +111,7 @@ function buildBoat(burnt) {
     v(-hx, hBot, hz0), v(hx, hBot, hz0), v(hx, hBot, hz1), v(-hx, hBot, hz1),
   ];
   facet(m, [wh[0], wh[1], wh[2], wh[3]], burnt ? CHAR : CAP);   // roof
+  if (!burnt) capFaces.push(m.faces.length - 1);
   facet(m, [wh[0], wh[1], wh[5], wh[4]], col());                // aft face
   facet(m, [wh[1], wh[2], wh[6], wh[5]], col());                // starboard
   facet(m, [wh[0], wh[3], wh[7], wh[4]], col());                // port
@@ -131,6 +137,7 @@ function buildBoat(burnt) {
     v(-fx, -0.34, fz - fx), v(fx, -0.34, fz - fx), v(fx, -0.34, fz + fx), v(-fx, -0.34, fz + fx),
   ];
   facet(m, [fn[0], fn[1], fn[2], fn[3]], burnt ? CHAR : CAP);
+  if (!burnt) capFaces.push(m.faces.length - 1);
   facet(m, [fn[0], fn[1], fn[5], fn[4]], col());
   facet(m, [fn[1], fn[2], fn[6], fn[5]], col());
   facet(m, [fn[0], fn[3], fn[7], fn[4]], col());
@@ -150,6 +157,24 @@ function buildBoat(burnt) {
 
 const BOAT = buildBoat(false);
 const BOAT_WRECK = buildBoat(true);
+
+// Running lights used to be lamps: screen-space squares with a halo round
+// them, hung off the hull. At this resolution that reads as a sticker rather
+// than as light. Instead the white of the wheelhouse roof and the funnel top
+// warms for a few frames -- from a distance it is a wink somewhere on the
+// vessel, which is all a masthead light ever is.
+const LAMP = [255, 238, 176];
+
+const BOAT_LIT = (() => {
+  const m = recolour(BOAT, () => null);
+  for (const i of capFaces) m.faces[i] = { idx: BOAT.faces[i].idx, col: LAMP, glow: true };
+  return m;
+})();
+
+// Slower than the drone's, and offset per vessel so a crowded sea does not
+// pulse in unison.
+const BLINK_PERIOD = 78;
+const BLINK_FLASH = 5;
 
 // --- state -----------------------------------------------------------------
 
@@ -191,6 +216,7 @@ function placeBoat(b, px, pz) {
     b.speed = (0.006 + rnd() * 0.006) * TILE;
     b.turnTimer = 120 + rndInt(240);
     b.phase = rnd() * Math.PI * 2;      // where she is in her roll
+    b.blinkAt = rndInt(BLINK_PERIOD);   // and where she is in her blink
     b.sink = 0;
     b.damage = 0;
     b.list = 0;
@@ -423,23 +449,14 @@ export function drawBoat(rd, b, camX, camY, camZ, fog = 0) {
   matRotZ(list, listMat);
   matMul(aimMat, listMat, boatMat);
 
-  drawModel(rd, b.state === SINKING ? BOAT_WRECK : BOAT, boatMat,
-            b.x, y, b.z, camX, camY, camZ, fog);
-
-  // Running lights: red to port, green to starboard, white at the masthead,
-  // the same rig every vessel afloat is required to show. A sinking one keeps
-  // them lit until she goes under, which is a good deal more affecting than
-  // switching them off the moment she is hit.
-  if (sky.lamp > 0.05) {
-    const lamps = [
-      [-0.34, -0.48,  0.24, [255,  50,  42]],
-      [ 0.34, -0.48,  0.24, [ 60, 255, 110]],
-      [ 0.00, -1.06,  0.02, [255, 252, 232]],
-    ];
-    for (const [lx, ly, lz, col] of lamps) {
-      const o = matApply(boatMat, lx * S * TILE, ly * S * TILE, lz * S * TILE);
-      drawLamp(rd, (b.x + o[0]) | 0, (y + o[1]) | 0, (b.z + o[2]) | 0,
-               camX, camY, camZ, 0.08, col, fog);
-    }
+  // A sinking vessel keeps her light showing until she goes under, which is a
+  // good deal more affecting than switching it off the moment she is hit.
+  let hull = BOAT;
+  if (b.state === SINKING) {
+    hull = BOAT_WRECK;
+  } else if (sky.lamp > 0.05 && beacon(BLINK_PERIOD, BLINK_FLASH, b.blinkAt | 0)) {
+    hull = BOAT_LIT;
   }
+
+  drawModel(rd, hull, boatMat, b.x, y, b.z, camX, camY, camZ, fog);
 }
