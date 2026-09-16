@@ -9,6 +9,7 @@ import {
 import {
   sky, sun, moon, STARS, advanceDay, skyColourAt, SKY_BAND_1, SKY_BAND_2,
 } from './daylight.js';
+import { depthAt, waveLift, seaShade } from './sea.js';
 import { project, SCREEN_W, SCREEN_H, CENTRE_X } from './renderer.js';
 import { Player, GRAVITY_START, CHARGE_MAX } from './player.js';
 import { drawModel, drawShadow, drawLightPool } from './model.js';
@@ -441,7 +442,17 @@ export class Game {
         const viewX = (-LANDSCAPE_X - fracX + i * TILE) | 0;
 
         const alt = landAltitude(worldX, worldZ);
-        const viewY = (alt - eyeY) | 0;
+        let viewY = (alt - eyeY) | 0;
+
+        // Water heaves, and brightens with swell, surf and glitter. Both come
+        // off the same depth, so it is worked out once per corner here rather
+        // than twice inside sea.js.
+        let seaLift = 0;
+        if (alt === SEA_LEVEL) {
+          const depth = depthAt(worldX, worldZ);
+          viewY = (viewY + waveLift(worldX, worldZ, depth)) | 0;
+          seaLift = seaShade(worldX, worldZ, viewX, viewZ, depth);
+        }
 
         const ok = project(viewX, viewY, viewZ, pt);
         this.rowX[i] = pt.x;
@@ -451,7 +462,11 @@ export class Game {
 
         // Fill the tile whose far-left corner we saw last row.
         if (j > 0 && i > 0 && ok && this.rowOk[i - 1] && this.prevOk[i] && this.prevOk[i - 1]) {
-          const col = tileColour(prevAlt, alt, j, worldX, worldZ);
+          // The lift belongs to open water only. A tile with one corner
+          // ashore is drawn as land, and brightening it would put surf on
+          // the beach rather than in front of it.
+          const wet = alt === SEA_LEVEL && prevAlt === SEA_LEVEL;
+          const col = tileColour(prevAlt, alt, j, worldX, worldZ, wet ? seaLift : 0);
           rd.quad(
             this.prevX[i - 1], this.prevY[i - 1],
             this.prevX[i], this.prevY[i],

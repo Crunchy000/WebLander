@@ -81,7 +81,9 @@ export function landAltitude(x, z) {
 
   let alt = (LAND_MID_HEIGHT - sum) | 0;
 
-  // Nothing pokes out below the sea.
+  // Nothing pokes out below the sea. The unclamped value is still worth
+  // having -- see seabedAltitude below -- because how far the ground carries
+  // on falling past this point is exactly how deep the water is.
   if (alt > SEA_LEVEL) alt = SEA_LEVEL;
 
   // The launchpad is a flat plateau at the world origin. The comparison is
@@ -91,6 +93,36 @@ export function landAltitude(x, z) {
   }
 
   return alt;
+}
+
+// The seabed: the same six-term synthesis, but without the clamp at sea level
+// and without the launchpad plateau. Above water it agrees with landAltitude
+// exactly; below it, it keeps going down.
+//
+// This is what gives the sea a depth for nothing. Depth is the one number the
+// whole water surface needs: it says how far from shore a point is, which
+// decides both how much swell it may carry and whether it is breaking.
+export function seabedAltitude(x, z) {
+  const a = (x - (z << 1)) | 0;
+  let b = (z + (x << 1)) | 0;
+  b = (z + (b << 1)) | 0;
+  const c = (b + x) | 0;
+  let d = (z - (x << 1)) | 0;
+  d = ((d << 1) - x) | 0;
+  d = (d + z) | 0;
+  let e = (z + (x << 1)) | 0;
+  e = (z + (e << 2)) | 0;
+  e = (e - x) | 0;
+  const f = (c + (z << 3)) | 0;
+  const g = (z + (c << 1)) | 0;
+
+  let sum = sinLookup(a) >> 7;
+  sum = (sum + (sinLookup(b) >> 7)) | 0;
+  sum = (sum + (sinLookup(d) >> 7)) | 0;
+  sum = (sum + (sinLookup(e) >> 7)) | 0;
+  sum = (sum + (sinLookup(f) >> 8)) | 0;
+  sum = (sum + (sinLookup(g) >> 8)) | 0;
+  return (LAND_MID_HEIGHT - sum) | 0;
 }
 
 // Is the ground here level enough to settle a craft on? Samples a ring
@@ -160,7 +192,7 @@ const colourCache = new Map();
 const base = [0, 0, 0];
 const tintScratch = [0, 0, 0];
 
-export function tileColour(prevAlt, alt, row, wx, wz) {
+export function tileColour(prevAlt, alt, row, wx, wz, lift = 0) {
   let slope = (prevAlt - alt) | 0;
   if (slope < 0) slope = 0;
 
@@ -179,6 +211,10 @@ export function tileColour(prevAlt, alt, row, wx, wz) {
     // dithers the borders for nothing.
     groundBase(wx, wz, alt, alt === SEA_LEVEL && prevAlt === SEA_LEVEL, base);
     r = base[0]; g = base[1]; b = base[2];
+    // Swell, surf and glitter all arrive as one brightness offset, worked out
+    // by sea.js where the camera is known. Adding it here, before the
+    // packing, means the quantisation dithers the wave for nothing.
+    if (lift !== 0) { r += lift; g += lift; b += lift; }
   }
 
   const bright = (row + (slope >>> 22)) | 0;

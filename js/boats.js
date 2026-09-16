@@ -11,6 +11,7 @@ import { TILE, matFromAim, matMul, matRotZ, rnd, rndSigned, rndInt } from './mat
 import { Model, facet, drawModel, recolour } from './model.js';
 import { sky, beacon } from './daylight.js';
 import { landAltitude, SEA_LEVEL } from './landscape.js';
+import { depthAt, waveLift } from './sea.js';
 import { spawnExplosion, spawnSparks, spawnSmoke, spawn, P_GRAVITY, P_FADE } from './particles.js';
 
 export const MAX_BOATS = 6;
@@ -429,14 +430,18 @@ export function boatsInRow(zLo, zHi, out) {
 }
 
 export function drawBoat(rd, b, camX, camY, camZ, fog = 0) {
-  let y = SEA_LEVEL;
+  // She rides the same swell the sea is drawn with, so a vessel lifts on the
+  // crest the water under her is on rather than sitting at a fixed height
+  // while it moves around her.
+  const heave = waveLift(b.x, b.z, depthAt(b.x, b.z));
+  let y = (SEA_LEVEL + heave) | 0;
   let pitch = Math.sin(b.phase) * 0.035;          // gentle scend
 
   if (b.state === SINKING) {
     const t = b.sink / SINK_TIME;
     // Down by the stern, steepening, and under she goes.
     pitch = -0.05 - t * 0.85;
-    y = (SEA_LEVEL + t * t * TILE * 1.9) | 0;
+    y = (SEA_LEVEL + heave + t * t * TILE * 1.9) | 0;
   }
 
   let list = b.list || 0;
