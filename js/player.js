@@ -42,7 +42,7 @@ export const CHARGE_MAX = 0x8000;
 
 const THRUST_HOVER = 0x06600;   // hover thrust, doubled again for a much faster feel
 const THRUST_FULL  = 0x0C000;   // full-throttle thrust, doubled again
-const MAX_LEAN = 0.95;          // radians at full stick deflection -- steeper dives, more lean-to-speed
+const MAX_LEAN = Math.PI / 2;   // radians at full stick deflection -- exactly 90 degrees of lean
 const LEAN_RATE = 0.30;         // how fast the craft follows the stick -- snappier response
 const DRAG = 0.985;             // damping; without it the craft is unflyable
 
