@@ -114,7 +114,14 @@ export class Renderer {
 
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.CULL_FACE);
-    gl.disable(gl.BLEND);
+
+    // Blending is on, but almost nothing uses it. Every colour in the game is
+    // opaque -- the alpha byte has been 255 since the first commit -- so
+    // switching this on changes not one pixel of the landscape, the models or
+    // the HUD. It exists for the clouds, which are the only thing in the sky
+    // you are supposed to be able to see through.
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.viewport(0, 0, SCREEN_W, SCREEN_H);
 
     // ... and the stylesheet needs the shape of it to letterbox correctly.
@@ -128,8 +135,9 @@ export class Renderer {
     this.count = 0;
   }
 
-  // Append one vertex. Colour components are 0-255.
-  vertex(x, y, r, g, b) {
+  // Append one vertex. Colour components are 0-255, and so is alpha -- which
+  // a colour may carry as a fourth entry, or leave out to mean opaque.
+  vertex(x, y, r, g, b, a) {
     const i = this.count;
     const fi = i * FLOATS_PER_VERT;
     this.f32[fi] = x;
@@ -138,7 +146,7 @@ export class Renderer {
     this.u8[bi] = r;
     this.u8[bi + 1] = g;
     this.u8[bi + 2] = b;
-    this.u8[bi + 3] = 255;
+    this.u8[bi + 3] = a === undefined ? 255 : a;
     this.count = i + 1;
   }
 
@@ -148,22 +156,22 @@ export class Renderer {
 
   tri(x0, y0, x1, y1, x2, y2, col) {
     if (this.full) return;
-    const r = col[0], g = col[1], b = col[2];
-    this.vertex(x0, y0, r, g, b);
-    this.vertex(x1, y1, r, g, b);
-    this.vertex(x2, y2, r, g, b);
+    const r = col[0], g = col[1], b = col[2], a = col[3];
+    this.vertex(x0, y0, r, g, b, a);
+    this.vertex(x1, y1, r, g, b, a);
+    this.vertex(x2, y2, r, g, b, a);
   }
 
   // A quadrilateral, given in order around its perimeter.
   quad(x0, y0, x1, y1, x2, y2, x3, y3, col) {
     if (this.full) return;
-    const r = col[0], g = col[1], b = col[2];
-    this.vertex(x0, y0, r, g, b);
-    this.vertex(x1, y1, r, g, b);
-    this.vertex(x2, y2, r, g, b);
-    this.vertex(x0, y0, r, g, b);
-    this.vertex(x2, y2, r, g, b);
-    this.vertex(x3, y3, r, g, b);
+    const r = col[0], g = col[1], b = col[2], a = col[3];
+    this.vertex(x0, y0, r, g, b, a);
+    this.vertex(x1, y1, r, g, b, a);
+    this.vertex(x2, y2, r, g, b, a);
+    this.vertex(x0, y0, r, g, b, a);
+    this.vertex(x2, y2, r, g, b, a);
+    this.vertex(x3, y3, r, g, b, a);
   }
 
   // A quad with a colour at each corner. The shader has always interpolated
@@ -171,12 +179,12 @@ export class Renderer {
   // quads being the only way to reach it.
   quadShaded(x0, y0, c0, x1, y1, c1, x2, y2, c2, x3, y3, c3) {
     if (this.full) return;
-    this.vertex(x0, y0, c0[0], c0[1], c0[2]);
-    this.vertex(x1, y1, c1[0], c1[1], c1[2]);
-    this.vertex(x2, y2, c2[0], c2[1], c2[2]);
-    this.vertex(x0, y0, c0[0], c0[1], c0[2]);
-    this.vertex(x2, y2, c2[0], c2[1], c2[2]);
-    this.vertex(x3, y3, c3[0], c3[1], c3[2]);
+    this.vertex(x0, y0, c0[0], c0[1], c0[2], c0[3]);
+    this.vertex(x1, y1, c1[0], c1[1], c1[2], c1[3]);
+    this.vertex(x2, y2, c2[0], c2[1], c2[2], c2[3]);
+    this.vertex(x0, y0, c0[0], c0[1], c0[2], c0[3]);
+    this.vertex(x2, y2, c2[0], c2[1], c2[2], c2[3]);
+    this.vertex(x3, y3, c3[0], c3[1], c3[2], c3[3]);
   }
 
   // A vertical gradient band. The shader already interpolates per-vertex

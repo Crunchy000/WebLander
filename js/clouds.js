@@ -1,32 +1,40 @@
-// clouds.js -- the weather you can see from underneath.
+// clouds.js -- blocky clouds, drifting, with something behind them.
 //
-// Clouds sit in the sky layer, between the sun and the landscape, so they
-// drift across the sun and are painted over by the horizon. They are drawn as
-// vertical strips rather than as outlines: at each column the top edge is the
-// highest of whichever lobes cover it, and the strip runs from there down to
-// a flat base. That handles a lumpy, concave silhouette without any
-// triangulation cleverness, and it puts a vertical gradient in each strip for
-// nothing -- lit along the top, shaded underneath, which is the whole reason a
-// flat shape reads as something with volume.
+// They sit between the sun and the landscape, which is the only ordering that
+// lets one drift across the other and still be painted over by the horizon.
 //
-// Nothing here picks a colour of its own. A cloud is the sky it sits in,
-// pushed towards whatever is lighting it, so dawn turns them pink, dusk gold,
-// a storm grey and night a dark slate without any of those being written
-// down anywhere.
+// Each cloud is a row of columns of stacked square cells, so its outline is a
+// staircase rather than a curve. That suits a game whose sun is a square and
+// whose every surface is a flat facet far better than the rounded lobes this
+// started as -- those read as a row of bread rolls at any size.
+//
+// They are also genuinely translucent rather than faked. The renderer has
+// carried an alpha byte since the first commit and never used it, so turning
+// blending on costs nothing anywhere else: every other colour in the game is
+// opaque and blends to exactly itself.
+//
+// Nothing here picks a colour. A cloud is the sky it sits in, pushed towards
+// whatever is lighting it, so dawn turns them pink, dusk gold and night a
+// dark slate without any of it being written down. Foul weather is the one
+// case that inverts, pushing them past the sky towards slate: what makes a
+// sky look heavy is cloud darker than the gap it sits in.
 
-import { sky, sun, skyColourAt, SKY_BAND_2 } from './daylight.js';
+import { sky, sun, moon, skyColourAt, SKY_BAND_2 } from './daylight.js';
 import { SCREEN_W } from './renderer.js';
 
-const COUNT = 15;
+const COUNT = 18;
 
 // The band clouds live in. The top of the screen and the horizon are both
-// left clear: one because a cloud jammed into the corner looks like a mistake,
-// the other because the landscape is about to be drawn over it anyway.
+// left clear: one because a cloud jammed into the corner looks like a
+// mistake, the other because the landscape is about to cover it anyway.
 const TOP = 6, BOTTOM = SKY_BAND_2 - 14;
 
-// Clouds wrap through a span wider than the screen so they have somewhere to
-// come from and go to.
-const SPAN = SCREEN_W + 180;
+// They wrap through a span wider than the screen, so they have somewhere to
+// come from and somewhere to go.
+const SPAN = SCREEN_W + 200;
+
+// How tall a cloud may stack, in cells.
+const MAX_STACK = 3;
 
 function makeClouds() {
   let s = 0x1b9f37;
@@ -34,31 +42,38 @@ function makeClouds() {
     s = (s * 1103515245 + 12345) & 0x7fffffff;
     return s / 0x7fffffff;
   };
+
   const out = [];
   for (let i = 0; i < COUNT; i++) {
-    const lobes = [];
-    const n = 3 + Math.floor(rnd() * 3);
-    const w = 26 + rnd() * 52;
-    for (let k = 0; k < n; k++) {
-      // Lobes are spread across the width and sized so the middle ones stand
-      // taller than the ends, which is what gives a cloud a shoulder rather
-      // than a row of identical bumps.
-      const t = n === 1 ? 0.5 : k / (n - 1);
-      const hump = 1 - Math.abs(t - 0.5) * 1.35;
-      lobes.push({
-        dx: (t - 0.5) * w,
-        r: (5 + rnd() * 7) * (0.55 + hump),
-      });
+    const cols = 3 + Math.floor(rnd() * 7);
+    // Cells big enough to read as blocks. The first pass made them two or
+    // three pixels across, which on a 456-wide screen is not a blocky cloud,
+    // it is a speck.
+    const cell = 5 + rnd() * 9;
+
+    // A drunkard's walk up and down gives a stepped skyline with the odd
+    // tower and the odd notch, which is what stops a row of blocks reading as
+    // a wall.
+    const heights = [];
+    let h = 1 + Math.floor(rnd() * 2);
+    for (let k = 0; k < cols; k++) {
+      if (rnd() < 0.45) h += rnd() < 0.5 ? 1 : -1;
+      h = h < 1 ? 1 : h > MAX_STACK ? MAX_STACK : h;
+      heights.push(h);
     }
+    // Ends taper, so a cloud finishes rather than being cut off.
+    heights[0] = 1;
+    heights[cols - 1] = 1;
+
     out.push({
       x: rnd() * SPAN,
-      // Higher clouds are smaller and drift slower: the only depth cue
-      // available when everything is painted on the same flat sky.
+      // Higher clouds are smaller and drift slower: the only depth cue going
+      // when everything is painted on the same flat sky.
       depth: 0.35 + rnd() * 0.65,
-      y: 0,
-      lobes,
-      w,
-      tone: 0.86 + rnd() * 0.14,
+      cols,
+      cell,
+      heights,
+      tone: 0.84 + rnd() * 0.16,
     });
   }
   // Far ones first, so nearer clouds pass in front.
@@ -68,78 +83,80 @@ function makeClouds() {
 
 const CLOUDS = makeClouds();
 
-const top = [0, 0, 0], bot = [0, 0, 0];
 const MOONLIT = [188, 200, 226];
 const STORM = [58, 62, 74];
+
+const faceLit = [0, 0, 0, 0], faceDim = [0, 0, 0, 0];
+const capLit = [0, 0, 0, 0], capDim = [0, 0, 0, 0];
+const face = [0, 0, 0, 0], cap = [0, 0, 0, 0];
 
 function mix(out, a, b, t) {
   out[0] = Math.round(a[0] + (b[0] - a[0]) * t);
   out[1] = Math.round(a[1] + (b[1] - a[1]) * t);
   out[2] = Math.round(a[2] + (b[2] - a[2]) * t);
+  out[3] = a[3] === undefined ? 255 : Math.round(a[3] + ((b[3] === undefined ? 255 : b[3]) - a[3]) * t);
   return out;
 }
-
-// Step across the cloud in columns this wide. Three pixels is fine on a 456
-// wide screen and keeps a sky full of cloud down to a few hundred triangles.
-const STEP = 3;
 
 export function drawClouds(rd) {
   const murk = sky.murk;
   const lit = sun.up ? sun.col : MOONLIT;
 
+  // Airy in fair weather, packed solid under a front -- but never so thin it
+  // goes muddy against a blue sky, which is what 73% looked like.
+  const alpha = Math.round(202 + 50 * murk);
+
   for (const c of CLOUDS) {
-    // Drift. Wind carries them; without it they still move, because a sky
-    // that has stopped looks painted on.
     const speed = (0.055 + murk * 0.10) * c.depth;
     let x = (c.x + sky.tick * speed) % SPAN;
     if (x < 0) x += SPAN;
-    x -= 90;
+    x -= 100;
 
-    // Under cloud they hang lower, sit bigger and lose their edges to grey.
-    const scale = (0.52 + 0.70 * murk) * (0.55 + c.depth * 0.8);
+    // Fair weather is the common case and should not be the small one.
+    const scale = (0.88 + 0.42 * murk) * (0.6 + c.depth * 0.8);
     const y = TOP + (BOTTOM - TOP) * (1 - c.depth) * 0.9 + murk * 12;
     if (y > BOTTOM) continue;
 
-    // Fair weather pushes a cloud towards whatever is lighting it. Foul
-    // weather pushes it towards slate instead, and past the sky behind it:
-    // what makes a sky look heavy is cloud DARKER than the gap it sits in,
-    // and mixing towards the light under storm murk gave cheerful white
-    // puffs on a grey afternoon.
     const back = skyColourAt(y);
-    mix(top, back, lit, 0.74 * c.tone);
-    mix(bot, back, lit, 0.30 * c.tone);
+    // A face towards the light and a face away from it. A purely vertical
+    // gradient gave every cloud the same flat front whichever way the sun
+    // was; lighting one flank is what gives a block its form.
+    mix(faceLit, back, lit, 0.88 * c.tone);
+    mix(faceDim, back, lit, 0.54 * c.tone);
+    // The top of a block catches more than its side, always.
+    mix(capLit, back, lit, 1.0 * c.tone);
+    mix(capDim, back, lit, 0.72 * c.tone);
     if (murk > 0.01) {
-      mix(top, top, STORM, murk * 0.80);
-      mix(bot, bot, STORM, murk * 0.92);
+      mix(faceLit, faceLit, STORM, murk * 0.78);
+      mix(faceDim, faceDim, STORM, murk * 0.86);
+      mix(capLit, capLit, STORM, murk * 0.70);
+      mix(capDim, capDim, STORM, murk * 0.80);
     }
+    faceLit[3] = faceDim[3] = alpha;
+    capLit[3] = capDim[3] = Math.min(255, alpha + 24);
 
-    const half = (c.w * 0.5 + 12) * scale;
-    for (let px = -half; px < half; px += STEP) {
-      // The silhouette is the union of the lobes: the highest top wins.
-      let hit = false, yTopL = 1e9, yTopR = 1e9;
-      for (const lo of c.lobes) {
-        const r = lo.r * scale, cx = lo.dx * scale;
-        const dL = px - cx, dR = px + STEP - cx;
-        if (Math.abs(dL) < r) {
-          const h = Math.sqrt(r * r - dL * dL);
-          if (y - h < yTopL) yTopL = y - h;
-          hit = true;
-        }
-        if (Math.abs(dR) < r) {
-          const h = Math.sqrt(r * r - dR * dR);
-          if (y - h < yTopR) yTopR = y - h;
-          hit = true;
-        }
-      }
-      if (!hit) continue;
-      if (yTopL > 1e8) yTopL = y;
-      if (yTopR > 1e8) yTopR = y;
-      if (yTopL >= y && yTopR >= y) continue;
+    const src = sun.up ? sun.x : (moon.up ? moon.x : SCREEN_W / 2);
+    const toSun = src < x ? -1 : 1;
 
-      const xL = x + px, xR = x + px + STEP;
-      if (xR < -4 || xL > SCREEN_W + 4) continue;
+    const cw = c.cell * scale;
+    if (cw < 0.8) continue;                 // too far to resolve
+    const lip = Math.max(1, cw * 0.34);     // the top face, seen near edge-on
+    const x0 = x - (c.cols * cw) / 2;
+    if (x0 > SCREEN_W + 8 || x0 + c.cols * cw < -8) continue;
 
-      rd.quadShaded(xL, yTopL, top, xR, yTopR, top, xR, y, bot, xL, y, bot);
+    for (let i = 0; i < c.cols; i++) {
+      const cx0 = x0 + i * cw, cx1 = cx0 + cw;
+      if (cx1 < -8 || cx0 > SCREEN_W + 8) continue;
+      const top = y - c.heights[i] * cw;
+
+      // How much of the light this column catches, across the cloud.
+      const f = c.cols < 2 ? 0.5
+        : Math.max(0, Math.min(1, 0.5 + 0.5 * ((i / (c.cols - 1)) * 2 - 1) * toSun));
+      mix(face, faceDim, faceLit, f);
+      mix(cap, capDim, capLit, f);
+
+      rd.quad(cx0, top + lip, cx1, top + lip, cx1, y, cx0, y, face);
+      rd.quad(cx0, top, cx1, top, cx1, top + lip, cx0, top + lip, cap);
     }
   }
 }
