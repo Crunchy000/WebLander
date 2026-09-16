@@ -35,8 +35,9 @@ jobs:
       - name: Import every module
         run: |
           node --input-type=module -e '
-            const mods = ["maths", "landscape", "model", "objects", "renderer",
-                          "particles", "player", "font", "input", "audio", "game"];
+            const mods = ["maths", "daylight", "landscape", "model", "objects",
+                          "renderer", "particles", "player", "uav", "tanks",
+                          "boats", "font", "input", "audio", "game"];
             let failed = false;
             for (const m of mods) {
               try {

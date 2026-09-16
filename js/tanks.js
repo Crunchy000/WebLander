@@ -7,7 +7,8 @@
 // ever a handful being simulated.
 
 import { TILE, matRotY, matFromAim, matApply, rnd, rndSigned, rndInt } from './maths.js';
-import { Model, shade, facet, drawModel } from './model.js';
+import { Model, shade, facet, drawModel, drawLamp, drawLightPool } from './model.js';
+import { sky } from './daylight.js';
 import { landAltitude, SEA_LEVEL, isOnLaunchpad, UNDERCARRIAGE_Y } from './landscape.js';
 import { spawnExplosion, spawnSparks, spawnSmoke } from './particles.js';
 import { project } from './renderer.js';
@@ -472,7 +473,7 @@ export function tanksInRow(zLo, zHi, out) {
   return out;
 }
 
-export function drawTank(rd, t, camX, camY, camZ, fog = 0) {
+export function drawTank(rd, t, camX, camY, camZ, fog = 0, row = 0) {
   const ground = landAltitude(t.x, t.z);
 
   // Pitch the hull to sit along the slope it is standing on.
@@ -487,6 +488,23 @@ export function drawTank(rd, t, camX, camY, camZ, fog = 0) {
   const wrecked = t.state !== ALIVE;
   drawModel(rd, wrecked ? HULL_WRECK : HULL, hullMat,
             t.x, ground, t.z, camX, camY, camZ, fog);
+
+  // Headlights, and the patch of ground they pick out ahead of the hull.
+  // A tank you cannot see is a tank that kills you for no reason you could
+  // have read, so after dark they announce themselves -- and the beam points
+  // where the hull is going, which is the warning you actually need.
+  if (t.state === ALIVE && sky.lamp > 0.05) {
+    const lit = [255, 240, 196];
+    for (const sx of [-0.34, 0.34]) {
+      const o = matApply(hullMat, sx * S * TILE, -0.13 * S * TILE, 0.60 * S * TILE);
+      drawLamp(rd, (t.x + o[0]) | 0, (ground + o[1]) | 0, (t.z + o[2]) | 0,
+               camX, camY, camZ, 0.075, lit, fog);
+    }
+    const reach = TILE * 1.5;
+    drawLightPool(rd, (t.x + Math.sin(t.heading) * reach) | 0,
+                  (t.z + Math.cos(t.heading) * reach) | 0,
+                  TILE * 0.78, sky.lamp * 0.5, camX, camY, camZ, row, fog);
+  }
 
   if (t.state === ALIVE) {
     matRotY(t.turret, turMat);

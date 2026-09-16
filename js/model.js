@@ -7,8 +7,9 @@
 // Remember that +y points DOWN, so the top of a model has a negative y.
 
 import { TILE, matApply } from './maths.js';
-import { FOG_COLOUR, landAltitude, tileColour, SEA_LEVEL } from './landscape.js';
-import { project } from './renderer.js';
+import { landAltitude, tileColour, SEA_LEVEL } from './landscape.js';
+import { sky, litColour, emissive, skyColourAt } from './daylight.js';
+import { project, projScale } from './renderer.js';
 
 // --- model construction ----------------------------------------------------
 
@@ -168,25 +169,6 @@ const pt = { x: 0, y: 0 };
 // Draw a model's faces back to front. With only a dozen or so faces per
 // object a straight depth sort is cheaper than anything cleverer, and it
 // copes with the concave shapes (legs, fins) that culling alone would not.
-// Blend a face colour towards the haze. Cached, because the same handful of
-// colours are asked for at the same handful of distances every frame.
-const hazeCache = new Map();
-function hazed(col, fog) {
-  const q = Math.round(fog * 24);
-  const key = col[0] + ',' + col[1] + ',' + col[2] + ',' + q;
-  let out = hazeCache.get(key);
-  if (out === undefined) {
-    const f = q / 24;
-    out = [
-      Math.round(col[0] + (FOG_COLOUR[0] - col[0]) * f),
-      Math.round(col[1] + (FOG_COLOUR[1] - col[1]) * f),
-      Math.round(col[2] + (FOG_COLOUR[2] - col[2]) * f),
-    ];
-    hazeCache.set(key, out);
-  }
-  return out;
-}
-
 export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ, fog = 0) {
   const verts = model.verts;
   const n = verts.length / 3;
@@ -232,7 +214,7 @@ export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ, fog =
 
   for (const [, f] of order) {
     const { idx } = faces[f];
-    const col = fog > 0.01 ? hazed(faces[f].col, fog) : faces[f].col;
+    const col = litColour(faces[f].col, fog);
     const i0 = idx[0] * 3, i1 = idx[1] * 3, i2 = idx[2] * 3;
     if (idx.length === 3) {
       rd.tri(scratch[i0], scratch[i0 + 1], scratch[i1], scratch[i1 + 1],
@@ -245,6 +227,38 @@ export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ, fog =
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// Lamps
+// ---------------------------------------------------------------------------
+
+const lampPt = { x: 0, y: 0 };
+
+// A light source on a vehicle: a square of colour sized by distance, with a
+// dimmer square of glow around it.
+//
+// Lamps are emissive, so they skip the time-of-day tint entirely -- a
+// navigation light is exactly as bright at midnight as at noon, which is the
+// whole point of it. They still fade into the haze with distance.
+export function drawLamp(rd, wx, wy, wz, camX, camY, camZ, size, col, fog = 0, glow = true) {
+  if (!project((wx - camX) | 0, (wy - camY) | 0, (wz - camZ) | 0, lampPt)) return;
+  const s = Math.max(1, Math.round(size * projScale((wz - camZ) | 0) * TILE));
+  if (s > 40) return;                       // right on top of the camera
+  const x = Math.round(lampPt.x - s / 2), y = Math.round(lampPt.y - s / 2);
+
+  if (glow && s >= 2) {
+    // The halo is the lamp colour half way to the sky behind it, which keeps
+    // it reading as light spill rather than as a second, larger lamp.
+    const back = skyColourAt(lampPt.y);
+    const halo = [
+      Math.round(col[0] * 0.45 + back[0] * 0.55),
+      Math.round(col[1] * 0.45 + back[1] * 0.55),
+      Math.round(col[2] * 0.45 + back[2] * 0.55),
+    ];
+    rd.rect(x - s, y - s, s * 3, s * 3, emissive(halo, fog));
+  }
+  rd.rect(x, y, s, s, emissive(col, fog));
+}
 
 // ---------------------------------------------------------------------------
 // Contact shadows
@@ -262,7 +276,7 @@ const shadowRing = [];
 //
 // Each rim point is placed at its own ground height, so the blob drapes over
 // slopes instead of hovering as a flat disc cutting into the hillside.
-export function drawShadow(rd, wx, wz, radius, strength, camX, camY, camZ, row, fog = 0) {
+export function drawGroundPatch(rd, wx, wz, radius, strength, tint, camX, camY, camZ, row, fog = 0) {
   if (strength <= 0.02 || radius <= 0) return;
 
   const ground = landAltitude(wx | 0, wz | 0);
@@ -272,18 +286,11 @@ export function drawShadow(rd, wx, wz, radius, strength, camX, camY, camZ, row, 
   // flat-lit sample, which is what we want -- the shadow should not inherit
   // the slope shading of whichever tile it happens to sit on.
   const base = tileColour(ground, ground, row);
-  let col = [
-    Math.round(base[0] * (1 - strength * 0.62)),
-    Math.round(base[1] * (1 - strength * 0.62)),
-    Math.round(base[2] * (1 - strength * 0.66)),
+  const col = [
+    Math.round(base[0] + (tint[0] - base[0]) * strength),
+    Math.round(base[1] + (tint[1] - base[1]) * strength),
+    Math.round(base[2] + (tint[2] - base[2]) * strength),
   ];
-  if (fog > 0.01) {
-    col = [
-      Math.round(col[0] + (FOG_COLOUR[0] - col[0]) * fog),
-      Math.round(col[1] + (FOG_COLOUR[1] - col[1]) * fog),
-      Math.round(col[2] + (FOG_COLOUR[2] - col[2]) * fog),
-    ];
-  }
 
   const SEG = 8;
   const LIFT = TILE * 0.012;                // just clear of the ground
@@ -308,4 +315,35 @@ export function drawShadow(rd, wx, wz, radius, strength, camX, camY, camZ, row, 
     rd.tri(cx, cy, shadowRing[i * 2], shadowRing[i * 2 + 1],
            shadowRing[j * 2], shadowRing[j * 2 + 1], col);
   }
+}
+
+// Near enough black. Not quite, because a shadow on a sunlit hillside still
+// has sky light falling into it, and pure black reads as a hole.
+const SHADOW_TINT = [4, 4, 10];
+
+// How far a shadow slides away from whatever is casting it, per tile of
+// height. Capped, because a sun right on the horizon would otherwise throw
+// the blob clean out of the landscape row it is being drawn with.
+const LEAN = 0.7;
+const LEAN_MAX = 1.2;
+
+// A contact shadow. It leans away from whichever body is up and softens right
+// down overnight, when only the moon is casting.
+export function drawShadow(rd, wx, wz, radius, strength, camX, camY, camZ, row, fog = 0, height = 0) {
+  const s = strength * sky.sunStrength;
+  if (s <= 0.02) return;
+  let lean = sky.sunOffX * (height / TILE) * LEAN;
+  if (lean > LEAN_MAX) lean = LEAN_MAX; else if (lean < -LEAN_MAX) lean = -LEAN_MAX;
+  drawGroundPatch(rd, (wx + lean * TILE) | 0, wz, radius, s * 0.72,
+                  SHADOW_TINT, camX, camY, camZ, row, fog);
+}
+
+// The pool a downward-facing lamp throws. The same geometry as a shadow, but
+// mixed towards warm white instead of towards black.
+const POOL_TINT = [255, 236, 176];
+
+export function drawLightPool(rd, wx, wz, radius, strength, camX, camY, camZ, row, fog = 0) {
+  if (strength <= 0.02) return;
+  drawGroundPatch(rd, wx, wz, radius, Math.min(0.85, strength),
+                  POOL_TINT, camX, camY, camZ, row, fog);
 }

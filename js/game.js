@@ -2,14 +2,16 @@
 
 import { TILE, rndInt, rnd } from './maths.js';
 import {
-  landAltitude, tileColour, SKY_COLOUR, SKY_TOP, SKY_MID, SKY_HORIZON,
-  FOG_COLOUR, FOG_MAX, SEA_LEVEL, LAUNCHPAD_ALT,
+  landAltitude, tileColour, fogForRow, SEA_LEVEL, LAUNCHPAD_ALT,
   TILES_X, TILES_Z, LANDSCAPE_X, LANDSCAPE_Z, LANDSCAPE_Z_MID,
   UNDERCARRIAGE_Y,
 } from './landscape.js';
+import {
+  sky, sun, moon, STARS, advanceDay, skyColourAt, SKY_BAND_1, SKY_BAND_2,
+} from './daylight.js';
 import { project, SCREEN_W, SCREEN_H, CENTRE_X } from './renderer.js';
 import { Player, GRAVITY_START, CHARGE_MAX } from './player.js';
-import { drawModel, drawShadow } from './model.js';
+import { drawModel, drawShadow, drawLightPool } from './model.js';
 import {
   MODELS, OBJ_SCORE, objectAt, objectOffset, destroyObject, isWreck,
   resetObjects,
@@ -157,6 +159,7 @@ export class Game {
 
   step() {
     const inp = this.input.sample();
+    advanceDay(STEP_MS);
 
     if (this.state === STATE.TITLE || this.state === STATE.GAMEOVER) {
       // The landscape keeps drifting behind the title, as an attract mode.
@@ -273,16 +276,19 @@ export class Game {
 
   draw() {
     const rd = this.rd;
-    rd.begin(SKY_COLOUR);
+    rd.begin(sky.top);
 
     const p = this.player;
     const eyeX = p.camX, eyeY = p.camY, eyeZ = p.camZ;
 
     // Sky first, in two bands so the falloff has a bend in it rather than
-    // being a straight ramp from top to bottom.
-    rd.gradientBand(0, 58, SKY_TOP, SKY_MID);
-    rd.gradientBand(58, 120, SKY_MID, SKY_HORIZON);
-    rd.gradientBand(120, SCREEN_H, SKY_HORIZON, SKY_HORIZON);
+    // being a straight ramp from top to bottom, then the stars and whichever
+    // of the sun or moon is up -- all of it behind the landscape.
+    rd.gradientBand(0, SKY_BAND_1, sky.top, sky.mid);
+    rd.gradientBand(SKY_BAND_1, SKY_BAND_2, sky.mid, sky.horizon);
+    rd.gradientBand(SKY_BAND_2, SCREEN_H, sky.horizon, sky.horizon);
+    this.drawStars();
+    this.drawCelestial();
 
     this.drawLandscape(eyeX, eyeY, eyeZ);
     drawParticles(rd, eyeX, eyeY, eyeZ);
@@ -291,6 +297,75 @@ export class Game {
     this.drawHud();
 
     rd.flush();
+  }
+
+  // Stars. There is no alpha here, so "faint" has to mean "closer to the
+  // colour of the sky behind it" -- which is what a faint star actually looks
+  // like, and it means they fade out at dawn for free instead of needing to
+  // be switched off at some arbitrary hour.
+  drawStars() {
+    if (sky.star < 0.02) return;
+    const rd = this.rd;
+    const t = this.starTick = (this.starTick | 0) + 1;
+
+    for (let i = 0; i < STARS.length; i++) {
+      const st = STARS[i];
+      // A slow, per-star wobble. Stars twinkle because the air moves, so no
+      // two should be in step.
+      const tw = 0.78 + 0.22 * Math.sin(t * 0.055 + st.twinkle);
+      const m = st.mag * tw * sky.star;
+      if (m < 0.05) continue;
+
+      const back = skyColourAt(st.y);
+      const col = [
+        Math.round(back[0] + (235 - back[0]) * m),
+        Math.round(back[1] + (242 - back[1]) * m),
+        Math.round(back[2] + (255 - back[2]) * m),
+      ];
+      rd.rect(st.x, st.y, st.big ? 2 : 1, st.big ? 2 : 1, col);
+    }
+  }
+
+  // The sun and the moon, both square, because the whole world is made of
+  // flat polygons and a circle would be the one thing in it pretending
+  // otherwise.
+  drawCelestial() {
+    const rd = this.rd;
+
+    if (sun.up) {
+      // Three squares, each a step closer to the sun's colour from the sky
+      // behind it, so the corona steps outwards in bands rather than ending
+      // at a hard edge. Drawn outside-in, painter's algorithm doing the rest.
+      const back = skyColourAt(sun.y);
+      const s = sun.size;
+      for (const [scale, mix] of [[2.6, 0.20], [1.8, 0.42], [1.3, 0.68]]) {
+        const w = Math.round(s * scale);
+        rd.rect(Math.round(sun.x - w / 2), Math.round(sun.y - w / 2), w, w,
+                mixCol(back, sun.col, mix));
+      }
+      rd.rect(Math.round(sun.x - s / 2), Math.round(sun.y - s / 2), s, s, sun.col);
+    }
+
+    if (moon.up) {
+      // The same stepped corona as the sun but far tighter, because a single
+      // wide square of pale grey against a black sky does not read as glow --
+      // it reads as a grey square, which is what the first attempt looked
+      // like.
+      const back = skyColourAt(moon.y);
+      const s = moon.size;
+      const face = [236, 242, 255];
+      for (const [scale, mix] of [[2.0, 0.07], [1.45, 0.17]]) {
+        const w = Math.round(s * scale);
+        rd.rect(Math.round(moon.x - w / 2), Math.round(moon.y - w / 2), w, w,
+                mixCol(back, face, mix));
+      }
+      const mx = Math.round(moon.x - s / 2), my = Math.round(moon.y - s / 2);
+      rd.rect(mx, my, s, s, face);
+      // Two square seas, so it is plainly a moon and not a pale sun.
+      const sea = [188, 198, 222];
+      rd.rect(mx + 2, my + 4, 5, 5, sea);
+      rd.rect(mx + 10, my + 9, 3, 3, sea);
+    }
   }
 
   // Walk the fixed grid of tile corners from the back of the view to the
@@ -384,7 +459,7 @@ export class Game {
   }
 
   flushObjects(row, eyeX, eyeY, eyeZ) {
-    const haze = fogFor(row);
+    const haze = fogForRow(row);
 
     // The craft's own shadow: it grows and fades as you climb, which is the
     // cue that was missing when judging height on an approach.
@@ -396,6 +471,16 @@ export class Game {
         drawShadow(this.rd, p.x, p.z,
           TILE * (0.46 + 0.62 * t),        // spreads with height
           (1 - t) * 0.92,                  // and fades
+          eyeX, eyeY, eyeZ, row, haze, p.altitude);
+      }
+      // After dark the landing lamp throws a pool where the shadow was. It
+      // spreads and thins with height exactly as a real beam would, which
+      // makes it a height cue in its own right once the shadow is gone.
+      if (sky.lamp > 0.05 && altTiles < LAMP_REACH) {
+        const t = altTiles / LAMP_REACH;
+        drawLightPool(this.rd, p.x, p.z,
+          TILE * (0.44 + 1.15 * t),
+          sky.lamp * 0.76 * (1 - t) * (1 - t * 0.4),
           eyeX, eyeY, eyeZ, row, haze);
       }
     }
@@ -409,8 +494,9 @@ export class Game {
     const armour = this.pendingTanks[row];
     if (armour && armour.length) {
       for (const t of armour) {
-        drawShadow(this.rd, t.x, t.z, TILE * 0.62, 0.8, eyeX, eyeY, eyeZ, row, haze);
-        drawTank(this.rd, t, eyeX, eyeY, eyeZ, haze);
+        drawShadow(this.rd, t.x, t.z, TILE * 0.62, 0.8,
+                   eyeX, eyeY, eyeZ, row, haze, TILE * 0.3);
+        drawTank(this.rd, t, eyeX, eyeY, eyeZ, haze, row);
       }
       armour.length = 0;
     }
@@ -427,7 +513,8 @@ export class Game {
       const base = landAltitude(wx, wz);
       if (base >= SEA_LEVEL) continue;
 
-      drawShadow(this.rd, wx, wz, model.radius * 0.85, 0.7, eyeX, eyeY, eyeZ, row, haze);
+      drawShadow(this.rd, wx, wz, model.radius * 0.85, 0.7,
+                 eyeX, eyeY, eyeZ, row, haze, model.height * 0.5);
       drawModel(this.rd, model, null, wx, base, wz, eyeX, eyeY, eyeZ, haze);
 
       // Wrecks smoulder.
@@ -494,13 +581,17 @@ export class Game {
   }
 }
 
-// Haze for a landscape row, matching the ramp the terrain palette uses.
-// Height, in tiles, at which the craft's shadow has faded out entirely.
+// Height, in tiles, at which the craft's shadow has faded out entirely, and
+// at which its landing lamp stops reaching the ground.
 const SHADOW_FADE = 7.0;
+const LAMP_REACH = 5.5;
 
-function fogFor(row) {
-  const t = 1 - (row - 1) / (TILES_Z - 2);
-  return Math.max(0, Math.min(1, FOG_MAX * t * t));
+function mixCol(a, b, t) {
+  return [
+    Math.round(a[0] + (b[0] - a[0]) * t),
+    Math.round(a[1] + (b[1] - a[1]) * t),
+    Math.round(a[2] + (b[2] - a[2]) * t),
+  ];
 }
 
 function pad(n, width) {

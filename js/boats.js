@@ -7,8 +7,9 @@
 // to spot and easy to line up on, and the interest is in the sinking rather
 // than the hunt.
 
-import { TILE, matFromAim, matMul, matRotZ, rnd, rndSigned, rndInt } from './maths.js';
-import { Model, shade, facet, drawModel } from './model.js';
+import { TILE, matFromAim, matMul, matRotZ, matApply, rnd, rndSigned, rndInt } from './maths.js';
+import { Model, shade, facet, drawModel, drawLamp } from './model.js';
+import { sky } from './daylight.js';
 import { landAltitude, SEA_LEVEL } from './landscape.js';
 import { spawnExplosion, spawnSparks, spawnSmoke, spawn, P_GRAVITY, P_FADE } from './particles.js';
 
@@ -424,4 +425,21 @@ export function drawBoat(rd, b, camX, camY, camZ, fog = 0) {
 
   drawModel(rd, b.state === SINKING ? BOAT_WRECK : BOAT, boatMat,
             b.x, y, b.z, camX, camY, camZ, fog);
+
+  // Running lights: red to port, green to starboard, white at the masthead,
+  // the same rig every vessel afloat is required to show. A sinking one keeps
+  // them lit until she goes under, which is a good deal more affecting than
+  // switching them off the moment she is hit.
+  if (sky.lamp > 0.05) {
+    const lamps = [
+      [-0.34, -0.48,  0.24, [255,  50,  42]],
+      [ 0.34, -0.48,  0.24, [ 60, 255, 110]],
+      [ 0.00, -1.06,  0.02, [255, 252, 232]],
+    ];
+    for (const [lx, ly, lz, col] of lamps) {
+      const o = matApply(boatMat, lx * S * TILE, ly * S * TILE, lz * S * TILE);
+      drawLamp(rd, (b.x + o[0]) | 0, (y + o[1]) | 0, (b.z + o[2]) | 0,
+               camX, camY, camZ, 0.08, col, fog);
+    }
+  }
 }
