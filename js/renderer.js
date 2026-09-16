@@ -152,6 +152,19 @@ export class Renderer {
     this.vertex(x3, y3, r, g, b);
   }
 
+  // A quad with a colour at each corner. The shader has always interpolated
+  // per-vertex colour -- gradientBand relies on it -- this just stops flat
+  // quads being the only way to reach it.
+  quadShaded(x0, y0, c0, x1, y1, c1, x2, y2, c2, x3, y3, c3) {
+    if (this.full) return;
+    this.vertex(x0, y0, c0[0], c0[1], c0[2]);
+    this.vertex(x1, y1, c1[0], c1[1], c1[2]);
+    this.vertex(x2, y2, c2[0], c2[1], c2[2]);
+    this.vertex(x0, y0, c0[0], c0[1], c0[2]);
+    this.vertex(x2, y2, c2[0], c2[1], c2[2]);
+    this.vertex(x3, y3, c3[0], c3[1], c3[2]);
+  }
+
   // A vertical gradient band. The shader already interpolates per-vertex
   // colour, so a gradient costs exactly the same as a flat quad.
   gradientBand(y0, y1, colTop, colBottom) {

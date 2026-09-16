@@ -11,6 +11,7 @@ import {
 } from './daylight.js';
 import { depthAt, waveLift, seaShade } from './sea.js';
 import { updateWeather, drawWeather, resetWeather, weather, SNOW } from './weather.js';
+import { drawClouds } from './clouds.js';
 import { project, SCREEN_W, SCREEN_H, CENTRE_X } from './renderer.js';
 import { Player, GRAVITY_START, CHARGE_MAX } from './player.js';
 import { drawModel, drawShadow, drawLightPool } from './model.js';
@@ -324,6 +325,9 @@ export class Game {
     rd.gradientBand(SKY_BAND_2, SCREEN_H, sky.horizon, sky.horizon);
     this.drawStars();
     this.drawCelestial();
+    // Clouds go over the sun and under the landscape, which is the only
+    // ordering that lets one drift across the other.
+    drawClouds(rd);
 
     this.drawLandscape(eyeX, eyeY, eyeZ);
     drawParticles(rd, eyeX, eyeY, eyeZ);
