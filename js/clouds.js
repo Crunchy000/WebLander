@@ -22,19 +22,32 @@
 import { sky, sun, moon, skyColourAt, SKY_BAND_2 } from './daylight.js';
 import { SCREEN_W } from './renderer.js';
 
-const COUNT = 18;
+// Few, because they are big. A dozen of these wide enough to matter simply
+// tile the sky into overcast, and where they overlap the blending compounds
+// until it is opaque -- which is the opposite of sitting in the background.
+const COUNT = 11;
 
-// The band clouds live in. The top of the screen and the horizon are both
-// left clear: one because a cloud jammed into the corner looks like a
-// mistake, the other because the landscape is about to cover it anyway.
-const TOP = 6, BOTTOM = SKY_BAND_2 - 14;
+// The band clouds live in. It stops well short of the horizon, and of the
+// height the craft flies at: big clouds down there crowd the machine you are
+// meant to be watching, however faint they are.
+const TOP = 4, BOTTOM = SKY_BAND_2 - 36;
 
 // They wrap through a span wider than the screen, so they have somewhere to
 // come from and somewhere to go.
 const SPAN = SCREEN_W + 200;
 
+// Soft casts to hold them apart from one another. Kept faint on purpose:
+// these are meant to be noticed as variety, not as coloured clouds.
+const TINTS = [
+  [255, 232, 214],
+  [212, 226, 255],
+  [238, 218, 248],
+  [255, 220, 204],
+  [216, 242, 238],
+];
+
 // How tall a cloud may stack, in cells.
-const MAX_STACK = 3;
+const MAX_STACK = 4;
 
 function makeClouds() {
   let s = 0x1b9f37;
@@ -45,11 +58,13 @@ function makeClouds() {
 
   const out = [];
   for (let i = 0; i < COUNT; i++) {
-    const cols = 3 + Math.floor(rnd() * 7);
-    // Cells big enough to read as blocks. The first pass made them two or
-    // three pixels across, which on a 456-wide screen is not a blocky cloud,
-    // it is a speck.
-    const cell = 5 + rnd() * 9;
+    const cols = 4 + Math.floor(rnd() * 7);
+    // Big blocks. A wide cloud now spans a good part of the screen, which it
+    // can afford to because they sit so far back in the picture -- see the
+    // contrast they are drawn at below.
+    // Skewed small: mostly modest clouds with the occasional big one, rather
+    // than a sky of uniformly enormous ones.
+    const cell = 6 + rnd() * rnd() * 22;
 
     // A drunkard's walk up and down gives a stepped skyline with the odd
     // tower and the odd notch, which is what stops a row of blocks reading as
@@ -74,6 +89,11 @@ function makeClouds() {
       cell,
       heights,
       tone: 0.84 + rnd() * 0.16,
+      // Each cloud is tinted a little away from the others. Real skies are
+      // not uniformly white and a dozen identical greys is the surest way to
+      // make a sky look printed on.
+      tint: TINTS[Math.floor(rnd() * TINTS.length)],
+      tintAmt: 0.10 + rnd() * 0.20,
     });
   }
   // Far ones first, so nearer clouds pass in front.
@@ -84,6 +104,7 @@ function makeClouds() {
 const CLOUDS = makeClouds();
 
 const MOONLIT = [188, 200, 226];
+
 const STORM = [58, 62, 74];
 
 const faceLit = [0, 0, 0, 0], faceDim = [0, 0, 0, 0];
@@ -102,9 +123,10 @@ export function drawClouds(rd) {
   const murk = sky.murk;
   const lit = sun.up ? sun.col : MOONLIT;
 
-  // Airy in fair weather, packed solid under a front -- but never so thin it
-  // goes muddy against a blue sky, which is what 73% looked like.
-  const alpha = Math.round(202 + 50 * murk);
+  // They belong behind everything. Big shapes at this contrast read as sky
+  // rather than as objects, which is the whole point of making them larger:
+  // scale carries them, not brightness.
+  const alpha = Math.round(150 + 72 * murk);
 
   for (const c of CLOUDS) {
     const speed = (0.055 + murk * 0.10) * c.depth;
@@ -121,11 +143,16 @@ export function drawClouds(rd) {
     // A face towards the light and a face away from it. A purely vertical
     // gradient gave every cloud the same flat front whichever way the sun
     // was; lighting one flank is what gives a block its form.
-    mix(faceLit, back, lit, 0.88 * c.tone);
-    mix(faceDim, back, lit, 0.54 * c.tone);
+    mix(faceLit, back, lit, 0.56 * c.tone);
+    mix(faceDim, back, lit, 0.33 * c.tone);
     // The top of a block catches more than its side, always.
-    mix(capLit, back, lit, 1.0 * c.tone);
-    mix(capDim, back, lit, 0.72 * c.tone);
+    mix(capLit, back, lit, 0.70 * c.tone);
+    mix(capDim, back, lit, 0.45 * c.tone);
+    // Then this cloud's own cast, over the lot.
+    mix(faceLit, faceLit, c.tint, c.tintAmt);
+    mix(faceDim, faceDim, c.tint, c.tintAmt);
+    mix(capLit, capLit, c.tint, c.tintAmt);
+    mix(capDim, capDim, c.tint, c.tintAmt);
     if (murk > 0.01) {
       mix(faceLit, faceLit, STORM, murk * 0.78);
       mix(faceDim, faceDim, STORM, murk * 0.86);
