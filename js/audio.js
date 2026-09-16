@@ -284,6 +284,42 @@ export class Audio {
   explosion() { this._boom(0.95); }
   splash()    { this._splash(0.5); }
 
+  // One wooden block landing on another: a short resonant knock. Wood has
+  // very little sustain, so almost all of the character is in the first few
+  // milliseconds -- a filtered click with a low damped partial under it.
+  _knock(delay, pitch, gain) {
+    const ctx = this.ctx, t = ctx.currentTime + delay;
+
+    this._noise({ dur: 0.045, type: 'bandpass', f0: pitch * 2.6, f1: pitch * 1.1,
+                  gain: gain * 1.5, q: 2.4, dest: this.crackBus, delay });
+
+    const o = ctx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(pitch * 1.25, t);
+    o.frequency.exponentialRampToValueAtTime(pitch * 0.82, t + 0.05);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain * 0.5, t + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+    o.connect(g).connect(this.crackBus);
+    o.start(t);
+    o.stop(t + 0.12);
+  }
+
+  // A stack going over: a handful of knocks, thinning out as the blocks come
+  // to rest. Each one is pitched differently, because they are different
+  // sizes, and that is what stops it sounding like one sample repeated.
+  clatter(scale = 1) {
+    if (!this.enabled) return;
+    const n = 4 + Math.round(Math.random() * 3 + scale * 2);
+    let t = 0;
+    for (let i = 0; i < n; i++) {
+      const fall = 1 - i / n;                       // later knocks are softer
+      this._knock(t, 190 + Math.random() * 520, (0.26 + 0.3 * fall) * scale);
+      t += 0.035 + Math.random() * 0.085 * (1 + i * 0.35);
+    }
+  }
+
   tone(freq, dur = 0.12, type = 'square', gain = 0.22) {
     if (!this.enabled) return;
     const ctx = this.ctx, t = ctx.currentTime;

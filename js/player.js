@@ -12,7 +12,8 @@ import {
   UNDERCARRIAGE_Y, LANDING_SPEED, LANDSCAPE_Z_MID, isOnLaunchpad,
   groundRoughness, FLAT_ENOUGH,
 } from './landscape.js';
-import { MODELS, objectAt, objectOffset, isWreck } from './objects.js';
+import { MODELS, objectAt, objectOffset, isWreck, isBlocks, structureIndex } from './objects.js';
+import { topple, isKnocked } from './blocks.js';
 import { project } from './renderer.js';
 import { spawnExhaust, spawnBomb, spawnExplosion, spawnSparks, spawnDust } from './particles.js';
 import { drawUav } from './uav.js';
@@ -414,11 +415,15 @@ export class Player {
     }
   }
 
-  // Flying into the scenery is fatal. The original keeps a minimum safe height
-  // for clearing objects; this is the same idea done as a cylinder test, so
-  // you can thread between two trees but not through one.
+  // Flying into the scenery. A tree is fatal, as it always was -- the original
+  // keeps a minimum safe height for clearing objects and this is the same idea
+  // done as a cylinder test, so you can thread between two trees but not
+  // through one.
+  //
+  // A stack of wooden blocks is not fatal. It falls over, which is the only
+  // thing a stack of blocks has ever done when something flew into it, and it
+  // would be a poor toy box that punished you for finding that out.
   hitScenery(game) {
-    if (this.protected) return false;
     const tx = this.x >> 24, tz = this.z >> 24;
 
     for (let dz = -1; dz <= 1; dz++) {
@@ -426,6 +431,9 @@ export class Player {
         const ox = (tx + dx) | 0, oz = (tz + dz) | 0;
         const type = objectAt(ox, oz);
         if (type < 0 || isWreck(type)) continue;
+
+        const blocks = isBlocks(type);
+        if (blocks && isKnocked(ox, oz)) continue;   // already down; fly over it
 
         const model = MODELS[type];
         const [jx, jz] = objectOffset(ox, oz);
@@ -442,11 +450,38 @@ export class Player {
         const top = (base - model.height) | 0;
         if ((this.y + UNDERCARRIAGE_Y) < top) continue;
 
+        if (blocks) {
+          this.knockOver(game, ox, oz, type, wx, base, wz);
+          continue;
+        }
+
+        if (this.protected) return false;
         this.die(game, 'crash');
         return true;
       }
     }
     return false;
+  }
+
+  // Shoulder a structure over. The harder you were going, the further the
+  // blocks fly; and you come off worse for it too, bouncing back and losing
+  // most of your speed, so barging through a village is a real decision
+  // rather than a free one.
+  knockOver(game, ox, oz, type, wx, base, wz) {
+    const speed = this.speed / TILE;
+    const force = Math.max(0.9, Math.min(3.2, 0.9 + speed * 26));
+    if (!topple(ox, oz, structureIndex(type), wx, base, wz, this.x, this.z, force)) return;
+
+    game.onBlocksKnocked(type, wx, base, wz, force);
+
+    // The rebound: away from the stack, and most of the way stopped.
+    let px = this.x - wx, pz = this.z - wz;
+    const len = Math.hypot(px, pz) || 1;
+    px /= len; pz /= len;
+    const kick = TILE * 0.010;
+    this.vx = (this.vx * 0.35 + px * kick) | 0;
+    this.vz = (this.vz * 0.35 + pz * kick) | 0;
+    this.vy = (this.vy * 0.5 - TILE * 0.004) | 0;
   }
 
   die(game, how) {

@@ -2,10 +2,11 @@
 //
 // Object placement, like the landscape itself, is a pure function of tile
 // coordinates: the map is infinite and stores nothing except which tiles have
-// been shot.
+// been shot -- and, for the block structures, which have been knocked over.
 
 import { TILE, hash2 } from './maths.js';
 import { Model, shade, mergeAt } from './model.js';
+import { STRUCTURES, resetBlocks } from './blocks.js';
 import { landAltitude, isOnLaunchpad, SEA_LEVEL, TILES_X, TILES_Z } from './landscape.js';
 
 // --- the models ------------------------------------------------------------
@@ -14,11 +15,6 @@ const TRUNK  = [102, 68, 34];
 const LEAF   = [34, 153, 51];
 const LEAF2  = [51, 170, 68];
 const FIR    = [17, 119, 68];
-const STONE  = [153, 153, 153];
-const ROOF   = [153, 51, 34];
-const WALL   = [204, 187, 153];
-const METAL  = [187, 187, 204];
-const NOSE   = [204, 68, 51];
 const CHAR   = [51, 42, 38];
 
 function smallLeafyTree() {
@@ -46,45 +42,6 @@ function firTree() {
   return m;
 }
 
-function gazebo() {
-  const m = new Model();
-  for (const [dx, dz] of [[-0.22, -0.22], [0.22, -0.22], [0.22, 0.22], [-0.22, 0.22]]) {
-    const sub = new Model();
-    sub.box(0.05, 0, 0.42, 0.05, STONE, STONE);
-    mergeAt(m, sub, dx, 0, dz);
-  }
-  const top = new Model();
-  top.drum(0.34, 0.34, 0.42, 0.48, 6, STONE, shade(STONE, 1.1));
-  top.cone(0.36, 0.46, 0.74, 6, ROOF);
-  mergeAt(m, top, 0, 0, 0);
-  return m;
-}
-
-function building() {
-  const m = new Model();
-  m.box(0.62, 0, 0.62, 0.52, shade(WALL, 1.1), WALL);
-  const roof = new Model();
-  roof.cone(0.46, 0.6, 0.98, 4, ROOF);
-  mergeAt(m, roof, 0, 0, 0);
-  return m;
-}
-
-function rocket() {
-  const m = new Model();
-  m.drum(0.17, 0.2, 0, 1.15, 8, METAL, null);
-  m.cone(0.17, 1.12, 1.62, 8, NOSE);
-  // Three fins around the base.
-  for (let i = 0; i < 3; i++) {
-    const a = (i / 3) * Math.PI * 2 + 0.4;
-    const cx = Math.cos(a), cz = Math.sin(a);
-    const v0 = m.vert(cx * 0.18, 0, cz * 0.18);
-    const v1 = m.vert(cx * 0.44, 0, cz * 0.44);
-    const v2 = m.vert(cx * 0.18, -0.42, cz * 0.18);
-    m.face([v0, v1, v2], shade(NOSE, 0.8 + 0.3 * cx));
-  }
-  return m;
-}
-
 // What is left after something is destroyed: a blackened stump.
 function remains(lean) {
   const m = new Model();
@@ -98,38 +55,52 @@ function remains(lean) {
 }
 
 
-// Object type ids. The live types come first; destroying one swaps it for the
-// matching wreck.
+// Object type ids. Trees first, then one id per block structure, then the
+// stumps a burnt tree leaves behind. Everything built is made of blocks, so
+// the structures share one contiguous run of ids and the code can tell them
+// apart from the scenery with a range check.
 export const OBJ = {
   SMALL_TREE: 0,
   TALL_TREE: 1,
   FIR_TREE: 2,
-  GAZEBO: 3,
-  BUILDING: 4,
-  ROCKET: 5,
-  REMAINS_L: 6,
-  REMAINS_R: 7,
+  BLOCKS_0: 3,
+  REMAINS_L: 3 + STRUCTURES.length,
+  REMAINS_R: 4 + STRUCTURES.length,
 };
 
 export const MODELS = [
   smallLeafyTree(),
   tallLeafyTree(),
   firTree(),
-  gazebo(),
-  building(),
-  rocket(),
+  ...STRUCTURES.map((st) => st.model),
   remains(-1),
   remains(1),
 ];
 
-// Score for shooting each type.
-export const OBJ_SCORE = [10, 15, 15, 40, 60, 100, 0, 0];
+// Score for shooting each type. Knocking over a structure pays the same as
+// blowing it up did -- the bigger the stack, the better.
+export const OBJ_SCORE = [
+  10, 15, 15,
+  50, 60, 90, 70, 55, 45,
+  0, 0,
+];
+
+// Is this one of the block structures?
+export function isBlocks(type) {
+  return type >= OBJ.BLOCKS_0 && type < OBJ.BLOCKS_0 + STRUCTURES.length;
+}
+
+// Which structure recipe a block type refers to.
+export function structureIndex(type) {
+  return type - OBJ.BLOCKS_0;
+}
 
 // Types that can be spawned onto the map, with their relative frequency.
 const SPAWN_TABLE = [
-  OBJ.SMALL_TREE, OBJ.SMALL_TREE, OBJ.SMALL_TREE, OBJ.SMALL_TREE,
+  OBJ.SMALL_TREE, OBJ.SMALL_TREE, OBJ.SMALL_TREE,
   OBJ.TALL_TREE, OBJ.TALL_TREE, OBJ.FIR_TREE, OBJ.FIR_TREE,
-  OBJ.GAZEBO, OBJ.BUILDING, OBJ.ROCKET,
+  OBJ.BLOCKS_0, OBJ.BLOCKS_0 + 1, OBJ.BLOCKS_0 + 2,
+  OBJ.BLOCKS_0 + 3, OBJ.BLOCKS_0 + 4, OBJ.BLOCKS_0 + 5,
 ];
 
 // ---------------------------------------------------------------------------
@@ -144,6 +115,7 @@ const destroyed = new Map(); // "x,z" -> wreck type
 
 export function resetObjects() {
   destroyed.clear();
+  resetBlocks();
 }
 
 const KEY = (tx, tz) => tx + ',' + tz;

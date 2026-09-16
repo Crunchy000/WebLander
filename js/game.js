@@ -14,8 +14,9 @@ import { Player, GRAVITY_START, CHARGE_MAX } from './player.js';
 import { drawModel, drawShadow, drawLightPool } from './model.js';
 import {
   MODELS, OBJ_SCORE, objectAt, objectOffset, destroyObject, isWreck,
-  resetObjects,
+  isBlocks, structureIndex, resetObjects,
 } from './objects.js';
+import { topple, updateBlocks, drawPile, pileAt } from './blocks.js';
 import {
   updateParticles, drawParticles, resetParticles, particleData,
   spawnExplosion, spawnSparks, spawnSmoke, particleCount, P_BULLET,
@@ -122,6 +123,14 @@ export class Game {
     this.player.die(this, 'shelled');
   }
 
+  // A structure has gone over. Points either way, but a stack shoved by the
+  // drone clatters; one that a bomb went off under does not get the chance.
+  onBlocksKnocked(type, x, y, z, force) {
+    this.addScore(OBJ_SCORE[type] || 0);
+    this.audio.clatter(Math.min(1, force / 2.2));
+    this.setMessage('TIMBER  +' + (OBJ_SCORE[type] || 0), 60);
+  }
+
   onTankDestroyed(x, y, z) {
     this.audio.bigBoom();
     // Name the reward. Without the number there is nothing tying the boom to
@@ -165,6 +174,7 @@ export class Game {
       // The landscape keeps drifting behind the title, as an attract mode.
       this.player.z = (this.player.z + TILE * 0.012) | 0;
       updateParticles(this.gravity, () => false);
+      updateBlocks();
       if (inp.consumeStart() || inp.thrust) {
         this.audio.start();
         this.newGame();
@@ -174,6 +184,7 @@ export class Game {
 
     if (this.state === STATE.DYING) {
       updateParticles(this.gravity, () => false);
+      updateBlocks();
       this.player.deathTimer--;
       if (this.player.deathTimer <= 0) this.respawn();
       if (this.messageTimer > 0) this.messageTimer--;
@@ -186,6 +197,7 @@ export class Game {
 
     updateTanks(this.player, this);
     updateBoats(this.player, this);
+    updateBlocks();
     updateParticles(this.gravity, (i, bx, by, bz) => this.bulletHit(i, bx, by, bz));
 
     // Wrecks smoke away for as long as they are in view.
@@ -228,6 +240,7 @@ export class Game {
         const ox = (tx + dx) | 0, oz = (tz + dz) | 0;
         const type = objectAt(ox, oz);
         if (type < 0 || isWreck(type)) continue;
+        if (isBlocks(type) && pileAt(ox, oz)) continue;   // already rubble
 
         const model = MODELS[type];
         const [jx, jz] = objectOffset(ox, oz);
@@ -240,6 +253,18 @@ export class Game {
         const r = model.radius / TILE + 0.12;
         if (ddx * ddx + ddz * ddz > r * r) continue;
         if (by < base - model.height || by > base + TILE * 0.2) continue;
+
+        if (isBlocks(type)) {
+          // A bomb underneath sends them a good deal further than a shoulder
+          // from the drone does.
+          if (!topple(ox, oz, structureIndex(type), wx, base, wz, bx, bz, 3.4)) continue;
+          this.addScore(OBJ_SCORE[type] || 0);
+          spawnSparks(wx, (base - MODELS[type].height / 2) | 0, wz, 12);
+          this.audio.blast();
+          this.audio.clatter(1);
+          this.setMessage('TIMBER  +' + (OBJ_SCORE[type] || 0), 60);
+          return true;
+        }
 
         this.destroy(ox, oz, type, wx, base, wz);
         return true;
@@ -512,6 +537,14 @@ export class Game {
       const wz = ((tz * TILE) | 0) + jz;
       const base = landAltitude(wx, wz);
       if (base >= SEA_LEVEL) continue;
+
+      // A structure that has been knocked over is no longer one model: it is
+      // its blocks again, wherever they have got to.
+      const pile = isBlocks(type) ? pileAt(tx, tz) : null;
+      if (pile) {
+        drawPile(this.rd, pile, eyeX, eyeY, eyeZ, haze, row);
+        continue;
+      }
 
       drawShadow(this.rd, wx, wz, model.radius * 0.85, 0.7,
                  eyeX, eyeY, eyeZ, row, haze, model.height * 0.5);
