@@ -189,5 +189,17 @@ function frame(now) {
 
 requestAnimationFrame(frame);
 
+// Offline play, and an end to the stale-module problem: the worker is
+// network first, so online you get whatever was last deployed and the cache
+// only answers when the network will not. Registered after the game is
+// running so it never delays the first frame, and quietly ignored where the
+// browser or the origin will not have it -- a service worker needs https or
+// localhost, and the game is perfectly happy without one.
+if ('serviceWorker' in navigator) {
+  addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+
 // Expose for debugging from the console.
 window.lander = { game, input, audio, renderer, calibration };
