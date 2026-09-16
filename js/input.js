@@ -82,9 +82,34 @@ export class Input {
   _bindMouse() {
     const c = this.canvas;
 
+    // Steering reads the pointer's position, not its movement, so the cursor
+    // leaving the canvas or the window losing focus used to strand the stick
+    // wherever it was last seen. Pointer lock fixes that at the source: the
+    // cursor cannot leave, because there is no longer a cursor.
+    //
+    // Locked, the browser reports movement rather than position, so the
+    // position is kept here instead and the same mapping applied to it. The
+    // gain is deliberately identical -- a movement of half the canvas width
+    // still means half deflection -- so locking changes nothing about how it
+    // flies, only that it cannot be lost.
+    document.addEventListener('pointerlockchange', () => {
+      this.locked = document.pointerLockElement === c;
+    });
+    document.addEventListener('pointerlockerror', () => { this.locked = false; });
+
     c.addEventListener('mousemove', (e) => {
       if (this.hasTouch && this.tiltEnabled) return;
       const r = c.getBoundingClientRect();
+      if (!r.width || !r.height) return;
+
+      if (this.locked) {
+        this.mouseStick = {
+          x: clamp(this.mouseStick.x + (e.movementX / (r.width / 2)), -1, 1),
+          y: clamp(this.mouseStick.y - (e.movementY / (r.height / 2)), -1, 1),
+        };
+        return;
+      }
+
       // Map the pointer's position within the canvas onto the stick, the same
       // way the original maps the mouse's 0-1023 range onto -512..+511.
       this.mouseStick = {
@@ -97,6 +122,9 @@ export class Input {
 
     c.addEventListener('mousedown', (e) => {
       e.preventDefault();
+      // Any click takes the pointer back, so wandering out of the window or
+      // pressing Escape costs one click rather than the rest of the flight.
+      this.grabPointer();
       if (e.button === 0) this.mouseThrust = 2;
       else if (e.button === 1) this.mouseThrust = 1;
       else if (e.button === 2) this.mouseFire = true;
@@ -112,6 +140,17 @@ export class Input {
     this.mouseStick = { x: 0, y: 0 };
     this.mouseThrust = 0;
     this.mouseFire = false;
+    this.locked = false;
+  }
+
+  // Ask for the pointer. Needs a user gesture, and throws if it is called too
+  // soon after the last exit, so every failure here is one to shrug at: the
+  // absolute mapping is still underneath and still flies.
+  grabPointer() {
+    if (this.hasTouch || this.locked) return;
+    try {
+      this.canvas.requestPointerLock?.();
+    } catch { /* not now, then */ }
   }
 
   // -- touch ----------------------------------------------------------------

@@ -83,14 +83,42 @@ startBtn.addEventListener('click', async () => {
   beginPlay();
 });
 
+// Fullscreen the whole document rather than the canvas alone, so the stage
+// keeps centring the picture and the overlay still has somewhere to sit. A
+// bare canvas element goes fullscreen as a raw bitmap and loses both.
+function fullscreenOn() {
+  const el = document.documentElement;
+  if (document.fullscreenElement) return;
+  (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el)?.catch?.(() => {});
+}
+
+function toggleFullscreen() {
+  if (document.fullscreenElement) document.exitFullscreen?.();
+  else fullscreenOn();
+}
+
+addEventListener('keydown', (e) => {
+  if (e.code === 'KeyF' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    e.preventDefault();
+    toggleFullscreen();
+  }
+});
+
 function beginPlay() {
   overlay.hidden = true;
   game.newGame();
 
-  if (canvas.requestFullscreen && input.hasTouch) {
-    canvas.requestFullscreen?.().catch(() => {});
-  }
+  // Both of these need the gesture that got us here, so they happen now or
+  // not at all. Losing either is survivable; neither is worth an error.
+  fullscreenOn();
+  input.grabPointer();
 }
+
+// Leaving fullscreen drops the pointer as well, so offer it back on the next
+// click rather than leaving the player wondering why steering went odd.
+document.addEventListener('fullscreenchange', () => {
+  if (document.fullscreenElement) input.grabPointer();
+});
 
 // Pause when the tab is hidden, so the ship is not quietly falling out of the
 // sky while you read your email.
