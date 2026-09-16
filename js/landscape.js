@@ -259,10 +259,13 @@ export function tileColour(prevAlt, alt, row, wx, wz, lift = 0) {
   return litColour(rgb, fogForRow(row));
 }
 
-// How much of a landscape row is lost to haze.
+// How much of a landscape row is lost to haze. Weather thickens it: murk
+// pushes the far rows towards solid and brings the near ones in as well, which
+// is what shrinks the world in bad visibility.
 export function fogForRow(row) {
   const t = 1 - (row - 1) / (TILES_Z - 2);
-  return Math.max(0, Math.min(1, FOG_MAX * t * t));
+  const reach = FOG_MAX + (1 - FOG_MAX) * sky.murk * 0.85;
+  return Math.max(0, Math.min(1, reach * t * (t + sky.murk * (1 - t))));
 }
 
 // The sky, and the haze that distant land fades into, now live in

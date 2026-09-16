@@ -14,6 +14,7 @@ import {
 } from './landscape.js';
 import { MODELS, objectAt, objectOffset, isWreck, isBlocks, structureIndex } from './objects.js';
 import { topple, isKnocked } from './blocks.js';
+import { weather } from './weather.js';
 import { project } from './renderer.js';
 import { spawnExhaust, spawnBomb, spawnExplosion, spawnSparks, spawnDust } from './particles.js';
 import { drawUav } from './uav.js';
@@ -272,8 +273,16 @@ export class Player {
       else this.emitExhaust(up, thrust);
     }
 
-    // Gravity, then damping, then move.
+    // Gravity, then wind, then damping, then move.
+    //
+    // Wind only has purchase on a machine that is off the ground. Sitting on
+    // its skids it is not going anywhere, and a craft that slid about the
+    // landing pad in a breeze would be maddening rather than atmospheric.
     this.vy = (this.vy + gravity) | 0;
+    if (!this.landed) {
+      this.vx = (this.vx + weather.windX) | 0;
+      this.vz = (this.vz + weather.windZ) | 0;
+    }
     this.vx = (this.vx * DRAG) | 0;
     this.vy = (this.vy * DRAG) | 0;
     this.vz = (this.vz * DRAG) | 0;

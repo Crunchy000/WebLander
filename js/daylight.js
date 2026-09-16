@@ -48,6 +48,8 @@ export const sky = {
   sunStrength: 1,     // how hard shadows are cast
   sunOffX: 0,         // which way shadows lean, -1 (left) to 1 (right)
   tick: 0,            // frames since the world started, for blinking things
+  murk: 0,            // extra haze from weather, 0 clear to 1 socked in
+  flash: 0,           // lightning, 1 at the strike and decaying
   epoch: -1,          // bumped when the tint changes enough to matter
 };
 
@@ -221,6 +223,14 @@ function makeStars() {
 }
 
 export const STARS = makeStars();
+
+// Weather rewrites the tint after the hour has set it, and the colour cache
+// downstream is only thrown away when the hour ticks over -- about three times
+// a second. That is fine for a front rolling in and far too slow for a
+// lightning strike, so anything that changes the light out of band says so.
+export function invalidateLight() {
+  litCache.clear();
+}
 
 // --- the light applied to everything solid ---------------------------------
 

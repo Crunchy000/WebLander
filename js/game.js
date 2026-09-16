@@ -10,6 +10,7 @@ import {
   sky, sun, moon, STARS, advanceDay, skyColourAt, SKY_BAND_1, SKY_BAND_2,
 } from './daylight.js';
 import { depthAt, waveLift, seaShade } from './sea.js';
+import { updateWeather, drawWeather, resetWeather } from './weather.js';
 import { project, SCREEN_W, SCREEN_H, CENTRE_X } from './renderer.js';
 import { Player, GRAVITY_START, CHARGE_MAX } from './player.js';
 import { drawModel, drawShadow, drawLightPool } from './model.js';
@@ -79,6 +80,7 @@ export class Game {
     resetParticles();
     resetTanks();
     resetBoats();
+    resetWeather();
     this.player.reset();
     this.state = STATE.PLAYING;
   }
@@ -170,6 +172,7 @@ export class Game {
   step() {
     const inp = this.input.sample();
     advanceDay(STEP_MS);
+    updateWeather(this.player.x, this.player.z);
 
     if (this.state === STATE.TITLE || this.state === STATE.GAMEOVER) {
       // The landscape keeps drifting behind the title, as an attract mode.
@@ -322,6 +325,7 @@ export class Game {
     drawParticles(rd, eyeX, eyeY, eyeZ);
     drawShells(rd, eyeX, eyeY, eyeZ);
     if (this.state === STATE.PLAYING) p.draw(rd, eyeX, eyeY, eyeZ);
+    drawWeather(rd, eyeX, eyeY, eyeZ);
     this.drawHud();
 
     rd.flush();

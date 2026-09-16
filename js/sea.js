@@ -23,6 +23,7 @@
 import { TILE, hash2 } from './maths.js';
 import { SEA_LEVEL, seabedAltitude } from './landscape.js';
 import { sky, sun, moon } from './daylight.js';
+import { weather } from './weather.js';
 import { CENTRE_X, FOCAL_X } from './renderer.js';
 
 // --- the swell -------------------------------------------------------------
@@ -76,9 +77,16 @@ const HEAVE = TILE * 0.075;
 
 // The vertical offset to draw a piece of water at. Positive y is down, so a
 // crest subtracts.
+// A blow gets up a bigger sea. Half again at the top end, which is enough to
+// notice without turning the swell into something the drone could not put a
+// boat-bombing run over.
+function seaState() {
+  return 0.72 + 0.62 * weather.strength;
+}
+
 export function waveLift(wx, wz, depth) {
   const t = taper(depth);
-  return t === 0 ? 0 : -(swell(wx, wz) * t * HEAVE) | 0;
+  return t === 0 ? 0 : -(swell(wx, wz) * t * HEAVE * seaState()) | 0;
 }
 
 // --- surf ------------------------------------------------------------------
@@ -122,11 +130,22 @@ const GLITTER_SHADE = 3.6;
 // free because the crests are what pass the threshold.
 const CREST = 0.45;
 
+// Whitecaps break higher up the swell than the glitter catches it.
+const CAP_AT = 0.62;
+const CAP_SHADE = 4.2;
+
 export function seaShade(wx, wz, vx, vz, depth) {
   const w = swell(wx, wz);
 
   // Swell, faded out in the shallows along with the geometry.
-  let lift = w * taper(depth) * SWELL_SHADE;
+  let lift = w * taper(depth) * SWELL_SHADE * seaState();
+
+  // Whitecaps. In a blow the crests break in open water too, not just where
+  // it is shallow enough to be surf.
+  if (weather.strength > 0.34 && w > CAP_AT) {
+    lift += ((w - CAP_AT) / (1 - CAP_AT))
+          * ((weather.strength - 0.34) / 0.66) * CAP_SHADE;
+  }
 
   // Surf: white water where it is shallow, arriving with the crests rather
   // than pulsing on a clock of its own.
