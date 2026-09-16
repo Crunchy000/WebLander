@@ -40,10 +40,10 @@ const CEILING_SOFT = HIGHEST_ALTITUDE + TILE * 1.2;
 // takes the same time on the ground.
 export const CHARGE_MAX = 0x8000;
 
-const THRUST_HOVER = 0x03300;   // stronger hover thrust for a faster UAV
-const THRUST_FULL  = 0x06000;   // higher full-throttle acceleration
-const MAX_LEAN = 0.62;          // radians at full stick deflection
-const LEAN_RATE = 0.22;         // how fast the craft follows the stick
+const THRUST_HOVER = 0x06600;   // hover thrust, doubled again for a much faster feel
+const THRUST_FULL  = 0x0C000;   // full-throttle thrust, doubled again
+const MAX_LEAN = 0.95;          // radians at full stick deflection -- steeper dives, more lean-to-speed
+const LEAN_RATE = 0.30;         // how fast the craft follows the stick -- snappier response
 const DRAG = 0.985;             // damping; without it the craft is unflyable
 
 const DRAW_HOVER = 3;    // power drawn per frame while hovering
