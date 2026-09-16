@@ -8,6 +8,7 @@
 
 import { TILE, sinLookup } from './maths.js';
 import { sky, litColour } from './daylight.js';
+import { groundBase, tintFor, tintLevel, TINT_STEPS } from './biome.js';
 
 // --- world constants -------------------------------------------------------
 //
@@ -156,7 +157,10 @@ const colourCache = new Map();
 // slope; `row` is the grid row, 1 at the horizon up to TILES_Z-1 at our feet.
 // Brightness is row + slope, which lights the scene from above and slightly
 // to the left, and fades the distance into shadow for free.
-export function tileColour(prevAlt, alt, row) {
+const base = [0, 0, 0];
+const tintScratch = [0, 0, 0];
+
+export function tileColour(prevAlt, alt, row, wx, wz) {
   let slope = (prevAlt - alt) | 0;
   if (slope < 0) slope = 0;
 
@@ -165,22 +169,22 @@ export function tileColour(prevAlt, alt, row) {
   if (alt === LAUNCHPAD_ALT) {
     // Concrete.
     r = 4; g = 4; b = 4;
-  } else if (alt === SEA_LEVEL && prevAlt === SEA_LEVEL) {
-    // Open water.
-    r = 0; g = 0; b = 4;
   } else {
-    // Green from bit 3 of the altitude, red from bit 2. Because those bits
-    // tumble almost randomly from one corner to the next, the ground comes
-    // out mottled -- gentle green flecked with patches of red-brown dirt.
-    g = ((alt & 8) >> 1) + 4;
-    r = alt & 4;
-    b = 0;
+    // What colour the ground is depends on where in the world it is, but not
+    // on how it is made: every biome mottles itself from bits 2 and 3 of the
+    // altitude, exactly as the temperate ground always did. Those bits tumble
+    // almost randomly from one corner to the next, and that is what gives the
+    // landscape its speckle -- the biome only decides what it is speckled
+    // with. Blending happens here, before the palette, so the quantisation
+    // dithers the borders for nothing.
+    groundBase(wx, wz, alt, alt === SEA_LEVEL && prevAlt === SEA_LEVEL, base);
+    r = base[0]; g = base[1]; b = base[2];
   }
 
   const bright = (row + (slope >>> 22)) | 0;
-  r += bright;
-  g += bright;
-  b += bright;
+  r = (r + bright) | 0;
+  g = (g + bright) | 0;
+  b = (b + bright) | 0;
 
   if (r > 15) r = 15;
   if (g > 15) g = 15;
@@ -191,6 +195,25 @@ export function tileColour(prevAlt, alt, row) {
   if (rgb === undefined) {
     rgb = vidcToRgb(byte);
     colourCache.set(byte, rgb);
+  }
+
+  // The biome's own tint, laid over the palette so it survives the clipping
+  // that the row brightness causes. Keyed on the quantised climate, so the
+  // cache holds at most seventeen variants of each palette entry.
+  const level = tintLevel(wx, wz);
+  if (level !== TINT_STEPS) {
+    const key = byte | ((level + 1) << 9);
+    let tinted = colourCache.get(key);
+    if (tinted === undefined) {
+      tintFor(level, tintScratch);
+      tinted = [
+        Math.min(255, Math.round(rgb[0] * tintScratch[0])),
+        Math.min(255, Math.round(rgb[1] * tintScratch[1])),
+        Math.min(255, Math.round(rgb[2] * tintScratch[2])),
+      ];
+      colourCache.set(key, tinted);
+    }
+    rgb = tinted;
   }
 
   // Time of day and haze, both applied after the palette so the quantisation

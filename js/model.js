@@ -307,7 +307,7 @@ export function drawGroundPatch(rd, wx, wz, radius, strength, tint, camX, camY, 
   // Ground colour here, darkened. Passing the same altitude twice gives a
   // flat-lit sample, which is what we want -- the shadow should not inherit
   // the slope shading of whichever tile it happens to sit on.
-  const base = tileColour(ground, ground, row);
+  const base = tileColour(ground, ground, row, wx, wz);
   const col = [
     Math.round(base[0] + (tint[0] - base[0]) * strength),
     Math.round(base[1] + (tint[1] - base[1]) * strength),

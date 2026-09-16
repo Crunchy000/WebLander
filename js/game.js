@@ -451,7 +451,7 @@ export class Game {
 
         // Fill the tile whose far-left corner we saw last row.
         if (j > 0 && i > 0 && ok && this.rowOk[i - 1] && this.prevOk[i] && this.prevOk[i - 1]) {
-          const col = tileColour(prevAlt, alt, j);
+          const col = tileColour(prevAlt, alt, j, worldX, worldZ);
           rd.quad(
             this.prevX[i - 1], this.prevY[i - 1],
             this.prevX[i], this.prevY[i],
