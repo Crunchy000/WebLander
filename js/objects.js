@@ -96,11 +96,20 @@ export function structureIndex(type) {
 }
 
 // Types that can be spawned onto the map, with their relative frequency.
-const SPAWN_TABLE = [
+//
+// Every structure recipe gets exactly one entry, and the tree list is
+// repeated to set how often a built thing turns up at all -- three passes of
+// it puts a structure on roughly one occupied tile in five. Halving that is a
+// matter of adding another pass, not of dropping recipes, which would quietly
+// retire whichever ones came last.
+const TREES = [
   OBJ.SMALL_TREE, OBJ.SMALL_TREE, OBJ.SMALL_TREE,
   OBJ.TALL_TREE, OBJ.TALL_TREE, OBJ.FIR_TREE, OBJ.FIR_TREE,
-  OBJ.BLOCKS_0, OBJ.BLOCKS_0 + 1, OBJ.BLOCKS_0 + 2,
-  OBJ.BLOCKS_0 + 3, OBJ.BLOCKS_0 + 4, OBJ.BLOCKS_0 + 5,
+];
+
+const SPAWN_TABLE = [
+  ...TREES, ...TREES, ...TREES,
+  ...STRUCTURES.map((_, i) => OBJ.BLOCKS_0 + i),
 ];
 
 // ---------------------------------------------------------------------------

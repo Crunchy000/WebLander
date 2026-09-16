@@ -234,9 +234,11 @@ export class Game {
     }
 
     // Check the tile the bullet is over, and its neighbours, for scenery.
+    // Two tiles either way: a block structure can reach that far from the
+    // tile it is recorded on.
     const tx = bx >> 24, tz = bz >> 24;
-    for (let dz = -1; dz <= 1; dz++) {
-      for (let dx = -1; dx <= 1; dx++) {
+    for (let dz = -2; dz <= 2; dz++) {
+      for (let dx = -2; dx <= 2; dx++) {
         const ox = (tx + dx) | 0, oz = (tz + dz) | 0;
         const type = objectAt(ox, oz);
         if (type < 0 || isWreck(type)) continue;

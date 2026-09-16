@@ -219,10 +219,22 @@ export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ, fog =
     if (idx.length === 3) {
       rd.tri(scratch[i0], scratch[i0 + 1], scratch[i1], scratch[i1 + 1],
              scratch[i2], scratch[i2 + 1], col);
-    } else {
+    } else if (idx.length === 4) {
       const i3 = idx[3] * 3;
       rd.quad(scratch[i0], scratch[i0 + 1], scratch[i1], scratch[i1 + 1],
               scratch[i2], scratch[i2 + 1], scratch[i3], scratch[i3 + 1], col);
+    } else {
+      // Anything with more corners than that is fanned from its first vertex.
+      // These are all caps -- the end of a half-round, the top of a turned
+      // cylinder, the lid of a tree's foliage drum -- and they are convex, so
+      // a fan is exact. Without this they were drawn as a quad of their first
+      // four corners and the rest were simply dropped, which is what made the
+      // arch caps look torn.
+      for (let k = 1; k + 1 < idx.length; k++) {
+        const a = idx[k] * 3, b = idx[k + 1] * 3;
+        rd.tri(scratch[i0], scratch[i0 + 1], scratch[a], scratch[a + 1],
+               scratch[b], scratch[b + 1], col);
+      }
     }
   }
 }

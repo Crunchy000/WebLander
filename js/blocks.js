@@ -142,9 +142,12 @@ function place(model, x, y, z, halfExtents, yaw = 0) {
 
 const cube  = (s, col) => boxBlock(s, s, s, col);
 
-// The recipes. Sizes are in tiles; a "unit" block is 0.3 of a tile, which
-// puts a five-high tower at roughly the height of the trees it stands among.
-const U = 0.3;
+// The recipes. Sizes are in tiles; a "unit" block is 0.6 of a tile, which
+// puts a five-high tower well clear of the trees it stands among. There are
+// correspondingly fewer of them on the map -- see the spawn table in
+// objects.js -- because at this size a structure is a landmark rather than
+// scenery, and a landscape full of landmarks has none.
+const U = 0.6;
 
 function tower() {
   const cols = [RED, BLUE, YELLOW, GREEN];

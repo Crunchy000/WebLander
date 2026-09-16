@@ -51,6 +51,7 @@ const RELEASE_SPEED = TILE * 0.010;
 // Clearance, in tiles, within which the rotors start lifting dust.
 const WASH_HEIGHT = 2.6;
 const SHIP_RADIUS = 0.3;   // in tiles, for scenery collisions
+const SCAN = 2;            // tiles either way to test for scenery
 
 // Getting off the pad is the fiddliest moment in the game, so the first few
 // seconds of every life are free: you can scrape the ground, clip a tree or
@@ -426,8 +427,11 @@ export class Player {
   hitScenery(game) {
     const tx = this.x >> 24, tz = this.z >> 24;
 
-    for (let dz = -1; dz <= 1; dz++) {
-      for (let dx = -1; dx <= 1; dx++) {
+    // Two tiles either way, not one. A block structure now reaches over a
+    // tile from its own centre, so a neighbour-only scan could put you
+    // through the end of a bridge without ever testing it.
+    for (let dz = -SCAN; dz <= SCAN; dz++) {
+      for (let dx = -SCAN; dx <= SCAN; dx++) {
         const ox = (tx + dx) | 0, oz = (tz + dz) | 0;
         const type = objectAt(ox, oz);
         if (type < 0 || isWreck(type)) continue;
