@@ -28,6 +28,7 @@ export const weather = {
   windX: 0,        // push on anything airborne, fixed point per frame
   windZ: 0,
   strength: 0,     // wind as a fraction of a gale, for things that only care how hard
+  struck: false,   // true on the single frame a bolt goes, for the thunder
 };
 
 // --- how the weather moves -------------------------------------------------
@@ -51,6 +52,7 @@ export function resetWeather() {
   weather.wet = 0;
   weather.kind = CLEAR;
   weather.windX = weather.windZ = weather.strength = 0;
+  weather.struck = false;
   sky.murk = 0;
   sky.flash = 0;
   flash = flashHold = 0;
@@ -108,12 +110,14 @@ export function updateWeather(px, pz) {
   }
 
   // Lightning, only in the heaviest rain.
+  weather.struck = false;
   if (flashHold > 0) {
     flashHold--;
     flash *= 0.72;
   } else if (weather.kind === RAIN && wet > 0.72 && rnd() < 0.006) {
     flash = 1;
     flashHold = 7;
+    weather.struck = true;
   } else {
     flash = 0;
   }

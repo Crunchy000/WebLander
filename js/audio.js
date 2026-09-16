@@ -95,7 +95,142 @@ export class Audio {
     this.engineOsc.start();
     rumble.start();
 
+    this._buildWeather(ctx);
+
     this.enabled = true;
+  }
+
+  // --- weather ambience ----------------------------------------------------
+  //
+  // Two continuous voices, built once and left running with their gains at
+  // zero. Starting and stopping sources as fronts come and go would click;
+  // riding a gain does not.
+  //
+  // Both are shaped for something you would not mind having on in the
+  // background for an hour. Rain is rolled off hard at the top -- unfiltered
+  // noise is a hiss, and a hiss is fatiguing within a minute. Wind is slow
+  // and mostly below the voice range. Thunder rolls rather than cracks.
+  _buildWeather(ctx) {
+    // A separate noise source per voice, at different rates, so the two beds
+    // are not correlated. One source feeding both would make the wind sound
+    // like the rain getting louder.
+    const bed = (rate) => {
+      const src = ctx.createBufferSource();
+      src.buffer = this.noise;
+      src.loop = true;
+      src.playbackRate.value = rate;
+      return src;
+    };
+
+    // Rain: broadband, but with the top taken off so it is a wash rather
+    // than a hiss, and the bottom cut so it does not muddy the engine.
+    this.rainGain = ctx.createGain();
+    this.rainGain.gain.value = 0;
+    this.rainLow = ctx.createBiquadFilter();
+    this.rainLow.type = 'lowpass';
+    this.rainLow.frequency.value = 1500;
+    this.rainLow.Q.value = 0.4;
+    const rainHigh = ctx.createBiquadFilter();
+    rainHigh.type = 'highpass';
+    rainHigh.frequency.value = 420;
+
+    const rainSrc = bed(1.0);
+    rainSrc.connect(rainHigh).connect(this.rainLow).connect(this.rainGain).connect(this.master);
+    rainSrc.start();
+
+    // A slow wander on the brightness, which is what stops a noise bed
+    // sounding like a broken tap: real rain comes in waves.
+    const rainLfo = ctx.createOscillator();
+    rainLfo.type = 'sine';
+    rainLfo.frequency.value = 0.09;
+    const rainSweep = ctx.createGain();
+    rainSweep.gain.value = 260;
+    rainLfo.connect(rainSweep).connect(this.rainLow.frequency);
+    rainLfo.start();
+
+    // Wind: low, broad, and slowly swept. The resonance is what gives it a
+    // note to rise and fall on rather than just getting louder.
+    this.windGain = ctx.createGain();
+    this.windGain.gain.value = 0;
+    this.windFilter = ctx.createBiquadFilter();
+    this.windFilter.type = 'bandpass';
+    this.windFilter.frequency.value = 220;
+    this.windFilter.Q.value = 1.05;
+
+    const windSrc = bed(0.73);
+    windSrc.connect(this.windFilter).connect(this.windGain).connect(this.master);
+    windSrc.start();
+
+    const windLfo = ctx.createOscillator();
+    windLfo.type = 'sine';
+    windLfo.frequency.value = 0.055;
+    const windSweep = ctx.createGain();
+    windSweep.gain.value = 120;
+    windLfo.connect(windSweep).connect(this.windFilter.frequency);
+    windLfo.start();
+
+    // A second, slower sweep an odd interval away, so the gusting never
+    // settles into an obvious loop.
+    const windLfo2 = ctx.createOscillator();
+    windLfo2.type = 'sine';
+    windLfo2.frequency.value = 0.023;
+    const windSweep2 = ctx.createGain();
+    windSweep2.gain.value = 70;
+    windLfo2.connect(windSweep2).connect(this.windFilter.frequency);
+    windLfo2.start();
+
+    this._rainAt = -1;
+    this._windAt = -1;
+  }
+
+  // Ride the two beds. Called every step; the guards keep it from queueing an
+  // automation event fifty times a second for a value that has not moved.
+  //
+  // `wet` and `wind` are 0 to 1. Snow is left nearly silent on purpose --
+  // falling snow makes almost no sound, and the hush is the point of it.
+  ambience(wet, wind, snowing) {
+    if (!this.enabled) return;
+    const t = this.ctx.currentTime;
+
+    const rain = snowing ? wet * 0.06 : wet;
+    const rainTarget = rain * 0.34;
+    if (Math.abs(rainTarget - this._rainAt) > 0.004) {
+      this._rainAt = rainTarget;
+      this.rainGain.gain.setTargetAtTime(rainTarget, t, 0.9);
+      // Heavier rain is brighter as well as louder, which is most of how you
+      // tell a shower from a downpour with your eyes shut.
+      this.rainLow.frequency.setTargetAtTime(900 + rain * 2100, t, 1.2);
+    }
+
+    const windTarget = Math.max(0, wind - 0.12) * 0.40;
+    if (Math.abs(windTarget - this._windAt) > 0.004) {
+      this._windAt = windTarget;
+      this.windGain.gain.setTargetAtTime(windTarget, t, 1.4);
+    }
+  }
+
+  // Distant thunder. The delay is the point: the flash arrives first and the
+  // sound rolls in afterwards, which is the whole reason a storm feels like it
+  // has a somewhere to be.
+  thunder() {
+    if (!this.enabled) return;
+    const ctx = this.ctx;
+    const far = 0.35 + Math.random() * 0.65;      // 0 close, 1 miles off
+    const delay = 0.5 + far * 3.4;
+    const level = 0.62 - far * 0.34;
+
+    // The body: a long, soft swell of low noise.
+    this._noise({ dur: 1.6 + far * 1.8, type: 'lowpass',
+                  f0: 300 - far * 170, f1: 70, gain: level, q: 0.6, delay });
+    // A second roll behind it, so it rumbles on rather than stopping.
+    this._noise({ dur: 2.4 + far * 2.2, type: 'lowpass',
+                  f0: 150, f1: 48, gain: level * 0.7, q: 0.5,
+                  delay: delay + 0.45 + far * 0.7 });
+    // Only a near strike gets any edge on it at all.
+    if (far < 0.5) {
+      this._noise({ dur: 0.30, type: 'bandpass', f0: 900, f1: 260,
+                    gain: (0.5 - far) * 0.5, q: 0.8, dest: this.crackBus, delay });
+    }
   }
 
   setMuted(m) {
