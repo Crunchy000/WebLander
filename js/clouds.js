@@ -17,7 +17,7 @@
 import { sky, sun, skyColourAt, SKY_BAND_2 } from './daylight.js';
 import { SCREEN_W } from './renderer.js';
 
-const COUNT = 11;
+const COUNT = 15;
 
 // The band clouds live in. The top of the screen and the horizon are both
 // left clear: one because a cloud jammed into the corner looks like a mistake,
@@ -79,7 +79,7 @@ function mix(out, a, b, t) {
   return out;
 }
 
-// Step across the cloud in columns this wide. Three pixels is fine on a 320
+// Step across the cloud in columns this wide. Three pixels is fine on a 456
 // wide screen and keeps a sky full of cloud down to a few hundred triangles.
 const STEP = 3;
 

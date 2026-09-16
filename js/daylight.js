@@ -198,7 +198,7 @@ export function skyColourAt(y) {
 // A fixed field, generated once. They do not move: the camera never rotates
 // and never rolls, so a star painted at a screen position stays put, which is
 // exactly what a star at infinity would do anyway.
-const STAR_COUNT = 120;
+const STAR_COUNT = 170;   // scaled with the width of the sky
 
 function makeStars() {
   let s = 0x2f6e2b1;

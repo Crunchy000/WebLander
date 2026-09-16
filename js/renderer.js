@@ -1,7 +1,7 @@
 // renderer.js -- a painter's-algorithm triangle batcher on WebGL.
 //
 // Everything the game draws -- landscape tiles, ship, scenery, particles,
-// HUD -- ends up as flat-shaded triangles in 320x256 *pixel* space. The
+// HUD -- ends up as flat-shaded triangles in 456x256 *pixel* space. The
 // projection is done on the CPU (it is only a few hundred vertices, and doing
 // it here keeps it identical to the original's), so the GPU's only job is to
 // fill triangles in the order it is handed them.
@@ -11,18 +11,19 @@
 // so painter's algorithm survives the port intact -- including the places
 // where it is technically wrong and the original just lived with it.
 
-export const SCREEN_W = 320;
+export const SCREEN_W = 456;
 export const SCREEN_H = 256;
 
 // Screen centre for the projection. The horizontal centre is the middle of
 // the screen, but the vertical centre sits high, at y = 64 -- that is what
 // tips the view down over the landscape without the camera ever rotating.
-export const CENTRE_X = 160;
+export const CENTRE_X = 228;
 export const CENTRE_Y = 64;
 
-// Focal length, in pixels. Chosen so that the back row of the landscape --
-// twenty tiles out and twelve tiles wide -- very nearly spans the screen,
-// which is what makes the view read as a landscape rather than a wedge.
+// Focal length, in pixels. It is deliberately NOT adjusted for the wider
+// screen: widening the buffer at a fixed focal length shows more world either
+// side rather than stretching what was already there, which is the whole
+// point. The landscape grid was widened to match -- see TILES_X.
 export const FOCAL_X = 512;
 export const FOCAL_Y = 512;
 

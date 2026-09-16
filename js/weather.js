@@ -160,7 +160,7 @@ function greyOut(col, amount) {
 // and no drop is ever simulated where it cannot be seen.
 
 const MAX_DROPS = 300;
-const BOX_X = 11 * TILE;      // half-width of the box
+const BOX_X = 15 * TILE;      // half-width of the box, widened with the view
 const BOX_Z_BACK = 4 * TILE;
 const BOX_Z_FWD = 17 * TILE;
 const BOX_TOP = -4.5 * TILE;  // remember +y is down
@@ -268,7 +268,7 @@ export function drawWeather(rd, camX, camY, camZ) {
     const by = (drops[o + 1] - camY - fall * tail) | 0;
     if (!project(bx, by, vz, pb)) continue;
 
-    // A streak with a little width, so it survives the 320-wide screen.
+    // A streak with a little width, so it survives at this resolution.
     const w = projScale(vz) * TILE > 0.7 ? 1 : 0.6;
     rd.quad(pa.x - w, pa.y, pa.x + w, pa.y, pb.x + w, pb.y, pb.x - w, pb.y, col);
   }

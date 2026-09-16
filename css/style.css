@@ -26,14 +26,14 @@ html, body {
   touch-action: none;
 }
 
-/* The canvas is a true 320x256 buffer scaled up with hard pixel edges, so the
+/* The canvas is a true 456x256 buffer scaled up with hard pixel edges, so the
    game looks exactly like it did on a 1987 monitor rather than a blurry
    interpolation of it. */
 #screen {
   display: block;
   width: 100%;
   height: auto;
-  max-width: calc(100vh * 320 / 256);
+  max-width: calc(100vh * 456 / 256);
   max-height: 100vh;
   image-rendering: pixelated;
   image-rendering: crisp-edges;

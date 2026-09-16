@@ -40,7 +40,17 @@ export class Input {
     this.keys = new Set();
     this.keyStick = { x: 0, y: 0 };
 
+    // A console is not a phone, but it looks like one to feature detection: a
+    // gamepad counts as a coarse pointer and Edge on Xbox reports touch points
+    // it has no way to deliver. That is why the tilt calibration turned up on
+    // a television. A connected gamepad settles it -- nothing with a pad
+    // wants a tilt sensor -- so the touch interface is gated on both.
     this.hasTouch = matchMedia('(pointer: coarse)').matches && (navigator.maxTouchPoints || 0) > 0;
+    this.padConnected = this._anyPad();
+    this.onPadChange = null;
+
+    addEventListener('gamepadconnected', () => this._padChanged(true));
+    addEventListener('gamepaddisconnected', () => this._padChanged(this._anyPad()));
     this.tiltEnabled = false;
     this.tiltZero = null;         // neutral orientation, set on start
     this.tiltRaw = null;
@@ -57,6 +67,27 @@ export class Input {
     this._bindKeyboard();
     this._bindMouse();
     this._bindTouch();
+  }
+
+  // Is a pad plugged in right now? Asked at startup as well as listened for:
+  // gamepadconnected only fires on a change, and on a console the pad was
+  // already there before the page existed.
+  _anyPad() {
+    if (!navigator.getGamepads) return false;
+    for (const p of navigator.getGamepads()) if (p && p.connected) return true;
+    return false;
+  }
+
+  _padChanged(now) {
+    if (now === this.padConnected) return;
+    this.padConnected = now;
+    this.onPadChange?.(now);
+  }
+
+  // Which control help and which on-screen furniture this device should get.
+  // Touch only wins when there is no pad to prefer.
+  get touchUi() {
+    return this.hasTouch && !this.padConnected;
   }
 
   // -- keyboard -------------------------------------------------------------
@@ -98,7 +129,7 @@ export class Input {
     document.addEventListener('pointerlockerror', () => { this.locked = false; });
 
     c.addEventListener('mousemove', (e) => {
-      if (this.hasTouch && this.tiltEnabled) return;
+      if (this.touchUi && this.tiltEnabled) return;
       const r = c.getBoundingClientRect();
       if (!r.width || !r.height) return;
 
@@ -147,7 +178,9 @@ export class Input {
   // soon after the last exit, so every failure here is one to shrug at: the
   // absolute mapping is still underneath and still flies.
   grabPointer() {
-    if (this.hasTouch || this.locked) return;
+    // Nothing to capture on a console or a handset, and asking would only
+    // fail noisily.
+    if (this.hasTouch || this.padConnected || this.locked) return;
     try {
       this.canvas.requestPointerLock?.();
     } catch { /* not now, then */ }
@@ -311,6 +344,10 @@ export class Input {
     for (const p of pads) {
       if (p && p.connected) { pad = p; break; }
     }
+    // Some browsers keep getGamepads empty until the first button press, so
+    // the poll doubles as detection rather than trusting the event alone.
+    this._padChanged(!!pad);
+
     if (!pad) {
       this.padActive = false;
       this.padAnyButton = false;

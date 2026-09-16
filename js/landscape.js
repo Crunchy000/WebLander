@@ -23,8 +23,12 @@ export const LAUNCHPAD_SIZE    = TILE * 8;          // 8 tiles square
 export const UNDERCARRIAGE_Y   = 0x00640000;        // ship centre -> feet
 export const LAUNCHPAD_Y       = LAUNCHPAD_ALT - UNDERCARRIAGE_Y;
 
-// The visible grid.
-export const TILES_X = 19;   // corners left-to-right (18 tiles)
+// The visible grid. Its width is set by the screen: the farthest row is 26
+// tiles out, so at a focal length of 512 each tile of half-width buys about
+// 19px of screen either side of centre, and the grid must guarantee half the
+// buffer width at that distance or the horizon stops short of the corners.
+// Widening the screen to 16:9 is what took this from 19 to 26.
+export const TILES_X = 26;   // corners left-to-right (25 tiles)
 export const TILES_Z = 17;   // corners front-to-back (16 tiles)
 
 export const LANDSCAPE_X = (TILE * (TILES_X - 2)) / 2;          // 5.5 tiles
