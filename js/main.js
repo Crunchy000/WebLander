@@ -67,6 +67,17 @@ setInterval(() => {
 startBtn.addEventListener('click', async () => {
   audio.start();
 
+  // Fullscreen first, and synchronously. It spends the gesture that got us
+  // here, and everything below this line may await -- by which point the
+  // activation can be gone and the request refused. This is why fullscreen
+  // only worked from cursor mode.
+  fullscreenOn();
+
+  // The A press that activated this button is also what reveals the pad to
+  // the browser, so padConnected is still a stale "no" at this instant unless
+  // we ask again.
+  input.refreshPads();
+
   if (input.touchUi) {
     const ok = await input.enableTilt();
     if (!ok) {
@@ -123,7 +134,7 @@ function beginPlay() {
   // on the canvas grabs the pointer, F toggles fullscreen -- so neither is
   // worth an error.
   input.grabPointer();
-  fullscreenOn();
+  fullscreenOn();   // no-op if the click already got it
 }
 
 // Leaving fullscreen drops the pointer as well, so offer it back on the next

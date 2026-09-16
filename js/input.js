@@ -91,6 +91,15 @@ export class Input {
     this.onPadChange?.(now);
   }
 
+  // Ask the browser again whether a pad is there. Worth doing at the moment
+  // a button is pressed: on a console the first press is what reveals the pad
+  // in the first place, so anything deciding on the strength of padConnected
+  // during that same press would otherwise be reading a stale no.
+  refreshPads() {
+    this._padChanged(this._anyPad());
+    return this.padConnected;
+  }
+
   // Should the pad be steering, including while it sits perfectly still?
   //
   // Taking it only when the stick is deflected looked reasonable and flies
@@ -282,14 +291,30 @@ export class Input {
       }
     }
 
-    addEventListener('deviceorientation', (e) => {
-      if (e.beta === null && e.gamma === null) return;
-      this.tiltRaw = { beta: e.beta || 0, gamma: e.gamma || 0 };
-      if (!this.tiltZero) this.calibrateTilt();
-      this.tiltEnabled = true;
-    });
+    // The constructor existing proves nothing. Edge on a console has
+    // DeviceOrientationEvent and no sensor whatsoever, and returning true on
+    // that basis is what put a tilt calibration screen on a television. Only
+    // an actual reading counts as a sensor.
+    //
+    // The listener stays attached either way: a handset that is slow to
+    // report still gets tilt once it starts, it just will not have been
+    // waited for.
+    return await new Promise((resolve) => {
+      let settled = false;
+      const settle = (ok) => { if (!settled) { settled = true; resolve(ok); } };
 
-    return true;
+      addEventListener('deviceorientation', (e) => {
+        if (e.beta === null && e.gamma === null) return;
+        this.tiltRaw = { beta: e.beta || 0, gamma: e.gamma || 0 };
+        if (!this.tiltZero) this.calibrateTilt();
+        this.tiltEnabled = true;
+        settle(true);
+      });
+
+      // Long enough for a real sensor to speak up, short enough not to be a
+      // pause on the way into the game.
+      setTimeout(() => settle(false), 350);
+    });
   }
 
   // Take the current orientation as "stick centred", so the game is playable
