@@ -104,12 +104,22 @@ becomes the craft's heading, and how far you push it becomes how far its nose
 drops. Thrust acts along the roof, so a nose-down attitude carries you along
 the heading — trading lift for speed.
 
-**Hover does not make that trade.** It holds the craft inside 45° of lean and
-divides its thrust by the cosine of it, so the share pointing at the sky stays
-the same however far you are tipped over: lean on hover buys speed and costs
-no height. Full thrust is the opposite and is left alone — it reaches 90°, and
-past about 78° of that there is not enough lift left to hold you up. One
-setting to place the craft with, one to fly it with.
+**Hover does not make that trade** — it keeps the height it is at. The
+sky-facing share of its thrust goes on carrying the craft's weight rather than
+on gaining altitude, so leaning buys speed and costs nothing: measured over
+five seconds at 0°, 19° and 45° of lean, the drift is zero tiles in all three.
+Arriving at a hover from a dive is a catch, not a wall — a 1 tile/s descent
+stops in about a third of a second.
+
+Below half a tile of clearance hover goes back to being a throttle, because a
+hold cannot lift a machine that is already resting on its skids; from the pad
+it flies you up to about three quarters of a tile and stops there. The same
+rule means ground rising under you puts the throttle back in your hand rather
+than flying you into it.
+
+So the vertical control is three-way: **full thrust climbs, hover holds,
+nothing descends.** Full thrust is untouched and still reaches 90° of lean,
+past about 78° of which there is not enough lift left to hold you up.
 
 The lean limit **latches on the last thrust you asked for** rather than
 lasting only while the button is down. Tap hover and the craft stays a 45°

@@ -51,12 +51,18 @@ const MAX_LEAN = Math.PI / 2;   // radians at full stick deflection -- exactly 9
 // capped where it always climbs -- at 45 degrees it still makes 1.6 tiles/s
 // with the stick buried.
 const HOVER_LEAN = Math.PI / 4;
-// Hover divides its thrust by the cosine of the lean, so the part of it
-// pointing at the sky stays the same however far the craft is tipped over:
-// lean in hover buys speed without costing height. The floor bounds the
-// compensation -- at the 45 degree cap it is 1.41x, and if that cap were ever
-// opened up it can never ask for more than double.
-const HOVER_FLOOR = Math.max(Math.cos(HOVER_LEAN), 0.5);
+// How fast a hovering craft settles to a standstill vertically. Applied every
+// frame to whatever vertical speed is left, so arriving at a hover from a
+// dive is a catch rather than a wall: a 2 tiles/s descent is down to a tenth
+// of that in about a quarter of a second.
+const HOVER_SETTLE = 0.80;
+// How much daylight the craft needs under it before hover stops pushing and
+// starts holding. `landed` alone is too fine a gate -- the skids clear the
+// ground by a thousandth of a tile, the hold takes over and the machine is
+// pinned there. It doubles as the reason a hover will not fly you into a
+// hillside: ground rising under you eats the clearance, and hover goes back
+// to being a throttle until it has the room again.
+const HOVER_CLEAR = TILE * 0.6;
 const LEAN_RATE = 0.30;         // how fast the craft follows the stick -- snappier response
 const DRAG = 0.985;             // damping; without it the craft is unflyable
 
@@ -309,19 +315,22 @@ export class Player {
     }
     this.thrusting = thrust;
 
+    // Hover holds the height it is at, but only once there is a height worth
+    // holding: a machine on its skids needs lifting off them first, and a
+    // hold cannot lift what is already resting. Below the clearance hover is
+    // a throttle; above it, a brake.
+    const holding = thrust === 1 && !this.landed && this.altitude > HOVER_CLEAR;
+
     if (thrust) {
-      let power = (thrust === 2 ? THRUST_FULL : THRUST_HOVER) * lift;
-      // Hover keeps whatever climb it had, at any lean it allows. Thrust acts
-      // along the roof, so tipping the craft over normally robs the sky of
-      // its share; dividing by the cosine puts that share back. Full thrust
-      // is left alone -- trading lift for speed is the flying, and a machine
-      // that could not be made to sink would not be one.
-      if (thrust === 1) power /= Math.max(Math.cos(this.lean), HOVER_FLOOR);
+      const power = (thrust === 2 ? THRUST_FULL : THRUST_HOVER) * lift;
       // "Up" in ship space is -y, since y points down.
       const up = matApply(this.matrix, 0, -1, 0);
       this.vx = (this.vx + up[0] * power) | 0;
-      this.vy = (this.vy + up[1] * power) | 0;
       this.vz = (this.vz + up[2] * power) | 0;
+      // A hovering craft spends the sky-facing share of its thrust standing
+      // still rather than climbing; that is dealt with below, where gravity
+      // is. Everything else pushes with all of it.
+      if (!holding) this.vy = (this.vy + up[1] * power) | 0;
 
       // Rotors turning still cost something, but pushing at a ceiling for no
       // lift should not drain the pack at the full rate.
@@ -338,7 +347,11 @@ export class Player {
     // Wind only has purchase on a machine that is off the ground. Sitting on
     // its skids it is not going anywhere, and a craft that slid about the
     // landing pad in a breeze would be maddening rather than atmospheric.
-    this.vy = (this.vy + gravity) | 0;
+    // A hovering craft carries its own weight, so gravity is taken off it --
+    // all but the share the thinning air at the ceiling has already stopped
+    // it from answering. Push a hover up there and it starts to sink, same as
+    // anything else.
+    this.vy = (this.vy + (holding ? Math.round(gravity * (1 - lift)) : gravity)) | 0;
     if (!this.landed) {
       this.vx = (this.vx + weather.windX) | 0;
       this.vz = (this.vz + weather.windZ) | 0;
@@ -346,6 +359,10 @@ export class Player {
     this.vx = (this.vx * DRAG) | 0;
     this.vy = (this.vy * DRAG) | 0;
     this.vz = (this.vz * DRAG) | 0;
+
+    // ... and whatever vertical speed it still had is bled away, so it comes
+    // to rest at the height it was given rather than drifting off it.
+    if (holding) this.vy = (this.vy * HOVER_SETTLE) | 0;
 
     this.x = (this.x + this.vx) | 0;
     this.y = (this.y + this.vy) | 0;
