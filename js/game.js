@@ -13,6 +13,8 @@ import {
   updateSams, drawSam, samsInRow, samHit, samBlast, resetSams, drawMissiles,
   samThreat, SAM_SCORE,
 } from './sam.js';
+import { drawRidges } from './ridges.js';
+import { serene } from './style.js';
 import { depthAt, waveLift, seaShade } from './sea.js';
 import { updateWeather, drawWeather, resetWeather, weather, SNOW } from './weather.js';
 import { drawClouds } from './clouds.js';
@@ -417,6 +419,10 @@ export class Game {
     rd.gradientBand(0, SKY_BAND_1, sky.top, sky.mid);
     rd.gradientBand(SKY_BAND_1, SKY_BAND_2, sky.mid, sky.horizon);
     rd.gradientBand(SKY_BAND_2, SCREEN_H, sky.horizon, sky.horizon);
+
+    // Ranges stand between the sky and everything else, so they go in here --
+    // after the sky, before a single tile of landscape.
+    if (serene()) drawRidges(rd, eyeX, eyeZ);
     this.drawStars();
     this.drawCelestial();
     // Clouds go over the sun and under the landscape, which is the only

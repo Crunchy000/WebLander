@@ -9,6 +9,7 @@
 import { TILE, sinLookup } from './maths.js';
 import { sky, litColour } from './daylight.js';
 import { groundBase, tintFor, tintLevel, TINT_STEPS } from './biome.js';
+import { serene } from './style.js';
 
 // --- world constants -------------------------------------------------------
 //
@@ -254,12 +255,46 @@ export function tileColour(prevAlt, alt, row, wx, wz, lift = 0) {
     // landscape its speckle -- the biome only decides what it is speckled
     // with. Blending happens here, before the palette, so the quantisation
     // dithers the borders for nothing.
-    groundBase(wx, wz, alt, alt === SEA_LEVEL && prevAlt === SEA_LEVEL, base);
+    const wet = alt === SEA_LEVEL && prevAlt === SEA_LEVEL;
+    groundBase(wx, wz, alt, wet, base);
     r = base[0]; g = base[1]; b = base[2];
+    if (serene() && !wet) {
+      // The speckle comes from bits 2 and 3 of the altitude. Sampling both
+      // ways round and taking the middle is the cheapest way to have the
+      // biome's colour without the noise it is normally carried in.
+      groundBase(wx, wz, alt & ~12, false, base);
+      const lo0 = base[0], lo1 = base[1], lo2 = base[2];
+      groundBase(wx, wz, alt | 12, false, base);
+      r = (lo0 + base[0]) / 2; g = (lo1 + base[1]) / 2; b = (lo2 + base[2]) / 2;
+    }
     // Swell, surf and glitter all arrive as one brightness offset, worked out
     // by sea.js where the camera is known. Adding it here, before the
     // packing, means the quantisation dithers the wave for nothing.
     if (lift !== 0) { r += lift; g += lift; b += lift; }
+  }
+
+  // The other visual language: no palette, no quantisation, no speckle. The
+  // ground is one flat tone per facet, lifted smoothly by distance and slope,
+  // which is what "minimalist geometry" comes down to in a renderer that only
+  // ever draws flat facets anyway. The mottle is deliberately averaged out --
+  // it is the single largest source of visual noise here, and noise is the
+  // one thing this style has no use for.
+  if (serene() && alt !== LAUNCHPAD_ALT) {
+    const bare = (row + (slope >>> 21)) / 15;
+    const lift = Math.min(1, Math.max(0, bare));
+    const rgbS = [
+      Math.round(Math.min(255, (r * 17) + (252 - r * 17) * lift * 0.62)),
+      Math.round(Math.min(255, (g * 17) + (248 - g * 17) * lift * 0.62)),
+      Math.round(Math.min(255, (b * 17) + (250 - b * 17) * lift * 0.62)),
+    ];
+    const lvl = tintLevel(wx, wz);
+    if (lvl !== TINT_STEPS) {
+      tintFor(lvl, tintScratch);
+      rgbS[0] = Math.min(255, Math.round(rgbS[0] * tintScratch[0]));
+      rgbS[1] = Math.min(255, Math.round(rgbS[1] * tintScratch[1]));
+      rgbS[2] = Math.min(255, Math.round(rgbS[2] * tintScratch[2]));
+    }
+    return litColour(rgbS, fogForRow(row));
   }
 
   let bright = (row + (slope >>> 22)) | 0;
