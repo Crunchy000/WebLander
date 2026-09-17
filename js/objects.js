@@ -82,13 +82,23 @@ function cactus() {
   return m.scale(TREE);
 }
 
-// A weathered boulder, and a smaller one beside it.
+// A weathered boulder, and two smaller ones beside it.
+//
+// Geodesic rather than conical. A cone has one apex and a handful of long
+// triangles running down from it, which reads as a tent whatever colour it is
+// painted; a boulder is a lot of small flat faces at a lot of angles, and this
+// renderer shades every one of them differently for nothing. The three lumps
+// take different seeds, so a clump is three rocks rather than one rock drawn
+// three times.
 function desertRock() {
   const m = new Model();
-  m.cone(0.40, 0, 0.38, 5, ROCK_W);
+  m.geode(0.42, 0, 0.44, 9, 4, ROCK_W, 3);
   const b = new Model();
-  b.cone(0.23, 0, 0.25, 4, shade(ROCK_W, 0.84));
-  mergeAt(m, b, 0.32, 0, 0.17);
+  b.geode(0.24, 0, 0.26, 7, 3, shade(ROCK_W, 0.84), 11);
+  mergeAt(m, b, 0.34, 0, 0.18);
+  const c = new Model();
+  c.geode(0.15, 0, 0.15, 6, 2, shade(ROCK_W, 0.92), 29);
+  mergeAt(m, c, -0.30, 0, -0.26);
   return m.scale(TREE);
 }
 

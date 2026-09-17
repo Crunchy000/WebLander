@@ -70,6 +70,66 @@ export class Model {
     return this;
   }
 
+  // A geodesic lump: rings of vertices stacked up the height, capped on top,
+  // with every vertex pushed in or out a little by a hash of its own position.
+  //
+  // A cone made a poor boulder. A boulder is not pointed, and what reads as
+  // rock is a lot of flat faces at a lot of angles catching the light
+  // differently -- exactly what this renderer is good at and what a five-sided
+  // cone cannot give you. The jitter is what stops it reading as a ball: it is
+  // deterministic, so a rock does not shimmer as you fly past it, and `seed`
+  // lets two rocks in the same clump be different rocks.
+  //
+  // There is no bottom cap and no bottom point. It sits on the ground on a
+  // wide base, because the ground is drawn before the things standing on it
+  // and anything reaching below it would be drawn straight over the top.
+  geode(radius, hBottom, hTop, sides, bands, col, seed = 0) {
+    // A cheap integer hash, so the lumps are stable and need no rng.
+    const jog = (i, j) => {
+      let h = (i * 374761393 + j * 668265263 + seed * 2246822519) | 0;
+      h = (h ^ (h >>> 13)) * 1274126177;
+      return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+    };
+
+    // Latitude runs from just short of the top of a sphere to well short of
+    // the bottom of one: flattish on top, widest in the middle, broad where
+    // it meets the ground.
+    const PHI0 = 0.42, PHI1 = 2.34;
+    const rows = [];
+    for (let j = 0; j <= bands; j++) {
+      const t = j / bands;
+      const phi = PHI0 + (PHI1 - PHI0) * t;
+      const rr = Math.sin(phi) * radius;
+      const y = -hTop + (hTop - hBottom) * t;
+      const row = [];
+      for (let i = 0; i < sides; i++) {
+        const a = (i / sides) * Math.PI * 2;
+        const k = 0.82 + jog(i, j) * 0.36;
+        const lift = j === 0 || j === bands ? 0 : (jog(i + 31, j) - 0.5) * 0.10;
+        row.push(this.vert(Math.cos(a) * rr * k, y + lift * (hTop - hBottom),
+                           Math.sin(a) * rr * k));
+      }
+      rows.push(row);
+    }
+
+    // Light from above and to the left, as everything else here is, plus a
+    // term for how far the face is tipped towards the sky.
+    const lit = (a, up) => shade(col,
+      0.52 + 0.26 * (0.5 - 0.5 * Math.cos(a - 0.9)) + 0.26 * up);
+
+    for (let j = 0; j < bands; j++) {
+      const top = rows[j], bot = rows[j + 1];
+      const up = Math.max(0, 1 - (j + 0.5) / bands * 1.7);
+      for (let i = 0; i < sides; i++) {
+        const n = (i + 1) % sides;
+        const a = ((i + 0.5) / sides) * Math.PI * 2;
+        this.face([top[i], bot[i], bot[n], top[n]], lit(a, up));
+      }
+    }
+    this.face(rows[0].slice(), shade(col, 1.06));
+    return this;
+  }
+
   // A drum: a prism used for tree foliage and rocket bodies.
   drum(rTop, rBottom, hBottom, hTop, sides, col, capCol) {
     const top = [], bot = [];
