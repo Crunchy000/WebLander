@@ -16,7 +16,7 @@ import { MODELS, objectAt, objectOffset, isWreck, isBlocks, structureIndex } fro
 import { topple, isKnocked } from './blocks.js';
 import { weather } from './weather.js';
 import { project } from './renderer.js';
-import { spawnExhaust, spawnBomb, spawnExplosion, spawnSparks, spawnDust } from './particles.js';
+import { spawnExhaust, spawnBomb, spawnExplosion, spawnSparks, spawnSmoke, spawnDust } from './particles.js';
 import { drawUav } from './uav.js';
 
 // Which airframe to fly. The faceted lander and the tilt-rotor UAV share the
@@ -67,6 +67,12 @@ const HOVER_CLEAR = TILE * 0.6;
 // LANDING_SPEED, which is the fastest arrival the ground will forgive, so a
 // craft that comes down under it and level will walk away.
 const AUTO_DESCENT = (LANDING_SPEED * 0.6) | 0;
+
+// How many hits from a vessel's point defence the airframe will take. Shells
+// and missiles still kill outright: those are ordnance, and dodging them is
+// the game. A point-defence beam is a slap for being somewhere you should not
+// be, and a slap that kills is just a rule you learn by dying to it.
+export const HULL_HITS = 3;
 const LEAN_RATE = 0.30;         // how fast the craft follows the stick -- snappier response
 const DRAG = 0.985;             // damping; without it the craft is unflyable
 
@@ -221,6 +227,8 @@ export class Player {
     // Full range until told otherwise.
     this.leanMode = 2;
     this.autorotating = false;
+    this.hits = 0;
+    this.hitFlash = 0;
     this.grace = LAUNCH_GRACE;
     this.rotorSpin = 0;
   }
@@ -380,6 +388,17 @@ export class Player {
     // because asking for everything is not how you ask for a glide.
     this.autorotating = this.flat && asked === 1 && !this.landed;
     if (this.autorotating && this.vy > AUTO_DESCENT) this.vy = AUTO_DESCENT;
+
+    // A damaged airframe trails smoke, and trails more of it the worse it is.
+    // The HUD counts the hits, but the thing you are actually looking at is
+    // the craft, so the craft has to say so too.
+    if (this.hitFlash > 0) this.hitFlash--;
+    if (this.hits > 0 && !this.dead) {
+      const every = Math.max(4, 16 - this.hits * 5);
+      if ((this.smokeTick = (this.smokeTick | 0) + 1) % every === 0) {
+        spawnSmoke(this.x, this.y, this.z);
+      }
+    }
 
     this.x = (this.x + this.vx) | 0;
     this.y = (this.y + this.vy) | 0;
@@ -589,6 +608,20 @@ export class Player {
     this.vx = (this.vx * 0.35 + px * kick) | 0;
     this.vz = (this.vz * 0.35 + pz * kick) | 0;
     this.vy = (this.vy * 0.5 - TILE * 0.004) | 0;
+  }
+
+  // A beam has found the airframe. Returns true if that was the last one it
+  // had in it.
+  takeHit(game) {
+    if (this.dead || this.protected) return false;
+    this.hits++;
+    this.hitFlash = 22;
+    spawnSparks(this.x, this.y, this.z, 14);
+    if (this.hits >= HULL_HITS) {
+      this.die(game, 'shot down');
+      return true;
+    }
+    return false;
   }
 
   die(game, how) {

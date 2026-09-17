@@ -17,14 +17,18 @@ import { landAltitude, SEA_LEVEL, isOnLaunchpad, UNDERCARRIAGE_Y } from './lands
 import { spawnExplosion, spawnSparks, spawnSmoke } from './particles.js';
 import { project } from './renderer.js';
 
-export const MAX_SITES = 3;
+// Rare on purpose. A site is a landmark rather than a population: two of them
+// within fifty tiles, trickled in slowly, so meeting one is an event you plan
+// a route around instead of a tax on flying at all.
+export const MAX_SITES = 2;
 export const SAM_SCORE = 600;
 
-const SPAWN_MIN = 18 * TILE;
-const SPAWN_MAX = 32 * TILE;
-const RETIRE = 50 * TILE;
-const HIT_RADIUS = 1.30;        // tiles, for a bomb passing through one
-const BLAST_RADIUS = 2.60;
+const SPAWN_MIN = 24 * TILE;
+const SPAWN_MAX = 40 * TILE;
+const SPAWN_CHANCE = 0.0026;    // per empty slot per frame: about one a minute
+const RETIRE = 56 * TILE;
+const HIT_RADIUS = 1.70;        // tiles, for a bomb passing through one
+const BLAST_RADIUS = 3.00;
 const WRECK_LIFE = 900;
 
 // The radar. Range is generous and the floor is the whole point: below it the
@@ -40,9 +44,19 @@ const TRACK_RATE = 0.055;       // ... and once it has something to look at
 // How long it holds you before it shoots, and how fast that decays once you
 // drop back down. Losing the lock is deliberately slower than gaining it: a
 // hop over the floor and straight back down should still cost you.
-const LOCK_TIME = 105;
-const LOCK_DECAY = 1.6;
-const RELOAD = 300;
+// Four and a half seconds from first contact to launch, not two. The whole
+// point of the thing is the decision it puts to you, and a decision needs
+// long enough to notice the dish, read the bar and get the nose down.
+//
+// The decay is the other half of that. It is slower than the gain -- 0.7 of a
+// frame's worth per frame -- so dropping under the floor works but has to be
+// meant: a hop down and straight back up finds the lock most of the way to
+// where it was. That was stated in the first version and was not true of it;
+// the decay was 1.6, which cleared a full lock in two thirds of the time it
+// took to build.
+const LOCK_TIME = 225;
+const LOCK_DECAY = 0.7;
+const RELOAD = 420;
 
 const MISSILE_SPEED = 0.155;    // tiles per frame
 const MISSILE_TURN = 0.052;     // radians a frame of homing
@@ -90,13 +104,19 @@ function box(m, x0, y0, z0, x1, y1, z1, cols) {
   return q;
 }
 
-// The emplacement: a concrete apron, the launch rails with their missiles
-// still on them, and the mast the dish turns on. All of it static.
+// The emplacement: a concrete apron, the launch rails with their rounds still
+// on them, and the tower the dish turns on. All of it static.
+//
+// The tower is what sets the scale of the whole thing. Its head comes out at
+// about the height of the radar floor, which is not a coincidence: the rule
+// for getting past a site is "stay below the dish", and a rule you can see
+// from the air is worth more than one you have to be told.
 function buildBase(burnt) {
   const m = new Model();
   const v = (x, y, z) => m.vert(x * S, y * S, z * S);
 
-  box(m, -0.62, -0.16, -0.62, 0.62, 0.02, 0.62, burnt ? CHAR : {
+  // Apron.
+  box(m, -0.86, -0.20, -0.86, 0.86, 0.02, 0.86, burnt ? CHAR : {
     all: CONCRETE_B, top: CONCRETE, front: CONCRETE, right: CONCRETE_B,
   });
 
@@ -104,56 +124,93 @@ function buildBase(burnt) {
     // Hazard banding round the apron, so it reads as a target from the air
     // rather than as a lump of rock.
     for (const sgn of [1, -1]) {
-      for (const [z0, z1] of [[-0.46, -0.22], [0.06, 0.30]]) {
+      for (const [z0, z1] of [[-0.66, -0.34], [-0.10, 0.22], [0.46, 0.72]]) {
         facet(m, [
-          v(sgn * 0.625, -0.14, z0), v(sgn * 0.625, -0.14, z1),
-          v(sgn * 0.625, -0.02, z1), v(sgn * 0.625, -0.02, z0),
+          v(sgn * 0.865, -0.18, z0), v(sgn * 0.865, -0.18, z1),
+          v(sgn * 0.865, -0.02, z1), v(sgn * 0.865, -0.02, z0),
         ], MARK);
       }
     }
   }
 
-  // Launch rails, canted back, each with a round on it.
-  for (const sx of [-0.30, 0.30]) {
-    box(m, sx - 0.10, -0.30, -0.34, sx + 0.10, -0.16, 0.26, burnt ? CHAR_B : RAIL);
-    box(m, sx - 0.07, -0.44, -0.24, sx + 0.07, -0.30, 0.20, burnt ? CHAR_B : TUBE);
+  // Launch rails, each with a round on it, set out at the corners so the
+  // tower has the middle to itself.
+  for (const sx of [-0.52, 0.52]) {
+    box(m, sx - 0.13, -0.38, -0.44, sx + 0.13, -0.20, 0.34, burnt ? CHAR_B : RAIL);
+    box(m, sx - 0.09, -0.56, -0.32, sx + 0.09, -0.38, 0.26, burnt ? CHAR_B : TUBE);
     if (!burnt) {
       // Nose and fins, which is all it takes to read as a missile at this size.
       facet(m, [
-        v(sx - 0.07, -0.44, 0.20), v(sx + 0.07, -0.44, 0.20),
-        v(sx + 0.07, -0.30, 0.20), v(sx - 0.07, -0.30, 0.20),
+        v(sx - 0.09, -0.56, 0.262), v(sx + 0.09, -0.56, 0.262),
+        v(sx + 0.09, -0.38, 0.262), v(sx - 0.09, -0.38, 0.262),
       ], WARHEAD);
       facet(m, [
-        v(sx - 0.07, -0.445, -0.24), v(sx + 0.07, -0.445, -0.24),
-        v(sx + 0.07, -0.445, -0.10), v(sx - 0.07, -0.445, -0.10),
+        v(sx - 0.09, -0.565, -0.32), v(sx + 0.09, -0.565, -0.32),
+        v(sx + 0.09, -0.565, -0.14), v(sx - 0.09, -0.565, -0.14),
       ], FIN);
     }
   }
 
-  // The mast the dish sits on.
-  box(m, -0.11, -0.74, -0.11, 0.11, -0.28, 0.11, burnt ? CHAR : MAST);
+  // The tower: a wide plinth, a shaft, and a collar under the bearing. Three
+  // boxes rather than one reads as built rather than extruded.
+  box(m, -0.26, -0.44, -0.26, 0.26, -0.16, 0.26, burnt ? CHAR : shade(MAST, 0.85));
+  box(m, -0.15, -1.66, -0.15, 0.15, -0.42, 0.15, burnt ? CHAR : MAST);
+  box(m, -0.22, -1.80, -0.22, 0.22, -1.62, 0.22, burnt ? CHAR : shade(MAST, 1.2));
   return m;
 }
 
-// The dish, built about its own axis so it can turn independently of the
-// emplacement under it.
+// The dish, built about its own bearing so it can turn independently of the
+// tower under it. An octagon rather than a rectangle, a real rim, and big
+// enough to be the thing you see: the whole warning system is "that dish is
+// pointing at me", which only works if you can tell where it points.
+const DISH_R = 0.86;
+const DISH_RAKE = 0.42;         // radians it leans back, looking up and out
+const DISH_FACES = 8;
+
 function buildDish(burnt) {
   const m = new Model();
   const v = (x, y, z) => m.vert(x * S, y * S, z * S);
 
-  // A flat panel raked back, with a darker reverse: turning it is what makes
-  // the site legible at a distance, and a two-tone panel flashes as it goes.
-  facet(m, [
-    v(-0.34, -0.30, 0.10), v(0.34, -0.30, 0.10),
-    v(0.34, 0.02, 0.26), v(-0.34, 0.02, 0.26),
-  ], burnt ? CHAR_B : DISH);
-  facet(m, [
-    v(-0.34, -0.30, 0.09), v(0.34, -0.30, 0.09),
-    v(0.34, 0.02, 0.25), v(-0.34, 0.02, 0.25),
-  ], burnt ? CHAR : DISH_B);
+  // A point on the rim, `depth` forward of the dish plane. Leaning the panel
+  // back is done by rolling the up axis into z, so the whole disc stays flat
+  // and the rim ring stays a ring.
+  const rim = (i, r, depth) => {
+    const a = (i / DISH_FACES) * Math.PI * 2 + Math.PI / DISH_FACES;
+    const x = Math.cos(a) * r;
+    const u = Math.sin(a) * r;                   // up, within the panel
+    return v(x, -u * Math.cos(DISH_RAKE), depth - u * Math.sin(DISH_RAKE));
+  };
 
-  // The horn, poking out of the middle of the face.
-  box(m, -0.045, -0.20, 0.18, 0.045, -0.10, 0.34, burnt ? CHAR : MAST);
+  const front = [], back = [];
+  for (let i = 0; i < DISH_FACES; i++) {
+    front.push(rim(i, DISH_R, 0.10));
+    back.push(rim(i, DISH_R * 0.94, -0.06));
+  }
+
+  // The face, as one polygon -- drawModel fans anything above four corners.
+  facet(m, front, burnt ? CHAR_B : DISH);
+  facet(m, back.slice().reverse(), burnt ? CHAR : DISH_B);
+  // The rim, which is what gives it thickness as it turns edge on.
+  for (let i = 0; i < DISH_FACES; i++) {
+    const j = (i + 1) % DISH_FACES;
+    facet(m, [front[i], front[j], back[j], back[i]], burnt ? CHAR : shade(DISH_B, 1.15));
+  }
+
+  if (!burnt) {
+    // A darker inner disc, so the face is not one flat slab of white and the
+    // dish reads as concave at a glance.
+    const inner = [];
+    for (let i = 0; i < DISH_FACES; i++) inner.push(rim(i, DISH_R * 0.46, 0.115));
+    facet(m, inner, shade(DISH, 0.82));
+  }
+
+  // The feed, on a boom out in front of the face, with its horn on the end.
+  box(m, -0.045, -0.045, 0.10, 0.045, 0.045, 0.52, burnt ? CHAR : MAST);
+  box(m, -0.12, -0.12, 0.50, 0.12, 0.12, 0.64, burnt ? CHAR_B : shade(DISH_B, 1.3));
+
+  // And a counterweight behind the bearing, which is what a real one needs
+  // and what stops the back of the dish reading as empty.
+  box(m, -0.20, -0.13, -0.30, 0.20, 0.13, -0.12, burnt ? CHAR : shade(MAST, 0.75));
   return m;
 }
 
@@ -244,7 +301,7 @@ export function updateSams(player, game) {
 
   for (const s of sites) {
     if (!s.live) {
-      if (rnd() < 0.008) place(s, px, pz);
+      if (rnd() < SPAWN_CHANCE) place(s, px, pz);
       continue;
     }
 
@@ -422,7 +479,7 @@ export function drawSam(rd, s, camX, camY, camZ, fog = 0) {
 
   matRotY(s.dish, dishMat);
   drawModel(rd, wrecked ? DISH_WRECK : DISH_M, dishMat,
-            s.x, (base - TILE * 0.74 * S) | 0, s.z, camX, camY, camZ, fog);
+            s.x, (base - TILE * 1.88 * S) | 0, s.z, camX, camY, camZ, fog);
 
   if (wrecked) return;
 
@@ -432,8 +489,15 @@ export function drawSam(rd, s, camX, camY, camZ, fog = 0) {
   const t = Math.min(1, s.lock / LOCK_TIME);
   const period = t > 0 ? Math.max(8, Math.round(46 - 34 * t)) : 46;
   if (beacon(period, Math.max(3, period >> 1), s.blinkAt | 0)) {
-    drawLamp(rd, s.x, (base - TILE * 0.80 * S) | 0, s.z, camX, camY, camZ,
-             0.030 + 0.045 * t, t > 0.02 ? ALERT : MARK, fog);
+    // On the apron corners rather than the tower: the dish swings right round,
+    // and a warning light the warning itself can hide is no warning.
+    for (const sx of [-0.80, 0.80]) {
+      for (const sz of [-0.80, 0.80]) {
+        drawLamp(rd, (s.x + sx * S * TILE) | 0, (base - TILE * 0.22 * S) | 0,
+                 (s.z + sz * S * TILE) | 0, camX, camY, camZ,
+                 0.028 + 0.042 * t, t > 0.02 ? ALERT : MARK, fog);
+      }
+    }
   }
 }
 

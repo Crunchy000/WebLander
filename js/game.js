@@ -17,7 +17,7 @@ import { depthAt, waveLift, seaShade } from './sea.js';
 import { updateWeather, drawWeather, resetWeather, weather, SNOW } from './weather.js';
 import { drawClouds } from './clouds.js';
 import { project, SCREEN_W, SCREEN_H, CENTRE_X } from './renderer.js';
-import { Player, GRAVITY_START, CHARGE_MAX } from './player.js';
+import { Player, GRAVITY_START, CHARGE_MAX, HULL_HITS } from './player.js';
 import { drawModel, drawShadow, drawLightPool } from './model.js';
 import {
   MODELS, OBJ_SCORE, objectAt, objectOffset, destroyObject, isWreck,
@@ -146,7 +146,11 @@ export class Game {
   }
 
   onPlayerLasered() {
-    this.player.die(this, 'lasered');
+    const down = this.player.takeHit(this);
+    if (down) return;
+    this.audio.blast();
+    const left = HULL_HITS - this.player.hits;
+    this.setMessage('HULL HIT  ' + left + ' LEFT', 70);
   }
 
   onSamLaunch(x, y, z) {
@@ -628,7 +632,7 @@ export class Game {
     const battery = this.pendingSams[row];
     if (battery && battery.length) {
       for (const st of battery) {
-        drawShadow(this.rd, st.x, st.z, TILE * 0.80, 0.8,
+        drawShadow(this.rd, st.x, st.z, TILE * 1.15, 0.8,
                    eyeX, eyeY, eyeZ, row, haze, TILE * 0.2);
         drawSam(this.rd, st, eyeX, eyeY, eyeZ, haze);
       }
@@ -705,6 +709,19 @@ export class Game {
     // Pulse while taking on charge, so it is obviously happening.
     if (p.charging && ((this.chargeTick | 0) >> 2) % 2 === 0) barCol = [140, 240, 255];
     if (frac > 0) rd.rect(bx, by, Math.max(1, Math.round(BAR_W * frac)), BAR_H, barCol);
+
+    // What is left of the airframe, shown only once some of it is not. An
+    // undamaged craft does not need telling; a damaged one needs it at a
+    // glance, next to the other thing that runs out.
+    if (p.hits > 0 && this.state === STATE.PLAYING) {
+      const hx = bx + BAR_W + 12;
+      drawText(rd, 'HULL', hx, by - 9, p.hits >= HULL_HITS - 1 ? [255, 90, 70] : [230, 200, 60]);
+      for (let i = 0; i < HULL_HITS; i++) {
+        const gone = i >= HULL_HITS - p.hits;
+        rd.rect(hx + i * 6, by, 4, BAR_H,
+                gone ? [70, 40, 38] : p.hits >= HULL_HITS - 1 ? [230, 70, 50] : [230, 200, 60]);
+      }
+    }
 
     // Lives, as a row of pips.
     const lifeText = 'DRONES ' + Math.max(0, this.lives - 1);

@@ -92,19 +92,26 @@ the landscape.
 **Tanks** rove the land and will only fire on a craft that has set down, so
 charging in the open is a decision rather than a rest.
 
-**Shipping** carries point defence. It is short ranged — about five tiles,
-measured across the water — and it spools up for two thirds of a second with
-the mounting glowing before it fires. Attack from outside that and a vessel
-cannot touch you; orbit one while the bomb bay cycles and it will.
+**Shipping** carries point defence, but only just: it reaches barely a tile
+past the hull, so it is not an approach you have to respect, it is a place you
+cannot sit. It spools up for two thirds of a second with the mounting glowing
+before it fires, and it does not kill outright — **the airframe takes three**,
+and the HUD grows a `HULL` row once any of them are gone. A damaged craft
+trails smoke, and trails more of it the worse it is. A vessel needs about ten
+seconds of you parked on top of her to land all three.
 
 **Radar and missile sites** are the only thing in the game that punishes
-altitude. A site sees thirteen tiles but it cannot see below two and a bit,
-so crossing its ground low is free and crossing it high is not: the dish comes
-round to face you, the HUD reads `RADAR` and fills a bar, and at the end of it
-you get `SAM LOCK` and a missile that has to turn to follow you. Drop back
-under the floor and the lock decays — though slower than it built, so a hop up
-and straight back down still costs you. They are static, worth more than
-anything else on the map, and the rounds still on the rails go up with them.
+altitude, and they are rare — two on the map, trickled in slowly, so meeting
+one is a route to plan rather than a tax on flying. A site sees thirteen tiles
+but cannot see below two and a bit, which is roughly the height of its own
+dish: crossing its ground under the dish is free and crossing it over the dish
+is not. The dish swings round to face you, the apron lamps blink faster, the
+HUD reads `RADAR` and fills a bar, and about four and a half seconds later you
+get `SAM LOCK` and a round that has to turn to follow you — limited homing, so
+it can be made to overshoot. Drop back under the floor and the lock decays,
+slower than it built, so a hop up and straight back down still costs you.
+Sites are static, worth more than anything else on the map, and the rounds
+still on the rails go up with them.
 
 The craft runs on a **battery, not fuel**. Set down anywhere the ground is
 level enough to sit square on and it charges — the launchpad is simply the

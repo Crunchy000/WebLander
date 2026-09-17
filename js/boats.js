@@ -33,17 +33,21 @@ const BLAST_RADIUS = 2.8;
 const SINK_TIME = 260;          // frames from hit to gone
 const CLEARANCE = 2.2 * TILE;   // open water needed around a spawn
 
-// Point defence. Short ranged on purpose: a vessel is meant to be attacked
-// from a distance and sunk, not orbited at arm's length while the bomb bay
-// cycles. Stay outside five tiles of her and she cannot touch you, which is
-// well inside comfortable bombing range.
+// Point defence. Very short ranged: barely wider than the hull, so it is not
+// an approach you have to respect but a place you cannot sit. Attack from any
+// distance at all and a vessel cannot touch you; hold station directly over
+// one while the bomb bay cycles and she will.
+//
+// It does not kill outright either -- the airframe takes three (see
+// HULL_HITS), and a vessel needs a good ten seconds of you parked on top of
+// her to land them all.
 //
 // The range is measured across the water, not through it, exactly as the
 // tanks' is. Measured as a straight line it would be useless: the sea sits
 // five and a third tiles below the eye, so a craft merely passing over a
 // vessel is already six tiles from her mounting before it has gone anywhere
 // at all, and a five-tile sphere could never have contained anything.
-const LASER_RANGE = 5.2 * TILE;
+const LASER_RANGE = 1.04 * TILE;
 const LASER_CHARGE = 34;        // frames of spooling up, which is the warning
 const LASER_RELOAD = 150;
 const BEAM_LIFE = 7;            // frames the bolt stays on screen
