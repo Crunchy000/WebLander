@@ -104,13 +104,17 @@ seconds of you parked on top of her to land all three.
 altitude, and they are rare — two on the map, trickled in slowly, so meeting
 one is a route to plan rather than a tax on flying.
 
-A site sees what its dish can see, and nothing else. Two conditions: you have
-to be **above the dish itself**, and the **straight line from the dish to you
-has to be clear** — of hills, buildings, blocks and trees alike. So the way
-past is either to stay under the dish, which you can judge by eye because the
-dish is right there on its tower, or to put something between the two of you.
-A ridge works. So does a big enough building. Nothing about your own height
-above your own ground matters: what counts is the line between you and it.
+A site sees what its dish can see, and nothing else. Three conditions: you
+have to be **above the dish itself**, **more than two tiles off the surface
+under you** — ground or water, whichever is there — and the **straight line
+from the dish to you has to be clear** of hills, buildings, blocks and trees
+alike.
+
+So there are three ways past. Stay under the dish, which you can judge by eye
+because the dish is right there on its plinth. Or hug the surface, inside the
+two tiles of clutter, which works even where the ground you are over stands
+higher than the site does. Or put something between the two of you — a ridge
+will do it, and so will a big enough building.
 
 The dish swings round to face you, the plinth lamps blink faster, the
 HUD reads `RADAR` and fills a bar, and about four and a half seconds later you

@@ -40,11 +40,20 @@ const WRECK_LIFE = 900;
 // craft high over a valley the site could not possibly see into counted as
 // visible, and one skimming a ridge in plain view of the dish did not.
 //
-// Now there are two conditions, and both are about the line between them.
-// The craft has to be above the dish itself -- a dish cannot look down
-// through the plinth it is bolted to -- and the straight line from the dish
-// to the craft has to be clear of everything standing between: hills,
-// buildings, blocks, trees.
+// Three conditions now. The craft has to be above the dish itself -- a dish
+// cannot look down through the plinth it is bolted to -- the straight line
+// from the dish to the craft has to be clear of everything standing between
+// (hills, buildings, blocks, trees), and the craft has to be more than a
+// couple of tiles off the surface under it.
+//
+// That last one is the ground clutter, and it is what makes hugging the
+// terrain work even where the terrain is higher than the dish. Without it a
+// craft skimming a plateau that happens to stand above a site in the next
+// valley is in clear view and perfectly tracked, which is not how anything
+// low over ground behaves. The surface it is measured from is the ground or
+// the water, whichever is there: the altitude the game already keeps is
+// clamped at sea level, so the sea counts as the surface without anything
+// having to say so.
 // How much bigger than its nominal size the whole site is drawn. It sets the
 // dish height, so the radar geometry needs it as much as the models do.
 const S = 1.30;
@@ -53,6 +62,7 @@ const RADAR_RANGE = 13 * TILE;
 const DISH_EYE = TILE * 1.50 * S;   // where the dish sits above its own ground
 const LOS_STEP = TILE * 0.5;        // how finely the line is walked
 const LOS_MAX_STEPS = 48;
+const CLUTTER = TILE * 2;           // clearance under which the craft is lost in it
 const SWEEP_RATE = 0.022;       // radians a frame, idling
 const TRACK_RATE = 0.055;       // ... and once it has something to look at
 
@@ -418,15 +428,16 @@ export function updateSams(player, game) {
       continue;
     }
 
-    // Can it see you? In range, above the dish, and nothing in the way. The
-    // first two are arithmetic and the third is a walk along the line, so
-    // they are asked in that order -- most of the time the answer is no
-    // before the expensive question is reached.
+    // Can it see you? In range, above the dish, clear of the clutter, and
+    // nothing in the way. The first three are arithmetic and the last is a
+    // walk along the line, so they are asked in that order -- most of the
+    // time the answer is no before the expensive question is reached.
     const base = landAltitude(s.x, s.z);
     const eyeY = (base - DISH_EYE) | 0;
     const range = Math.hypot(px - s.x, pz - s.z);
     const seen = !player.dead && range < RADAR_RANGE &&
                  player.y < eyeY &&
+                 player.altitude > CLUTTER &&
                  clearLine(s.x, eyeY, s.z, px, player.y, pz);
 
     if (seen) {
