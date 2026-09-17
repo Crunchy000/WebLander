@@ -19,6 +19,15 @@ export const P_FADE    = 1 << 3;  // dims towards black as it ages
 export const P_BULLET  = 1 << 4;  // damages whatever it touches
 export const P_SPLASH  = 1 << 5;  // throws up spray when it hits the sea
 export const P_RISE    = 1 << 6;  // drifts upwards (smoke)
+export const P_HEAVY   = 1 << 7;  // falls at a multiple of gravity
+
+// What P_HEAVY multiplies gravity by. A bomb is a lump of metal, not a
+// cinder: it has no business hanging in the air at the same rate as the
+// sparks the explosion throws off. At 1x a drop from six tiles took 2.5
+// seconds to land, and one from twelve never landed at all -- the bomb ran
+// out of life nine and a half tiles down and simply vanished. At 3x those
+// are 1.5 seconds and 2.2 seconds.
+const HEAVY = 3;
 
 // Structure-of-arrays: a lot cheaper to churn through than 484 objects.
 const x = new Int32Array(MAX_PARTICLES);
@@ -100,11 +109,16 @@ export function spawnExhaust(px, py, pz, dvx, dvy, dvz, spread) {
 }
 
 // A bomb: released rather than fired, so it carries the craft's own velocity
-// and lets gravity do the aiming. Heavier and slower-lived than a bullet, and
+// and lets gravity do the aiming. Heavy, shorter-lived than a bullet, and
 // drawn large enough to follow down.
+//
+// It falls at HEAVY times gravity. Everything else with P_GRAVITY is debris --
+// embers, grit, spray -- and debris is meant to hang. A bomb is not, and it
+// carries the craft's velocity forward the whole way down, so a slow one
+// drifts a long way past whatever it was aimed at.
 export function spawnBomb(px, py, pz, bvx, bvy, bvz) {
   return spawn(px, py, pz, bvx, bvy, bvz, [96, 102, 118], 160,
-               P_GRAVITY | P_BULLET | P_SPLASH, 5);
+               P_GRAVITY | P_HEAVY | P_BULLET | P_SPLASH, 5);
 }
 
 // A ball of debris flung out in every direction.
@@ -165,7 +179,7 @@ export function updateParticles(gravity, onBulletHit) {
 
     const fl = flags[i];
 
-    if (fl & P_GRAVITY) vy[i] = (vy[i] + gravity) | 0;
+    if (fl & P_GRAVITY) vy[i] = (vy[i] + (fl & P_HEAVY ? gravity * HEAVY : gravity)) | 0;
     if (fl & P_RISE) vy[i] = (vy[i] - (gravity >> 3)) | 0;
 
     x[i] = (x[i] + vx[i]) | 0;
