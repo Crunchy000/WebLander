@@ -91,28 +91,42 @@ function tundra(alt, out) {
 
 const GROUND = [tundra, temperate, desert];
 
-// Open water. Temperate and desert seas are the deep blue the original had;
-// a tundra sea is pack ice, pale and barely darker than the land it meets.
-const WATER = [
-  [3, 6, 8],
+// Open water, as a pair: what it looks like over a sandbar and what it looks
+// like over the deep. Water with one colour is the single biggest reason a
+// sea reads as a blue floor rather than as water -- a shallow bay and open
+// ocean came out byte-identical. Depth is the cue that makes the shape of the
+// coast legible from the air, and it rings every island for free.
+const WATER_SHALLOW = [
+  [5, 8, 9],    // tundra: meltwater over pale ice
+  [1, 6, 7],    // temperate: turquoise over sand
+  [2, 7, 7],    // desert: bright shallows
+];
+const WATER_DEEP = [
+  [1, 3, 7],
   [0, 0, 4],
   [0, 1, 5],
 ];
+
+// How far down the colour keeps changing. Past this it is simply "the deep".
+const DEEP_AT = 2.2;
 
 const lo = [0, 0, 0], hi = [0, 0, 0];
 
 // The ground colour here, as 4-bit r/g/b, blended between whichever two
 // biomes this point falls between.
-export function groundBase(wx, wz, alt, isWater, out) {
+export function groundBase(wx, wz, alt, isWater, out, depth) {
   const p = climateRamp(wx, wz);
   const i = p < 1 ? 0 : 1;
   const t = p - i;
 
   if (isWater) {
-    const a = WATER[i], b = WATER[i + 1];
-    out[0] = a[0] + (b[0] - a[0]) * t;
-    out[1] = a[1] + (b[1] - a[1]) * t;
-    out[2] = a[2] + (b[2] - a[2]) * t;
+    // Blend across the biome border, then down into the deep.
+    const d = depth <= 0 ? 0 : depth >= DEEP_AT ? 1 : depth / DEEP_AT;
+    for (let k = 0; k < 3; k++) {
+      const shallow = WATER_SHALLOW[i][k] + (WATER_SHALLOW[i + 1][k] - WATER_SHALLOW[i][k]) * t;
+      const deep = WATER_DEEP[i][k] + (WATER_DEEP[i + 1][k] - WATER_DEEP[i][k]) * t;
+      out[k] = shallow + (deep - shallow) * d;
+    }
     return out;
   }
 

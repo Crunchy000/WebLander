@@ -213,7 +213,13 @@ export function tileColour(prevAlt, alt, row, wx, wz, lift = 0) {
     // landscape its speckle -- the biome only decides what it is speckled
     // with. Blending happens here, before the palette, so the quantisation
     // dithers the borders for nothing.
-    groundBase(wx, wz, alt, alt === SEA_LEVEL && prevAlt === SEA_LEVEL, base);
+    // The seabed carries on below the surface, and how far it falls is how
+    // deep the water is. That is computed here rather than in sea.js because
+    // landscape.js already owns the synthesis -- reaching for it the other
+    // way round would make the two files import each other.
+    const wet = alt === SEA_LEVEL && prevAlt === SEA_LEVEL;
+    const depth = wet ? (seabedAltitude(wx, wz) - SEA_LEVEL) / TILE : 0;
+    groundBase(wx, wz, alt, wet, base, depth);
     r = base[0]; g = base[1]; b = base[2];
     // Swell, surf and glitter all arrive as one brightness offset, worked out
     // by sea.js where the camera is known. Adding it here, before the
@@ -221,7 +227,13 @@ export function tileColour(prevAlt, alt, row, wx, wz, lift = 0) {
     if (lift !== 0) { r += lift; g += lift; b += lift; }
   }
 
-  const bright = (row + (slope >>> 22)) | 0;
+  let bright = (row + (slope >>> 22)) | 0;
+  // Water takes far less of the distance ramp than land does. The ramp is a
+  // depth cue for ground, and piling all of it onto a sea whose base is
+  // already blue drove every channel into the ceiling: the nearest rows came
+  // out pure white, identical to each other, with no headroom left for the
+  // swell to move. Damping it is what gives the foreground its colour back.
+  if (alt === SEA_LEVEL && prevAlt === SEA_LEVEL) bright = Math.round(bright * 0.42);
   r = (r + bright) | 0;
   g = (g + bright) | 0;
   b = (b + bright) | 0;
