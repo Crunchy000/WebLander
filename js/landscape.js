@@ -287,6 +287,42 @@ export function tileColour(prevAlt, alt, row, wx, wz, lift = 0) {
       Math.round(Math.min(255, (g * 17) + (248 - g * 17) * lift * 0.62)),
       Math.round(Math.min(255, (b * 17) + (250 - b * 17) * lift * 0.62)),
     ];
+    // Near, steep ground goes to silhouette.
+    //
+    // A hill close ahead used to be the worst thing on screen: the scan hits
+    // it at a glancing angle, the near rows are enormous, and a face that
+    // should read as a wall arrives as a few huge facets flickering between
+    // shades -- which looked like a fault rather than a hill. The style
+    // already answers this question further away, with the flat dark ranges
+    // along the horizon, so the near ground gives the same answer: it stops
+    // being lit and becomes a shape.
+    //
+    // It needs both conditions. Near and flat is the ground you are about to
+    // land on and has to stay readable; steep and far is a hill you are
+    // looking at across a valley and has its own haze. Near AND steep is the
+    // one that was breaking, and the one worth turning into a silhouette.
+    // Steepness is measured off the raw rise, not the shift the brightness
+    // ramp uses. That shift quantises to quarter-tiles, and this landscape is
+    // gentler than that almost everywhere -- measured over forty thousand
+    // tiles, the ninetieth percentile of rise is 0.175 of a tile and the
+    // ninety-ninth is 0.418, so a quarter-tile step reads zero for 94% of the
+    // ground and the effect would never once have fired. Saturating at 0.35
+    // puts the top few per cent of faces at full silhouette, which is what
+    // "a hill close ahead" means.
+    const near = (row - 1) / (TILES_Z - 2);
+    const steep = Math.min(1, (slope / TILE) / 0.35);
+    const sil = near * near * steep;
+    if (sil > 0.01) {
+      // The same dark the ranges use, warm by day and cool by night, so the
+      // foreground and the horizon are speaking the same language.
+      const warm = sky.sunStrength;
+      const dr = 26 + 30 * warm, dg = 22 + 16 * warm, db = 40 + 8 * warm;
+      const k = sil * 0.88;
+      rgbS[0] = Math.round(rgbS[0] + (dr - rgbS[0]) * k);
+      rgbS[1] = Math.round(rgbS[1] + (dg - rgbS[1]) * k);
+      rgbS[2] = Math.round(rgbS[2] + (db - rgbS[2]) * k);
+    }
+
     const lvl = tintLevel(wx, wz);
     if (lvl !== TINT_STEPS) {
       tintFor(lvl, tintScratch);

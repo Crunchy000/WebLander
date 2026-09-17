@@ -12,7 +12,7 @@ import {
   UNDERCARRIAGE_Y, LANDING_SPEED, LANDSCAPE_Z_MID, isOnLaunchpad,
   groundRoughness, FLAT_ENOUGH,
 } from './landscape.js';
-import { MODELS, objectAt, objectOffset, isWreck, isBlocks, structureIndex } from './objects.js';
+import { MODELS, objectAt, objectOffset, isWreck, isBlocks, isOpen, structureIndex } from './objects.js';
 import { topple, isKnocked } from './blocks.js';
 import { weather } from './weather.js';
 import { project } from './renderer.js';
@@ -542,7 +542,7 @@ export class Player {
       for (let dx = -SCAN; dx <= SCAN; dx++) {
         const ox = (tx + dx) | 0, oz = (tz + dz) | 0;
         const type = objectAt(ox, oz);
-        if (type < 0 || isWreck(type)) continue;
+        if (type < 0 || isWreck(type) || isOpen(type)) continue;
 
         const blocks = isBlocks(type);
         if (blocks && isKnocked(ox, oz)) continue;   // already down; fly over it

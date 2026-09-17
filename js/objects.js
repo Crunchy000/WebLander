@@ -28,6 +28,8 @@ const CHAR   = paint([51, 42, 38]);
 const CACTUS  = paint([ 58, 122,  62]);
 const CACTUS2 = paint([ 88, 158,  86]);
 const ROCK_W  = paint([178, 122,  78]);   // sun-baked sandstone
+const ROCK_D  = paint([146,  96,  62]);   // the band under it, in shadow
+const ROCK_L  = paint([202, 152, 104]);   // and the weathered cap
 
 // Tundra.
 const TRUNK_D = paint([ 78,  54,  32]);
@@ -103,6 +105,66 @@ function desertRock() {
   return m.scale(TREE);
 }
 
+// A lump of rock, centred on itself, for placing along a curve.
+function blob(r, col, seed) {
+  const m = new Model();
+  m.geode(r, -r, r, 7, 3, col, seed);
+  return m;
+}
+
+// A natural arch: rock traced round a half circle, heaviest at the feet where
+// it carries the weight and thinnest at the crown where it does not.
+//
+// It is the one piece of scenery you can fly through rather than over, which
+// is the whole reason for it. At this scale the opening is about a tile and a
+// half across and a tile high -- comfortable at a walk, interesting at speed.
+function rockArch() {
+  const m = new Model();
+  const R = 0.78;             // half the span
+  const H = 1.02;             // height at the crown
+  const N = 9;
+
+  for (let i = 0; i < N; i++) {
+    const t = i / (N - 1);
+    const a = Math.PI * t;
+    // Thick at the springing, slimmer over the top: an arch that is the same
+    // width all the way round reads as a pipe rather than as stone.
+    const thick = 0.30 - 0.13 * Math.sin(a);
+    const band = i === 0 || i === N - 1 ? ROCK_D : (t > 0.35 && t < 0.65 ? ROCK_L : ROCK_W);
+    mergeAt(m, blob(thick, band, 11 + i * 7),
+            -Math.cos(a) * R, -Math.sin(a) * H, 0);
+  }
+
+  // Feet, spreading where they meet the ground so it does not look balanced
+  // on two points.
+  for (const sx of [-1, 1]) {
+    mergeAt(m, blob(0.34, ROCK_D, sx > 0 ? 3 : 5), sx * R, -0.18, 0.04);
+    mergeAt(m, blob(0.22, ROCK_W, sx > 0 ? 23 : 29), sx * (R - 0.12), -0.42, -0.10);
+  }
+  return m.scale(TREE);
+}
+
+// A mesa: flat-topped, stepped, and wider at every level down. Three drums
+// rather than one taper, because the steps are what say "this was laid down
+// in layers and then cut", which a smooth cone cannot.
+function mesa() {
+  const m = new Model();
+  m.drum(0.62, 0.78, 0, 0.34, 7, ROCK_D, null);
+  m.drum(0.48, 0.60, 0.32, 0.74, 7, ROCK_W, null);
+  m.drum(0.40, 0.47, 0.72, 0.96, 7, ROCK_L, ROCK_L);
+  return m.scale(TREE);
+}
+
+// A spire with a cap it never quite lost: narrow where the weather got at it,
+// wide at the top where the hard layer protected what was underneath.
+function hoodoo() {
+  const m = new Model();
+  m.drum(0.17, 0.30, 0, 0.42, 6, ROCK_D, null);
+  m.drum(0.13, 0.17, 0.40, 1.02, 6, ROCK_W, null);
+  mergeAt(m, blob(0.26, ROCK_L, 41), 0, -1.08, 0);
+  return m.scale(TREE);
+}
+
 // A conifer with snow lying on it. Each skirt of needles gets a slightly
 // smaller, slightly higher white cone sitting in it, which is where snow
 // actually collects on a fir -- on the upper face of each tier, not as a
@@ -153,9 +215,12 @@ export const OBJ = {
   DESERT_ROCK: 4,
   SNOW_FIR: 5,
   ICE_BLOCK: 6,
-  BLOCKS_0: 7,
-  REMAINS_L: 7 + STRUCTURES.length,
-  REMAINS_R: 8 + STRUCTURES.length,
+  ROCK_ARCH: 7,
+  MESA: 8,
+  HOODOO: 9,
+  BLOCKS_0: 10,
+  REMAINS_L: 10 + STRUCTURES.length,
+  REMAINS_R: 11 + STRUCTURES.length,
 };
 
 export const MODELS = [
@@ -166,6 +231,9 @@ export const MODELS = [
   desertRock(),
   snowFir(),
   iceBlock(),
+  rockArch(),
+  mesa(),
+  hoodoo(),
   ...STRUCTURES.map((st) => st.model),
   remains(-1),
   remains(1),
@@ -176,9 +244,26 @@ export const MODELS = [
 export const OBJ_SCORE = [
   10, 15, 15,        // temperate trees
   12, 8, 15, 10,     // cactus, rock, snow fir, ice
+  40, 35, 22,        // arch, mesa, hoodoo
   50, 60, 90, 70, 55, 45,
   0, 0,
 ];
+
+// Scenery you can fly through rather than into.
+//
+// Collision is a cylinder of the model's radius, which is the right shape for
+// a tree and exactly the wrong one for an arch: the opening is the middle of
+// the cylinder, so the one place the arch is meant to let you through is the
+// one place it would stop you. Rather than teach the collision test about
+// holes -- which would mean a second geometry for every model that has one --
+// an arch is simply not solid. Clip a leg and you pass through it, which is a
+// smaller lie than a solid arch would be, and the only thing in this game
+// that can still end a flight is the ground.
+const OPEN = new Set([7]);        // ROCK_ARCH
+
+export function isOpen(type) {
+  return OPEN.has(type);
+}
 
 // Is this one of the block structures?
 export function isBlocks(type) {
@@ -215,7 +300,13 @@ FLORA[TEMPERATE] = [
 FLORA[DESERT] = [
   OBJ.CACTUS, OBJ.CACTUS, OBJ.CACTUS, OBJ.CACTUS,
   OBJ.DESERT_ROCK, OBJ.DESERT_ROCK, OBJ.DESERT_ROCK,
+  OBJ.MESA, OBJ.HOODOO, OBJ.HOODOO, OBJ.ROCK_ARCH,
 ];
+// The bigger rock runs into the other two as well, thinly. A mesa on a tundra
+// ridge is a perfectly good mesa, and a world where the interesting geology
+// stops at the biome border is a world with visible seams in it.
+FLORA[TUNDRA].push(OBJ.MESA);
+FLORA[TEMPERATE].push(OBJ.MESA, OBJ.ROCK_ARCH);
 
 const SPAWN_TABLE = FLORA.map((flora) => [
   ...flora, ...flora, ...flora,
