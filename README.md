@@ -95,13 +95,23 @@ open is a decision, not a rest.
 
 The first **five seconds of every life are free**: getting off the pad is the
 fiddliest moment in the game, so during that window you can scrape the ground,
-clip a tree or come down hard without losing a ship. The HUD counts it down.
+clip a tree or come down hard without losing a ship. The height is pinned too
+-- gravity may not take you down, whatever the stick is doing -- which leaves
+both hands free to work out which way is which. You can still climb out of it,
+and the pin is let go over the last second rather than at the stroke of zero.
+The HUD counts it down.
 
 Steering is by *position*, not rate: the bearing of the stick from centre
 becomes the craft's heading, and how far you push it becomes how far its nose
 drops. Thrust acts along the roof, so a nose-down attitude carries you along
-the heading — trading lift for speed, which means a hard push on hover thrust
-will sink you.
+the heading — trading lift for speed.
+
+**Hover does not make that trade.** It holds the craft inside 45° of lean and
+divides its thrust by the cosine of it, so the share pointing at the sky stays
+the same however far you are tipped over: lean on hover buys speed and costs
+no height. Full thrust is the opposite and is left alone — it reaches 90°, and
+past about 78° of that there is not enough lift left to hold you up. One
+setting to place the craft with, one to fly it with.
 
 There is no separate turn control, because steering *is* turning. The craft
 swings to face wherever you are steering, and since the gun fires along the

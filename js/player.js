@@ -51,6 +51,12 @@ const MAX_LEAN = Math.PI / 2;   // radians at full stick deflection -- exactly 9
 // capped where it always climbs -- at 45 degrees it still makes 1.6 tiles/s
 // with the stick buried.
 const HOVER_LEAN = Math.PI / 4;
+// Hover divides its thrust by the cosine of the lean, so the part of it
+// pointing at the sky stays the same however far the craft is tipped over:
+// lean in hover buys speed without costing height. The floor bounds the
+// compensation -- at the 45 degree cap it is 1.41x, and if that cap were ever
+// opened up it can never ask for more than double.
+const HOVER_FLOOR = Math.max(Math.cos(HOVER_LEAN), 0.5);
 const LEAN_RATE = 0.30;         // how fast the craft follows the stick -- snappier response
 const DRAG = 0.985;             // damping; without it the craft is unflyable
 
@@ -70,6 +76,12 @@ const SCAN = 2;            // tiles either way to test for scenery
 // seconds of every life are free: you can scrape the ground, clip a tree or
 // come down hard without losing a ship. At 50Hz this is five seconds.
 export const LAUNCH_GRACE = 250;
+// For most of that window the height is pinned too -- gravity may not take
+// the craft down, whatever the stick is doing -- which leaves both hands free
+// to work out which way is which. The pin is let go over the last second
+// rather than at the stroke of zero: a craft that starts falling the instant
+// a counter runs out reads as a glitch, not as a rule.
+const PIN_FADE = 50;
 const CAMERA_CEILING = -((TILE * 3) / 2);  // how far the eye may rise above y = 0
 
 // --- the ship model --------------------------------------------------------
@@ -295,7 +307,13 @@ export class Player {
     this.thrusting = thrust;
 
     if (thrust) {
-      const power = (thrust === 2 ? THRUST_FULL : THRUST_HOVER) * lift;
+      let power = (thrust === 2 ? THRUST_FULL : THRUST_HOVER) * lift;
+      // Hover keeps whatever climb it had, at any lean it allows. Thrust acts
+      // along the roof, so tipping the craft over normally robs the sky of
+      // its share; dividing by the cosine puts that share back. Full thrust
+      // is left alone -- trading lift for speed is the flying, and a machine
+      // that could not be made to sink would not be one.
+      if (thrust === 1) power /= Math.max(Math.cos(this.lean), HOVER_FLOOR);
       // "Up" in ship space is -y, since y points down.
       const up = matApply(this.matrix, 0, -1, 0);
       this.vx = (this.vx + up[0] * power) | 0;
@@ -325,6 +343,14 @@ export class Player {
     this.vx = (this.vx * DRAG) | 0;
     this.vy = (this.vy * DRAG) | 0;
     this.vz = (this.vz * DRAG) | 0;
+
+    // The launch pin. Downwards only: you can still climb out of it, and it
+    // eases off over the last second so the craft is not simply dropped when
+    // the counter reaches zero.
+    if (this.grace > 0 && this.vy > 0) {
+      const hold = Math.min(1, this.grace / PIN_FADE);
+      this.vy = (this.vy * (1 - hold)) | 0;
+    }
 
     this.x = (this.x + this.vx) | 0;
     this.y = (this.y + this.vy) | 0;
