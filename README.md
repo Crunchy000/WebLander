@@ -304,7 +304,7 @@ software rasterisation, so a phone GPU does not notice it.
 | `js/sam.js` | radar and missile sites, and what they do to anyone flying high |
 | `js/player.js` | faceted hull, flight physics, collisions |
 | `js/particles.js` | exhaust, bullets, explosions, smoke, spray |
-| `js/ribbon.js` | the streamer trailing the craft, which draws its own loops |
+| `js/ribbon.js` | the streamer trailing the craft; a light trail after dark |
 | `js/ridges.js` | parallax silhouette ranges along the horizon |
 | `js/style.js` | the palette transform the serene style is made of |
 | `js/music.js` | the soundtrack, if there is one |

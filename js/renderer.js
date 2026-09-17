@@ -122,6 +122,8 @@ export class Renderer {
     // you are supposed to be able to see through.
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    this.blendMode = 'over';
+    this.drawn = 0;
     gl.viewport(0, 0, SCREEN_W, SCREEN_H);
 
     // ... and the stylesheet needs the shape of it to letterbox correctly.
@@ -133,6 +135,31 @@ export class Renderer {
     gl.clearColor(clear[0] / 255, clear[1] / 255, clear[2] / 255, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
     this.count = 0;
+    this.drawn = 0;
+    this.blend('over');
+  }
+
+  // Switch how the next things drawn combine with what is under them.
+  //
+  // 'over' is ordinary alpha compositing and is what everything uses. 'add'
+  // adds the colour instead, weighted by its alpha, which is what light does:
+  // two beams crossing are brighter than either, and nothing drawn additively
+  // can make the picture darker. It is the only honest way to draw something
+  // that is emitting rather than reflecting.
+  //
+  // Changing the mode means the batch so far has to be drawn before the new
+  // one starts, since a draw call has one blend mode for all of it. That is
+  // the whole cost: one extra draw call per switch, against a frame that
+  // otherwise makes one. Order survives it -- batches are drawn in the order
+  // they were closed, and a painter's algorithm only ever asked for that.
+  blend(mode) {
+    if (mode === this.blendMode) return;
+    this.flush();
+    this.count = 0;
+    this.blendMode = mode;
+    const gl = this.gl;
+    if (mode === 'add') gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+    else gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   }
 
   // Append one vertex. Colour components are 0-255, and so is alpha -- which
@@ -213,10 +240,13 @@ export class Renderer {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, view);
     gl.drawArrays(gl.TRIANGLES, 0, this.count);
+    this.drawn = (this.drawn || 0) + this.count;
   }
 
+  // Triangles in the frame, counting the ones already sent. A mid-frame blend
+  // switch empties the batch, so the pending count alone would under-report.
   get triangleCount() {
-    return this.count / 3;
+    return ((this.drawn || 0) + this.count) / 3;
   }
 }
 
