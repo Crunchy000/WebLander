@@ -63,6 +63,10 @@ const HOVER_SETTLE = 0.80;
 // hillside: ground rising under you eats the clearance, and hover goes back
 // to being a throttle until it has the room again.
 const HOVER_CLEAR = TILE * 0.6;
+// The descent hover allows on a flat battery. Comfortably inside
+// LANDING_SPEED, which is the fastest arrival the ground will forgive, so a
+// craft that comes down under it and level will walk away.
+const AUTO_DESCENT = (LANDING_SPEED * 0.6) | 0;
 const LEAN_RATE = 0.30;         // how fast the craft follows the stick -- snappier response
 const DRAG = 0.985;             // damping; without it the craft is unflyable
 
@@ -216,6 +220,7 @@ export class Player {
     // craft handles the same whether you are holding power or coasting.
     // Full range until told otherwise.
     this.leanMode = 2;
+    this.autorotating = false;
     this.grace = LAUNCH_GRACE;
     this.rotorSpin = 0;
   }
@@ -292,6 +297,7 @@ export class Player {
 
     // A flat battery means no thrust at all. Remembering that it was asked
     // for lets the HUD say so, rather than the machine simply going quiet.
+    const asked = thrust;
     this.flat = thrust > 0 && this.charge <= 0;
     if (this.charge <= 0) thrust = 0;
 
@@ -363,6 +369,17 @@ export class Player {
     // ... and whatever vertical speed it still had is bled away, so it comes
     // to rest at the height it was given rather than drifting off it.
     if (holding) this.vy = (this.vy * HOVER_SETTLE) | 0;
+
+    // Autorotation. A flat pack is not a dead machine: the rotors are still
+    // turning, and holding hover feathers them into the airflow so they brake
+    // the fall rather than drive it. It buys no lift and no authority the
+    // craft did not already have -- the descent is capped, nothing more --
+    // but a capped descent is a survivable one, which is the difference
+    // between running the battery down being a mistake and being fatal. It
+    // is hover specifically: full thrust on an empty pack is still nothing,
+    // because asking for everything is not how you ask for a glide.
+    this.autorotating = this.flat && asked === 1 && !this.landed;
+    if (this.autorotating && this.vy > AUTO_DESCENT) this.vy = AUTO_DESCENT;
 
     this.x = (this.x + this.vx) | 0;
     this.y = (this.y + this.vy) | 0;

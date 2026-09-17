@@ -652,7 +652,13 @@ export class Game {
 
       // Say why the machine is not climbing. Both of these used to happen in
       // silence, which is how a limit gets mistaken for a fault.
-      if (p.flat) {
+      // A flat battery is not the end of it if hover is held, so the line
+      // says which of the two you are in: the message changing the moment
+      // the button goes down is how anyone finds out the glide is there.
+      if (p.autorotating) {
+        drawText(rd, 'AUTOROTATE', SCREEN_W - 4 - textWidth('AUTOROTATE'), 24,
+                 [255, 200, 90]);
+      } else if (p.flat) {
         drawText(rd, 'BATTERY FLAT', SCREEN_W - 4 - textWidth('BATTERY FLAT'), 24,
                  [255, 90, 70]);
       } else if (p.ceiling > 0.12) {

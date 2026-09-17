@@ -91,7 +91,16 @@ The craft runs on a **battery, not fuel**. Set down anywhere the ground is
 level enough to sit square on and it charges — the launchpad is simply the
 best surface there is. Below a fifth the meter turns red, the label flashes
 and the machine starts beeping, faster and higher the less there is left; it
-stops the moment you are on the ground taking charge. But a grounded craft is a stationary target, and tanks
+stops the moment you are on the ground taking charge.
+
+Running it flat is not the end of you. **Hold hover on an empty pack and the
+rotors autorotate**, capping the descent at 0.94 tiles/s against a free fall's
+2.0 — and the ground forgives anything under 1.56. Dropped onto the pad from
+2 tiles/s: no buttons, crashed; hover held, landed. Full thrust gets you
+nothing, because asking for everything is not how you ask for a glide. The
+HUD swaps `BATTERY FLAT` for `AUTOROTATE` while it is working. It saves the
+landing, not the route: a long glide over a forest can still put you into a
+tree, and you steer it with the stick like anything else. But a grounded craft is a stationary target, and tanks
 will open fire on one the moment their turret comes to bear. Charging in the
 open is a decision, not a rest.
 
