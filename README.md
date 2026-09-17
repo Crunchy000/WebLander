@@ -89,7 +89,9 @@ the landscape.
 
 The craft runs on a **battery, not fuel**. Set down anywhere the ground is
 level enough to sit square on and it charges — the launchpad is simply the
-best surface there is. But a grounded craft is a stationary target, and tanks
+best surface there is. Below a fifth the meter turns red, the label flashes
+and the machine starts beeping, faster and higher the less there is left; it
+stops the moment you are on the ground taking charge. But a grounded craft is a stationary target, and tanks
 will open fire on one the moment their turret comes to bear. Charging in the
 open is a decision, not a rest.
 

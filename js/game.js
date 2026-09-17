@@ -7,7 +7,7 @@ import {
   UNDERCARRIAGE_Y,
 } from './landscape.js';
 import {
-  sky, sun, moon, STARS, advanceDay, skyColourAt, SKY_BAND_1, SKY_BAND_2,
+  sky, sun, moon, STARS, advanceDay, skyColourAt, SKY_BAND_1, SKY_BAND_2, beacon,
 } from './daylight.js';
 import { depthAt, waveLift, seaShade } from './sea.js';
 import { updateWeather, drawWeather, resetWeather, weather, SNOW } from './weather.js';
@@ -42,6 +42,13 @@ const STARTING_LIVES = 4;
 // refreshes, so the physics constants -- which are all per-frame, as they were
 // on hardware with a fixed frame rate -- behave identically everywhere.
 export const STEP_MS = 20;
+
+// Where the charge meter turns red, and how fast it complains about it. One
+// number for the bar and the beeps both, so what you see and what you hear
+// can never disagree about when the battery is low.
+const LOW_CHARGE = 0.22;
+const WARN_SLOW = 60;    // frames between beeps as it first turns red
+const WARN_FAST = 15;    // ... and with the last of it
 
 export class Game {
   constructor(renderer, input, audio) {
@@ -208,6 +215,23 @@ export class Game {
     updateBoats(this.player, this);
     updateBlocks();
     updateParticles(this.gravity, (i, bx, by, bz) => this.bulletHit(i, bx, by, bz));
+
+    // Low battery. The meter turning red is easy to miss with the ground
+    // coming up at you and a tank to think about, so it says so out loud, and
+    // says it faster the less there is left. Nothing while charging -- the
+    // meter is low then too, and being nagged about a problem you are already
+    // fixing is how a warning gets tuned out.
+    const charge = this.player.charge / CHARGE_MAX;
+    if (!this.player.dead && !this.player.charging && charge > 0 && charge < LOW_CHARGE) {
+      const left = charge / LOW_CHARGE;   // 1 as it turns red, 0 as it dies
+      if (--this.warnTick <= 0) {
+        this.audio.lowBattery(1 - left);
+        this.warnTick = Math.round(WARN_FAST + (WARN_SLOW - WARN_FAST) * left);
+      }
+    } else {
+      // Zero rather than the full gap, so crossing the line beeps at once.
+      this.warnTick = 0;
+    }
 
     // Wrecks smoke away for as long as they are in view.
     this.smokeTick = (this.smokeTick | 0) + 1;
@@ -603,11 +627,15 @@ export class Game {
 
     // Charge meter.
     const BAR_W = 92, BAR_H = 6, bx = 4, by = SCREEN_H - 12;
-    drawText(rd, p.charging ? 'CHARGING' : 'BATTERY', bx, by - 9,
-             p.charging ? [120, 230, 255] : DIM);
-    rd.rect(bx - 1, by - 1, BAR_W + 2, BAR_H + 2, [40, 60, 45]);
     const frac = Math.max(0, p.charge / CHARGE_MAX);
-    let barCol = frac > 0.5 ? [80, 220, 100] : frac > 0.22 ? [230, 200, 60] : [230, 70, 50];
+    // The label flashes on the same threshold the beeps use, so there is
+    // something to see for anyone playing with the sound off.
+    const low = !p.charging && frac < LOW_CHARGE;
+    drawText(rd, p.charging ? 'CHARGING' : 'BATTERY', bx, by - 9,
+             p.charging ? [120, 230, 255]
+             : low && beacon(28, 16) ? [255, 90, 70] : DIM);
+    rd.rect(bx - 1, by - 1, BAR_W + 2, BAR_H + 2, [40, 60, 45]);
+    let barCol = frac > 0.5 ? [80, 220, 100] : frac > LOW_CHARGE ? [230, 200, 60] : [230, 70, 50];
     // Pulse while taking on charge, so it is obviously happening.
     if (p.charging && ((this.chargeTick | 0) >> 2) % 2 === 0) barCol = [140, 240, 255];
     if (frac > 0) rd.rect(bx, by, Math.max(1, Math.round(BAR_W * frac)), BAR_H, barCol);

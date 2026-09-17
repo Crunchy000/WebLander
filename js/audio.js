@@ -472,6 +472,19 @@ export class Audio {
   touchdown() { this.tone(520, 0.14); setTimeout(() => this.tone(780, 0.2), 120); }
   charge()    { this.tone(1100, 0.05, 'sine', 0.12); }
 
+  // The low-battery warning. `urgency` runs 0 as the meter turns red to 1 as
+  // the last of it goes, and takes the pitch up with it so the sound itself
+  // says how bad it is -- the cadence alone would need counting. A triangle
+  // rather than the charge chirp's sine, so the two are not mistaken for each
+  // other while sitting on the pad with the meter still low.
+  lowBattery(urgency = 0) {
+    const f = 620 + urgency * 300;
+    this.tone(f, 0.06, 'triangle', 0.13 + urgency * 0.07);
+    // Two blips once it is genuinely nearly out, which reads as alarm rather
+    // than as an instrument politely repeating itself.
+    if (urgency > 0.55) setTimeout(() => this.tone(f, 0.06, 'triangle', 0.16), 90);
+  }
+
   // A tank's gun going off in the distance.
   tankGun()   { this._boom(0.34); }
   gameOver()  {
