@@ -25,7 +25,52 @@ bucket. There is nothing to compile.
 Pushes to `main` deploy automatically to GitHub Pages via
 `.github/workflows/pages.yml`. Since there is no build step, the workflow's
 useful job is to import every module for real before publishing, so a syntax
-error or a bad import path fails the run rather than the site.
+error or a bad import path fails the run rather than the site. The site it
+publishes is staged by `scripts/assemble-web.mjs`, which copies out
+`index.html`, `css/`, `js/` and `icons/` and nothing else -- the repository
+now holds a Rust crate and a flatpak manifest too, and neither belongs on the
+web.
+
+## As a desktop app
+
+There is an optional [Tauri](https://tauri.app) shell in `src-tauri/`: a
+native window with the same `js/` inside it. It adds nothing to the game and
+the game knows nothing about it, so the two cannot drift apart.
+
+```sh
+npm install
+npm run desktop:dev      # a window, with the assemble step run for you
+npm run desktop:build    # .deb and .AppImage in src-tauri/target/release/bundle
+```
+
+Building on Linux needs the system webview and its development headers --
+on Ubuntu, `libwebkit2gtk-4.1-dev librsvg2-dev libayatana-appindicator3-dev
+libssl-dev libgtk-3-dev build-essential pkg-config file`.
+
+### Flatpak
+
+`flatpak/io.github.crunchy000.WebLander.yml` does not compile anything: it
+unpacks the `.deb` the Tauri build has already made. Building the crate a
+second time inside flatpak-builder would mean vendoring the whole cargo tree
+for a binary no different from the one already sitting there.
+
+```sh
+npm run desktop:build
+cp src-tauri/target/release/bundle/deb/*.deb flatpak/weblander.deb
+cd flatpak
+flatpak-builder --force-clean --user --install build-dir \
+  io.github.crunchy000.WebLander.yml
+flatpak run io.github.crunchy000.WebLander
+```
+
+The GNOME runtime is what supplies WebKitGTK 4.1, which is the webview Tauri
+links against; that is the reason for choosing it over the freedesktop
+runtime, which has no webview at all. The sandbox is opened just far enough
+for the game: `--device=dri` for WebGL, `--device=input` for gamepads and
+`--socket=pulseaudio` for the engine and the weather.
+
+`.github/workflows/desktop.yml` does all of this on every push: bundle first,
+then flatpak from the bundle it just made.
 
 ## Controls
 
@@ -192,6 +237,9 @@ software rasterisation, so a phone GPU does not notice it.
 | `js/audio.js` | synthesised sound, no assets |
 | `js/font.js` | 5×7 bitmap font for the HUD |
 | `js/game.js` | main loop, landscape scan, HUD, game states |
+| `scripts/assemble-web.mjs` | stages the playable files, for Pages and for Tauri alike |
+| `src-tauri/` | the desktop shell: a window round the same web build |
+| `flatpak/` | flatpak manifest, desktop entry and AppStream metadata |
 
 ## Differences from the original
 

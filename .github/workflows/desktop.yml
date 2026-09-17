@@ -1,0 +1,91 @@
+name: Desktop build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tauri:
+    name: Tauri bundle (Linux)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      # Tauri links against the system webview; on Ubuntu 24.04 that is
+      # WebKitGTK 4.1. Without these the crate does not even configure.
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            librsvg2-dev \
+            libayatana-appindicator3-dev \
+            libssl-dev \
+            libgtk-3-dev \
+            build-essential \
+            pkg-config \
+            file
+
+      - run: npm ci
+
+      # Runs scripts/assemble-web.mjs first, via beforeBuildCommand, so the
+      # window is showing exactly the files Pages serves.
+      - run: npm run desktop:build
+
+      - name: Collect the bundles
+        run: |
+          mkdir -p dist-desktop
+          cp src-tauri/target/release/bundle/deb/*.deb dist-desktop/
+          cp src-tauri/target/release/bundle/appimage/*.AppImage dist-desktop/
+          ls -lh dist-desktop
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: weblander-linux
+          path: dist-desktop/
+          if-no-files-found: error
+
+  flatpak:
+    name: Flatpak
+    needs: tauri
+    runs-on: ubuntu-24.04
+    container:
+      image: bilelmoussaoui/flatpak-github-actions:gnome-47
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: weblander-linux
+          path: dist-desktop
+
+      # The manifest unpacks a .deb rather than compiling; this is the one the
+      # job above just built.
+      - name: Hand the manifest its .deb
+        run: cp dist-desktop/*.deb flatpak/weblander.deb
+
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: weblander.flatpak
+          manifest-path: flatpak/io.github.crunchy000.WebLander.yml
+          cache-key: flatpak-builder-${{ github.sha }}

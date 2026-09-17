@@ -1,5 +1,13 @@
 node_modules/
-package-lock.json
-package.json
 *.log
 .DS_Store
+
+# Tauri build output, and the staged web root the bundler is handed.
+src-tauri/target/
+src-tauri/dist/
+_site/
+.flatpak-builder/
+build-dir/
+dist-desktop/
+flatpak/*.deb
+src-tauri/gen/schemas/

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=WebLander
+GenericName=Flight game
+Comment=Fly a drone over an endless landscape
+Exec=weblander
+Icon=io.github.crunchy000.WebLander
+Terminal=false
+Categories=Game;ArcadeGame;
+Keywords=lander;archimedes;drone;flight;retro;
+StartupNotify=true
+StartupWMClass=weblander
