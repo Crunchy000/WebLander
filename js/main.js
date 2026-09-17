@@ -3,6 +3,7 @@
 import { Renderer } from './renderer.js';
 import { Input } from './input.js';
 import { Audio } from './audio.js';
+import { startMusic, musicWanted } from './music.js';
 import { Game, STEP_MS } from './game.js';
 import { Calibration } from './calibrate.js';
 
@@ -70,6 +71,9 @@ setInterval(() => {
 
 startBtn.addEventListener('click', async () => {
   audio.start();
+  // Same gesture, same context, same master -- so one mute covers both and
+  // there is never a second volume control to find.
+  if (musicWanted()) startMusic(audio.ctx, audio.master);
 
   // Fullscreen first, and synchronously. It spends the gesture that got us
   // here, and everything below this line may await -- by which point the

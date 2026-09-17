@@ -16,6 +16,11 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // Everything the game needs at runtime, and nothing else.
 const CONTENT = ['index.html', 'css', 'js', 'icons'];
 
+// Carried if present, ignored if not. The soundtrack is the only part of the
+// game that is a file rather than code, and the game has to build and deploy
+// without it -- a missing track is a quieter game, not a broken one.
+const OPTIONAL = ['audio'];
+
 const out = resolve(ROOT, process.argv[2] || '_site');
 if (out === ROOT) {
   throw new Error('refusing to assemble into the repository root');
@@ -28,6 +33,11 @@ for (const name of CONTENT) {
   const from = join(ROOT, name);
   if (!existsSync(from)) throw new Error('missing web content: ' + name);
   await cp(from, join(out, name), { recursive: true });
+}
+
+for (const name of OPTIONAL) {
+  const from = join(ROOT, name);
+  if (existsSync(from)) await cp(from, join(out, name), { recursive: true });
 }
 
 const listed = await readdir(out);
