@@ -13,7 +13,10 @@ import { landAltitude, SEA_LEVEL, isOnLaunchpad, UNDERCARRIAGE_Y } from './lands
 import { spawnExplosion, spawnSparks, spawnSmoke } from './particles.js';
 import { project } from './renderer.js';
 
-export const MAX_TANKS = 9;
+// Halved, to make room. Armour used to be the only thing shooting back; the
+// sky now has missile sites in it and the sea has point defence, and nine
+// tanks on top of that is a crowd rather than a threat.
+export const MAX_TANKS = 4;
 export const TANK_SCORE = 150;
 
 const SPAWN_MIN = 14 * TILE;    // ring in which new tanks appear

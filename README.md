@@ -87,6 +87,25 @@ The gun points out through the ship's nose, so aiming means leaning: level
 flight shoots straight ahead, and tipping forward walks the shots down into
 the landscape.
 
+## What shoots back
+
+**Tanks** rove the land and will only fire on a craft that has set down, so
+charging in the open is a decision rather than a rest.
+
+**Shipping** carries point defence. It is short ranged — about five tiles,
+measured across the water — and it spools up for two thirds of a second with
+the mounting glowing before it fires. Attack from outside that and a vessel
+cannot touch you; orbit one while the bomb bay cycles and it will.
+
+**Radar and missile sites** are the only thing in the game that punishes
+altitude. A site sees thirteen tiles but it cannot see below two and a bit,
+so crossing its ground low is free and crossing it high is not: the dish comes
+round to face you, the HUD reads `RADAR` and fills a bar, and at the end of it
+you get `SAM LOCK` and a missile that has to turn to follow you. Drop back
+under the floor and the lock decays — though slower than it built, so a hop up
+and straight back down still costs you. They are static, worth more than
+anything else on the map, and the rounds still on the rails go up with them.
+
 The craft runs on a **battery, not fuel**. Set down anywhere the ground is
 level enough to sit square on and it charges — the launchpad is simply the
 best surface there is. Below a fifth the meter turns red, the label flashes
@@ -263,7 +282,8 @@ software rasterisation, so a phone GPU does not notice it.
 | `js/model.js` | flat-shaded polygon model primitives |
 | `js/objects.js` | scenery models and the stateless object map |
 | `js/tanks.js` | roving armour, their gunnery and their destruction |
-| `js/boats.js` | shipping on the sea, and sinking it |
+| `js/boats.js` | shipping on the sea, its point defence, and sinking it |
+| `js/sam.js` | radar and missile sites, and what they do to anyone flying high |
 | `js/player.js` | faceted hull, flight physics, collisions |
 | `js/particles.js` | exhaust, bullets, explosions, smoke, spray |
 | `js/input.js` | mouse, keyboard, touch and tilt |

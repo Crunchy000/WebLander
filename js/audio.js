@@ -494,6 +494,41 @@ export class Audio {
     o.stop(t + dur + 0.01);
   }
 
+  // A vessel's point defence. Short, bright and falling: the shot has already
+  // arrived by the time you hear it, so the sound is the only thing selling
+  // it and it has to land in a tenth of a second.
+  laser() {
+    if (!this.enabled) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(2600, t);
+    o.frequency.exponentialRampToValueAtTime(420, t + 0.10);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.26, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+    o.connect(g).connect(this.master);
+    o.start(t);
+    o.stop(t + 0.13);
+    // A crack of noise on top, which is what stops it sounding like a toy.
+    this._burst(0.07, 3200, 'bandpass', 0.20, 900);
+  }
+
+  // A round leaving the rail: a hard ignition, then the roar going away.
+  missile() {
+    if (!this.enabled) return;
+    this._burst(0.09, 1800, 'bandpass', 0.30, 400);
+    this._noise({ dur: 0.85, type: 'bandpass', f0: 700, f1: 180,
+                  gain: 0.20, q: 0.8, dest: this.master });
+  }
+
+  // Being tracked. `threat` runs 0 at first contact to 1 at launch, and the
+  // pitch climbs with it -- the same trick the battery warning uses, and for
+  // the same reason: a cadence has to be counted, a pitch does not.
+  lockTone(threat = 0) {
+    this._beep(1150 + threat * 620, 0.045, 0.16 + threat * 0.10);
+  }
+
   // The low-battery warning. `urgency` runs 0 as the meter turns red to 1 as
   // the last of it goes, and takes the pitch up with it so the sound itself
   // says how bad it is -- the cadence alone would need counting. A square
