@@ -20,7 +20,7 @@ import { Player, GRAVITY_START, CHARGE_MAX, HULL_HITS } from './player.js';
 import { drawModel, drawShadow, drawLightPool } from './model.js';
 import {
   MODELS, OBJ_SCORE, objectAt, objectOffset, destroyObject, isWreck,
-  isBlocks, structureIndex, resetObjects,
+  isBlocks, isOpen, spansZ, structureIndex, resetObjects,
 } from './objects.js';
 import { topple, updateBlocks, drawPile, pileAt } from './blocks.js';
 import {
@@ -275,7 +275,7 @@ export class Game {
       for (let dx = -2; dx <= 2; dx++) {
         const ox = (tx + dx) | 0, oz = (tz + dz) | 0;
         const type = objectAt(ox, oz);
-        if (type < 0 || isWreck(type)) continue;
+        if (type < 0 || isWreck(type) || isOpen(type)) continue;
         if (isBlocks(type) && pileAt(ox, oz)) continue;   // already rubble
 
         const model = MODELS[type];
@@ -592,8 +592,22 @@ export class Game {
         continue;
       }
 
-      drawShadow(this.rd, wx, wz, model.radius * 0.85, 0.7,
-                 eyeX, eyeY, eyeZ, row, haze, model.height * 0.5);
+      if (isOpen(type)) {
+        // An arch stands on two feet and the light goes between them. One
+        // round patch the width of the whole thing would put the darkest
+        // shadow of the lot directly under the opening -- the one part of it
+        // that is not there.
+        const r = (model.radius * 0.34) | 0;
+        const d = (model.radius * 0.60) | 0;
+        const az = spansZ(type);
+        for (const s of [-1, 1]) {
+          drawShadow(this.rd, wx + (az ? 0 : s * d), wz + (az ? s * d : 0), r, 0.7,
+                     eyeX, eyeY, eyeZ, row, haze, model.height * 0.5);
+        }
+      } else {
+        drawShadow(this.rd, wx, wz, model.radius * 0.85, 0.7,
+                   eyeX, eyeY, eyeZ, row, haze, model.height * 0.5);
+      }
       drawModel(this.rd, model, null, wx, base, wz, eyeX, eyeY, eyeZ, haze);
 
       // Wrecks smoulder.

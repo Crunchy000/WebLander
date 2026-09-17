@@ -156,6 +156,27 @@ export class Model {
     this.radius = (this.radius * f) | 0;
     return this;
   }
+
+  // Resize each axis separately, which is how a lump of rock becomes a slab
+  // of it. The primitives are all built round a circle or a square, so on
+  // their own they can only make things that are as deep as they are wide --
+  // and a natural arch is the opposite of that: a thin fin of rock with a
+  // hole worn through it, not a hoop.
+  //
+  // Only safe on the shapes whose shading is baked from the angle round the
+  // model rather than from a face normal -- geodes and drums. Squashing a
+  // facet-lit shape would leave its faces lit for the proportions it used to
+  // have.
+  scale3(fx, fy, fz) {
+    for (let i = 0; i < this.verts.length; i += 3) {
+      this.verts[i] = (this.verts[i] * fx) | 0;
+      this.verts[i + 1] = (this.verts[i + 1] * fy) | 0;
+      this.verts[i + 2] = (this.verts[i + 2] * fz) | 0;
+    }
+    this.height = (this.height * fy) | 0;
+    this.radius = (this.radius * Math.max(fx, fz)) | 0;
+    return this;
+  }
 }
 
 export function shade(col, f) {

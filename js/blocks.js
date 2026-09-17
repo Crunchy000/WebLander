@@ -19,14 +19,25 @@ import { paint } from './style.js';
 
 // --- the paint box ---------------------------------------------------------
 
-const RED    = paint([214,  58,  48]);
-const BLUE   = paint([ 44,  98, 194]);
-const YELLOW = paint([244, 192,  46]);
-const GREEN  = paint([ 62, 164,  86]);
-const ORANGE = paint([236, 128,  40]);
-const PURPLE = paint([136,  80, 180]);
-const WOOD   = paint([206, 168, 112]);   // unpainted, for the plain shapes
-const WOOD_D = paint([176, 138,  88]);
+// Painted a long time ago and left outside ever since. The set started in
+// the primary colours a toy box always comes in -- pillar-box red, postbox
+// blue, a yellow you could see from orbit -- which was right when the game
+// was a shooting gallery and these were targets. Against a desert at dusk
+// they were the only saturated thing in the world and they pulled the eye
+// straight off the landscape.
+//
+// These are the same six colours with the sun taken out of them: clay, slate
+// blue, ochre, sage, terracotta and a dusty plum. They still tell each block
+// apart from the next -- which is the only thing the colour has to do -- and
+// they sit in the same range as the rock and the scrub around them.
+const RED    = paint([190,  98,  76]);   // clay
+const BLUE   = paint([ 74, 114, 166]);   // slate
+const YELLOW = paint([212, 168,  86]);   // ochre
+const GREEN  = paint([100, 148,  90]);   // sage
+const ORANGE = paint([202, 128,  74]);   // terracotta
+const PURPLE = paint([140,  94, 148]);   // dusty plum
+const WOOD   = paint([198, 166, 118]);   // unpainted, for the plain shapes
+const WOOD_D = paint([150, 118,  80]);
 
 // --- block shapes ----------------------------------------------------------
 //
@@ -105,7 +116,7 @@ function pyrBlock(w, h, d, col) {
 
 // The half-round that caps an archway: a half cylinder standing on its
 // diameter, flat face down.
-function archBlock(r, d, col) {
+function archBlock(r, d, col, alongX) {
   const m = new Model();
   const hd = d / 2;
   const SIDES = 6;
@@ -119,8 +130,10 @@ function archBlock(r, d, col) {
   for (let i = 0; i <= SIDES; i++) {
     const a = (i / SIDES) * Math.PI;                 // half a turn only
     const cx = -Math.cos(a) * r, cy = -Math.sin(a) * r + mid;
-    top.push(m.vert(cx, cy, -hd));
-    bot.push(m.vert(cx, cy, hd));
+    // Which way the barrel runs. Turning the finished block instead would
+    // light it for the way it was built, not the way it ends up facing.
+    top.push(alongX ? m.vert(-hd, cy, cx) : m.vert(cx, cy, -hd));
+    bot.push(alongX ? m.vert(hd, cy, cx) : m.vert(cx, cy, hd));
   }
   for (let i = 0; i < SIDES; i++) {
     facet(m, [top[i], bot[i], bot[i + 1], top[i + 1]],
@@ -254,7 +267,65 @@ function steps() {
   return out;
 }
 
-const RECIPES = [tower, archway, castle, bridge, wobbly, steps];
+// A gateway: two piers and a beam across them, built at a size you can fly
+// through rather than a size you can knock over.
+//
+// The small archway above is a toy: its opening is barely wider than the
+// craft and it goes over like everything else in the box. This is the other
+// thing entirely -- the built answer to the rock arch, standing where a rock
+// arch would stand and open in the same way. It is the one structure that
+// does not topple, because a thing you are meant to aim at has to be a thing
+// you can pass through, and collision here is a cylinder that would put an
+// invisible wall across the very gap you were lining up for.
+//
+// `alongZ` faces it the other way. Like the rock arch it is built facing that
+// way rather than turned afterwards: the shading of every block is worked out
+// when the block is made, so a block turned a quarter turn later would be lit
+// as though it had not been.
+function gateway(alongZ) {
+  const out = [];
+  const span = U * 2.6;          // half the distance between the piers
+  const pierW = U * 0.92, pierD = U * 1.05;
+  const pierH = U * 3.2;
+  // Across the span and along it: the piers are deeper than they are wide,
+  // so the gateway reads as something with a front and a back.
+  const dim = (w, d) => (alongZ ? [d, w] : [w, d]);
+  const at = (u, v) => (alongZ ? [v, u] : [u, v]);
+
+  for (const [su, col] of [[-1, RED], [1, BLUE]]) {
+    const [w, d] = dim(pierW, pierD);
+    const [px, pz] = at(su * span, 0);
+    out.push(place(boxBlock(w, pierH, d, col), px, pierH / 2, pz,
+                   [w / 2, pierH / 2, d / 2]));
+    // A wider foot, so it looks like it is standing rather than planted.
+    const [fw, fd] = dim(pierW * 1.5, pierD * 1.2);
+    out.push(place(boxBlock(fw, U * 0.4, fd, WOOD_D), px, U * 0.2, pz,
+                   [fw / 2, U * 0.2, fd / 2]));
+  }
+
+  const beamH = U * 0.62;
+  const [bw, bd] = dim(span * 2 + pierW * 1.6, pierD * 0.9);
+  out.push(place(boxBlock(bw, beamH, bd, WOOD), 0, pierH + beamH / 2, 0,
+                 [bw / 2, beamH / 2, bd / 2]));
+
+  // A half round over the beam, lying along the span, and a plain block on
+  // top of that -- the same grammar as the little archway, at four times the
+  // size.
+  const capR = U * 1.05;
+  out.push(place(archBlock(capR, pierD * 0.92, YELLOW, alongZ),
+                 0, pierH + beamH + capR * 0.5, 0,
+                 [capR, capR * 0.5, capR]));
+  return out;
+}
+
+const RECIPES = [tower, archway, castle, bridge, wobbly, steps,
+                 () => gateway(false), () => gateway(true)];
+
+// Which recipes you can fly through, and which of those face along z. They
+// are placed like the rock arches -- on their own, with room round them --
+// rather than sprinkled in with the rest.
+export const OPEN_STRUCTURES = [6, 7];
+export const OPEN_ALONG_Z = [7];
 
 // Build each recipe once: the block list for toppling, and the whole thing
 // merged into a single model for while it is standing.
