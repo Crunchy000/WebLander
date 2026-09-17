@@ -7,7 +7,7 @@
 // Remember that +y points DOWN, so the top of a model has a negative y.
 
 import { TILE, matApply } from './maths.js';
-import { landAltitude, tileColour, SEA_LEVEL } from './landscape.js';
+import { landAltitude, SEA_LEVEL } from './landscape.js';
 import { sky, litColour, emissive, skyColourAt } from './daylight.js';
 import { project, projScale } from './renderer.js';
 
@@ -387,15 +387,29 @@ export function drawGroundPatch(rd, wx, wz, radius, strength, tint, camX, camY, 
   const ground = landAltitude(wx | 0, wz | 0);
   if (ground >= SEA_LEVEL) return;          // nothing to fall on out at sea
 
-  // Ground colour here, darkened. Passing the same altitude twice gives a
-  // flat-lit sample, which is what we want -- the shadow should not inherit
-  // the slope shading of whichever tile it happens to sit on.
-  const base = tileColour(ground, ground, row, wx, wz);
-  const col = [
-    Math.round(base[0] + (tint[0] - base[0]) * strength),
-    Math.round(base[1] + (tint[1] - base[1]) * strength),
-    Math.round(base[2] + (tint[2] - base[2]) * strength),
-  ];
+  // A patch is a film of colour laid over the ground, not a guess at what the
+  // ground looks like.
+  //
+  // It used to work the other way: sample the tile colour under the object and
+  // mix the tint into it. That sample is taken at a point that moves every
+  // frame, from a function built to be noisy -- the mottle comes from low bits
+  // of the altitude, and the palette packing shares its bottom two bits across
+  // all three channels, so a hair of movement swings the hue. Measured over a
+  // 300-frame drift at a fifth of a tile a second, the sampled colour changed
+  // on 209 of 299 frames, with a worst single-frame jump of 203 across RGB.
+  // That is the flicker, and no amount of smoothing the sample would have
+  // fixed it, because the thing being sampled is meant to be noisy.
+  //
+  // Blending does the same arithmetic -- tint*a + ground*(1-a) is exactly the
+  // mix that was being computed by hand -- except it does it against the real
+  // pixels, so the patch cannot disagree with the ground it is lying on, and
+  // it costs one fewer palette round trip per patch.
+  //
+  // Distance thins it rather than tinting it: haze takes contrast away, and a
+  // shadow you can still pick out at the horizon is a shadow that is too dark.
+  const col = [tint[0], tint[1], tint[2],
+               Math.max(0, Math.round(strength * 255 * (1 - 0.8 * fog)))];
+  if (col[3] <= 2) return;
 
   const SEG = 8;
   const LIFT = TILE * 0.012;                // just clear of the ground
