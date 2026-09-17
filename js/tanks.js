@@ -63,6 +63,11 @@ const S = 1.38;
 // A box whose six faces can each take their own colour. Passing a single
 // colour paints the lot; passing an object names the faces individually,
 // which is what gives the hull its patchwork of tones.
+//
+// Note the single colour goes in bare, not wrapped in a list: a colour is
+// already an array, so `[BARREL]` is a list holding a colour, and shading it
+// multiplies an array by a number and gets NaN. That painted the gun and
+// every wreck solid black for as long as they have existed.
 function box(m, x0, y0, z0, x1, y1, z1, cols) {
   const v = (x, y, z) => m.vert(x * S, y * S, z * S);
   const c = Array.isArray(cols) ? { all: cols } : cols;
@@ -89,37 +94,38 @@ function buildHull(burnt) {
   const deck = burnt ? CHAR_B : DECK;
   const trk = burnt ? CHAR : TRACK;
 
-  const trackCols = burnt ? [CHAR] : { all: trk, top: TRACK_B, right: HULL_B, left: HULL_B };
-  box(m, -0.46, -0.16, -0.62, -0.28, 0.02, 0.62, trackCols);
-  box(m,  0.28, -0.16, -0.62,  0.46, 0.02, 0.62, trackCols);
+  const trackCols = burnt ? CHAR : { all: trk, top: TRACK_B, right: HULL_B, left: HULL_B };
+  box(m, -0.52, -0.20, -0.44, -0.30, 0.02, 0.44, trackCols);
+  box(m,  0.30, -0.20, -0.44,  0.52, 0.02, 0.44, trackCols);
 
   // Hull between them, each panel its own tone.
-  box(m, -0.30, -0.30, -0.56, 0.30, -0.02, 0.40, burnt ? [CHAR] : {
+  box(m, -0.34, -0.36, -0.40, 0.34, -0.02, 0.26, burnt ? CHAR : {
     all: body, top: deck, right: HULL_A, left: HULL_C, back: REAR, front: GLACIS,
   });
 
-  // Sloped glacis plate at the front.
+  // Sloped glacis plate at the front. Short and steep now -- a long raked
+  // nose is the single thing that makes a tank read as long.
   facet(m, [
-    v(-0.30, -0.30, 0.40), v(0.30, -0.30, 0.40),
-    v(0.30, -0.04, 0.64), v(-0.30, -0.04, 0.64),
+    v(-0.34, -0.36, 0.26), v(0.34, -0.36, 0.26),
+    v(0.34, -0.06, 0.46), v(-0.34, -0.06, 0.46),
   ], burnt ? CHAR_B : GLACIS);
 
   if (!burnt) {
     // Deck stripe, for when you are directly overhead.
     facet(m, [
-      v(-0.30, -0.31, -0.20), v(0.30, -0.31, -0.20),
-      v(0.30, -0.31, -0.06), v(-0.30, -0.31, -0.06),
+      v(-0.34, -0.37, -0.16), v(0.34, -0.37, -0.16),
+      v(0.34, -0.37, -0.02), v(-0.34, -0.37, -0.02),
     ], MARK);
 
     // Flank chevrons. These are the ones that do the work: from the air you
     // mostly see a tank side-on, and a dark hull on dark tracks needs
     // something bright at eye level to separate it from the ground.
     for (const sgn of [1, -1]) {
-      const x = sgn * 0.305;
-      for (const [z0, z1, col] of [[-0.40, -0.18, MARK], [-0.10, 0.12, MARK_B], [0.20, 0.38, MARK]]) {
+      const x = sgn * 0.345;
+      for (const [z0, z1, col] of [[-0.34, -0.16, MARK], [-0.08, 0.08, MARK_B], [0.16, 0.24, MARK]]) {
         facet(m, [
-          v(x, -0.26, z0), v(x, -0.26, z1),
-          v(x, -0.10, z1), v(x, -0.10, z0),
+          v(x, -0.31, z0), v(x, -0.31, z1),
+          v(x, -0.12, z1), v(x, -0.12, z0),
         ], col);
       }
     }
@@ -134,30 +140,33 @@ function buildTurret(burnt) {
   const v = (x, y, z) => m.vert(x * S, y * S, z * S);
   const t = burnt ? CHAR : TURRET;
 
-  box(m, -0.22, -0.26, -0.24, 0.22, 0.00, 0.22, burnt ? [CHAR] : {
+  // Tall and square, and wide enough to overhang the hull it sits on. A
+  // turret that is small next to its hull is what reads as a long vehicle
+  // even when the hull itself is short.
+  box(m, -0.28, -0.32, -0.26, 0.28, 0.00, 0.24, burnt ? CHAR : {
     all: t, top: TURRET_T, front: shade(t, 1.25), back: MARK_C,
   });
   if (!burnt) {
     // Optics block on the front face.
     facet(m, [
-      v(-0.09, -0.24, 0.225), v(0.09, -0.24, 0.225),
-      v(0.09, -0.16, 0.225), v(-0.09, -0.16, 0.225),
+      v(-0.11, -0.30, 0.245), v(0.11, -0.30, 0.245),
+      v(0.11, -0.20, 0.245), v(-0.11, -0.20, 0.245),
     ], OPTIC);
   }
   if (!burnt) {
     for (const sgn of [1, -1]) {
       facet(m, [
-        v(sgn * 0.225, -0.22, -0.18), v(sgn * 0.225, -0.22, 0.16),
-        v(sgn * 0.225, -0.12, 0.16), v(sgn * 0.225, -0.12, -0.18),
+        v(sgn * 0.285, -0.28, -0.20), v(sgn * 0.285, -0.28, 0.18),
+        v(sgn * 0.285, -0.14, 0.18), v(sgn * 0.285, -0.14, -0.20),
       ], MARK);
     }
   }
-  // Gun.
-  box(m, -0.045, -0.20, 0.20, 0.045, -0.11, 0.78, burnt ? [CHAR_B] : [BARREL]);
+  // Gun: short and thick, a stub rather than a lance.
+  box(m, -0.075, -0.26, 0.22, 0.075, -0.12, 0.56, burnt ? CHAR_B : BARREL);
   if (!burnt) {
     facet(m, [
-      v(-0.045, -0.20, 0.78), v(0.045, -0.20, 0.78),
-      v(0.045, -0.11, 0.78), v(-0.045, -0.11, 0.78),
+      v(-0.075, -0.26, 0.56), v(0.075, -0.26, 0.56),
+      v(0.075, -0.12, 0.56), v(-0.075, -0.12, 0.56),
     ], MARK);
   }
   return m;
@@ -495,8 +504,8 @@ export function drawTank(rd, t, camX, camY, camZ, fog = 0, row = 0) {
   // where the hull is going, which is the warning you actually need.
   if (t.state === ALIVE && sky.lamp > 0.05) {
     const lit = [255, 240, 196];
-    for (const sx of [-0.34, 0.34]) {
-      const o = matApply(hullMat, sx * S * TILE, -0.13 * S * TILE, 0.60 * S * TILE);
+    for (const sx of [-0.30, 0.30]) {
+      const o = matApply(hullMat, sx * S * TILE, -0.16 * S * TILE, 0.42 * S * TILE);
       drawLamp(rd, (t.x + o[0]) | 0, (ground + o[1]) | 0, (t.z + o[2]) | 0,
                camX, camY, camZ, 0.075, lit, fog);
     }
@@ -508,7 +517,7 @@ export function drawTank(rd, t, camX, camY, camZ, fog = 0, row = 0) {
 
   if (t.state === ALIVE) {
     matRotY(t.turret, turMat);
-    const seat = matApply(hullMat, 0, -0.30 * TILE, -0.06 * TILE);
+    const seat = matApply(hullMat, 0, -0.38 * TILE, -0.04 * TILE);
     drawModel(rd, TURRET_M, turMat,
               (t.x + seat[0]) | 0, (ground + seat[1]) | 0, (t.z + seat[2]) | 0,
               camX, camY, camZ, fog);
