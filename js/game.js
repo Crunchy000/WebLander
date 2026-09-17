@@ -10,6 +10,7 @@ import {
   sky, sun, moon, STARS, advanceDay, skyColourAt, SKY_BAND_1, SKY_BAND_2, beacon,
 } from './daylight.js';
 import { drawRidges } from './ridges.js';
+import { sampleRibbon, drawRibbon, resetRibbon } from './ribbon.js';
 import { serene } from './style.js';
 import { depthAt, waveLift, seaShade } from './sea.js';
 import { updateWeather, drawWeather, resetWeather, weather, SNOW } from './weather.js';
@@ -102,6 +103,7 @@ export class Game {
     this.messageTimer = 0;
     resetObjects();
     resetParticles();
+    resetRibbon();
     resetTanks();
     resetBoats();
     resetWeather();
@@ -210,6 +212,7 @@ export class Game {
     this.player.update(inp.stick, inp.thrust, inp.fire, this.gravity, this);
     this.audio.engine(this.player.thrusting);
 
+    sampleRibbon(this.player);
     updateBoats(this.player, this);
     updateBlocks();
     updateParticles(this.gravity, (i, bx, by, bz) => this.bulletHit(i, bx, by, bz));
@@ -247,6 +250,7 @@ export class Game {
       return;
     }
     resetParticles();
+    resetRibbon();
     this.player.reset();
     this.state = STATE.PLAYING;
     this.setMessage(null, 0);
@@ -355,6 +359,7 @@ export class Game {
     drawClouds(rd);
 
     this.drawLandscape(eyeX, eyeY, eyeZ);
+    drawRibbon(rd, eyeX, eyeY, eyeZ);
     drawParticles(rd, eyeX, eyeY, eyeZ);
     if (this.state === STATE.PLAYING) p.draw(rd, eyeX, eyeY, eyeZ);
     drawWeather(rd, eyeX, eyeY, eyeZ);

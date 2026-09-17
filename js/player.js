@@ -60,6 +60,18 @@ const MAX_LEAN = Math.PI;
 // capped where it always climbs -- at 45 degrees it still makes 1.6 tiles/s
 // with the stick buried.
 const HOVER_LEAN = Math.PI / 4;
+// Past the rim of the stick the tilt stops being a position and becomes a
+// rate. Steering here has always been by position -- how far you push is how
+// far the nose drops -- and that is exactly why a loop was impossible: full
+// stick meant a hundred and eighty degrees and there was nowhere further to
+// push, so the craft hung there inverted. Holding the stick hard over now
+// keeps it rotating instead, round and back to level.
+//
+// The rate only applies at the very rim, so ordinary flying is unchanged:
+// anything short of a buried stick is still a position, and you cannot loop
+// by accident.
+const LOOP_AT = 0.96;      // stick deflection at which it becomes a rate
+const LOOP_RATE = 0.060;   // radians a frame, so a full turn takes about 1.7s
 // How fast a hovering craft settles to a standstill vertically. Applied every
 // frame to whatever vertical speed is left, so arriving at a hover from a
 // dive is a catch rather than a wall: a 2 tiles/s descent is down to a tenth
@@ -222,6 +234,7 @@ export class Player {
     this.vx = 0; this.vy = 0; this.vz = 0;
     this.leanDir = 0;
     this.lean = 0;
+    this.looping = false;
     this.matrix = matFromAim(0, 0);
     this.charge = CHARGE_MAX;
     this.charging = false;
@@ -263,6 +276,15 @@ export class Player {
   // While this holds, nothing can destroy the ship.
   get protected() {
     return this.grace > 0;
+  }
+
+  // How far from upright, in [0, pi]. The lean runs all the way round now, so
+  // five radians is nearly level again rather than wildly tipped -- and the
+  // arrival test wants the angle, not the number.
+  get tilt() {
+    let a = this.lean % (Math.PI * 2);
+    if (a < 0) a += Math.PI * 2;
+    return a > Math.PI ? Math.PI * 2 - a : a;
   }
 
   get altitude() {
@@ -308,7 +330,23 @@ export class Player {
     while (dd > Math.PI) dd -= Math.PI * 2;
     while (dd < -Math.PI) dd += Math.PI * 2;
     this.leanDir += dd * LEAN_RATE;
-    this.lean += (targetLean - this.lean) * LEAN_RATE;
+
+    // Hover is never allowed to loop: it is the setting you use to place the
+    // craft, and a hold that could put you on your back is not one.
+    this.looping = this.leanMode !== 1 && mag >= LOOP_AT;
+    if (this.looping) {
+      this.lean += LOOP_RATE;
+    } else {
+      // Ease the short way round, the same as the heading does. Without this
+      // a craft coming off a loop at five radians would unwind backwards
+      // through everything it had just flown.
+      let dl = targetLean - this.lean;
+      while (dl > Math.PI) dl -= Math.PI * 2;
+      while (dl < -Math.PI) dl += Math.PI * 2;
+      this.lean += dl * LEAN_RATE;
+    }
+    if (this.lean >= Math.PI * 2) this.lean -= Math.PI * 2;
+    else if (this.lean < 0) this.lean += Math.PI * 2;
 
     matFromAim(this.leanDir, this.lean, this.matrix);
 
@@ -491,7 +529,7 @@ export class Player {
 
     const badArrival = vertical > LANDING_SPEED ||
                        horizontal > LANDING_SPEED * 1.6 ||
-                       this.lean > 0.45;
+                       this.tilt > 0.45;
 
     if (badArrival && !this.protected) {
       this.die(game, 'crash');
