@@ -9,10 +9,6 @@ import {
 import {
   sky, sun, moon, STARS, advanceDay, skyColourAt, SKY_BAND_1, SKY_BAND_2, beacon,
 } from './daylight.js';
-import {
-  updateSams, drawSam, samsInRow, samHit, samBlast, resetSams, drawMissiles,
-  samThreat, SAM_SCORE,
-} from './sam.js';
 import { drawRidges } from './ridges.js';
 import { serene } from './style.js';
 import { depthAt, waveLift, seaShade } from './sea.js';
@@ -32,12 +28,10 @@ import {
 } from './particles.js';
 import { drawText, drawTextCentred, textWidth } from './font.js';
 import {
-  updateTanks, drawTank, tanksInRow, tankHit, tankBlast, resetTanks,
-  drawShells, TANK_SCORE,
+  resetTanks,
 } from './tanks.js';
 import {
   updateBoats, drawBoat, boatsInRow, boatHit, boatBlast, resetBoats, BOAT_SCORE,
-  updateBeams, drawBeams,
 } from './boats.js';
 
 export const STATE = { TITLE: 0, PLAYING: 1, DYING: 2, GAMEOVER: 3 };
@@ -93,11 +87,8 @@ export class Game {
 
     // Objects waiting to be drawn, staggered behind the landscape.
     this.pending = Array.from({ length: TILES_Z + 2 }, () => []);
-    this.pendingTanks = Array.from({ length: TILES_Z + 2 }, () => []);
     this.pendingBoats = Array.from({ length: TILES_Z + 2 }, () => []);
-    this.pendingSams = Array.from({ length: TILES_Z + 2 }, () => []);
     this.warnTick = 0;
-    this.lockTick = 0;
 
     this.newGame();
     this.state = STATE.TITLE;
@@ -113,7 +104,6 @@ export class Game {
     resetParticles();
     resetTanks();
     resetBoats();
-    resetSams();
     resetWeather();
     this.player.reset();
     this.state = STATE.PLAYING;
@@ -152,57 +142,12 @@ export class Game {
     this.audio.secondary();
   }
 
-  onTankFired(x, y, z) {
-    this.audio.tankGun();
-  }
-
-  // A vessel's point defence has fired. Hitscan, so there is no flight time
-  // to sell the shot -- the sound and the beam are the whole event.
-  onBoatFired(x, y, z) {
-    this.audio.laser();
-  }
-
-  onPlayerLasered() {
-    const down = this.player.takeHit(this);
-    if (down) return;
-    this.audio.blast();
-    const left = HULL_HITS - this.player.hits;
-    this.setMessage('HULL HIT  ' + left + ' LEFT', 70);
-  }
-
-  onSamLaunch(x, y, z) {
-    this.audio.missile();
-    this.setMessage('MISSILE', 70);
-  }
-
-  onPlayerHitBySam() {
-    this.player.die(this, 'missile');
-  }
-
-  onSamDestroyed(x, y, z) {
-    this.addScore(SAM_SCORE);
-    this.audio.bigBoom();
-    this.setMessage('SAM SITE  +' + SAM_SCORE, 90);
-  }
-
-  onPlayerShelled() {
-    this.player.die(this, 'shelled');
-  }
-
   // A structure has gone over. Points either way, but a stack shoved by the
   // drone clatters; one that a bomb went off under does not get the chance.
   onBlocksKnocked(type, x, y, z, force) {
     this.addScore(OBJ_SCORE[type] || 0);
     this.audio.clatter(Math.min(1, force / 2.2));
     this.setMessage('TIMBER  +' + (OBJ_SCORE[type] || 0), 60);
-  }
-
-  onTankDestroyed(x, y, z) {
-    this.audio.bigBoom();
-    // Name the reward. Without the number there is nothing tying the boom to
-    // the score climbing, so the most valuable target in the game felt like
-    // it paid no better than a tree.
-    this.setMessage('TANK  +' + TANK_SCORE, 80);
   }
 
   onDeath(how) {
@@ -255,7 +200,6 @@ export class Game {
     if (this.state === STATE.DYING) {
       updateParticles(this.gravity, () => false);
       updateBlocks();
-      updateBeams();
       this.player.deathTimer--;
       if (this.player.deathTimer <= 0) this.respawn();
       if (this.messageTimer > 0) this.messageTimer--;
@@ -266,10 +210,7 @@ export class Game {
     this.player.update(inp.stick, inp.thrust, inp.fire, this.gravity, this);
     this.audio.engine(this.player.thrusting);
 
-    updateTanks(this.player, this);
     updateBoats(this.player, this);
-    updateBeams();
-    updateSams(this.player, this);
     updateBlocks();
     updateParticles(this.gravity, (i, bx, by, bz) => this.bulletHit(i, bx, by, bz));
 
@@ -288,19 +229,6 @@ export class Game {
     } else {
       // Zero rather than the full gap, so crossing the line beeps at once.
       this.warnTick = 0;
-    }
-
-    // Being tracked, out loud. Same shape as the battery warning: faster and
-    // higher the worse it is, so the two never need telling apart by ear --
-    // one climbs as you run down, the other as something else winds up.
-    const threat = samThreat();
-    if (!this.player.dead && threat > 0.02) {
-      if (--this.lockTick <= 0) {
-        this.audio.lockTone(threat);
-        this.lockTick = Math.round(34 - 26 * threat);
-      }
-    } else {
-      this.lockTick = 0;
     }
 
     // Wrecks smoke away for as long as they are in view.
@@ -328,8 +256,6 @@ export class Game {
   bulletHit(i, bx, by, bz) {
     const ground = landAltitude(bx, bz);
 
-    if (tankHit(bx, by, bz, this)) return true;
-    if (samHit(bx, by, bz, this)) return true;
 
     // A hull taken square on.
     if (boatHit(bx, by, bz)) {
@@ -384,8 +310,7 @@ export class Game {
         spawnExplosion(bx, ground, bz, 26, TILE * 0.030, null);
         spawnSparks(bx, ground, bz, 12);
         // Anything close enough goes up with it.
-        samBlast(bx, ground, bz, this);
-        if (!tankBlast(bx, ground, bz, this)) this.audio.explosion();
+        this.audio.explosion();
       } else {
         // Into the sea: still lethal to anything close enough alongside.
         if (!boatBlast(bx, ground, bz, this)) this.audio.splash();
@@ -431,9 +356,6 @@ export class Game {
 
     this.drawLandscape(eyeX, eyeY, eyeZ);
     drawParticles(rd, eyeX, eyeY, eyeZ);
-    drawShells(rd, eyeX, eyeY, eyeZ);
-    drawMissiles(rd, eyeX, eyeY, eyeZ);
-    drawBeams(rd, eyeX, eyeY, eyeZ);
     if (this.state === STATE.PLAYING) p.draw(rd, eyeX, eyeY, eyeZ);
     drawWeather(rd, eyeX, eyeY, eyeZ);
     this.drawHud();
@@ -529,9 +451,7 @@ export class Game {
     this.shadowRow = -1;
 
     for (const list of this.pending) list.length = 0;
-    for (const list of this.pendingTanks) list.length = 0;
     for (const list of this.pendingBoats) list.length = 0;
-    for (const list of this.pendingSams) list.length = 0;
 
     const pt = { x: 0, y: 0 };
 
@@ -543,9 +463,7 @@ export class Game {
       // Any tank standing in this row's band of ground draws with it, so
       // hills in front still hide what is behind them.
       if (j > 0) {
-        tanksInRow(worldZ, (worldZ + TILE) | 0, this.pendingTanks[j]);
         boatsInRow(worldZ, (worldZ + TILE) | 0, this.pendingBoats[j]);
-        samsInRow(worldZ, (worldZ + TILE) | 0, this.pendingSams[j]);
         // The craft's shadow belongs to whichever row the ground under it
         // is in, so it is drawn with that row and hidden by hills in front.
         if (eyeShadowZ >= worldZ && eyeShadowZ < worldZ + TILE) this.shadowRow = j;
@@ -649,26 +567,6 @@ export class Game {
       shipping.length = 0;
     }
 
-    const battery = this.pendingSams[row];
-    if (battery && battery.length) {
-      for (const st of battery) {
-        drawShadow(this.rd, st.x, st.z, TILE * 1.15, 0.8,
-                   eyeX, eyeY, eyeZ, row, haze, TILE * 0.2);
-        drawSam(this.rd, st, eyeX, eyeY, eyeZ, haze);
-      }
-      battery.length = 0;
-    }
-
-    const armour = this.pendingTanks[row];
-    if (armour && armour.length) {
-      for (const t of armour) {
-        drawShadow(this.rd, t.x, t.z, TILE * 0.62, 0.8,
-                   eyeX, eyeY, eyeZ, row, haze, TILE * 0.3);
-        drawTank(this.rd, t, eyeX, eyeY, eyeZ, haze, row);
-      }
-      armour.length = 0;
-    }
-
     const list = this.pending[row];
     if (!list || list.length === 0) return;
 
@@ -755,20 +653,7 @@ export class Game {
 
       // Say why the machine is not climbing. Both of these used to happen in
       // silence, which is how a limit gets mistaken for a fault.
-      // Being tracked outranks everything else this line can say. A ceiling
-      // or a flat pack is a problem you have time to think about; a launch
-      // is not, and the bar underneath is how long you have to get down.
-      const threat = samThreat();
-      if (threat > 0.02) {
-        const txt = threat > 0.99 ? 'SAM LOCK' : 'RADAR';
-        const col = threat > 0.6 ? [255, 80, 70] : [255, 200, 90];
-        if (threat < 0.99 || beacon(12, 7)) {
-          drawText(rd, txt, SCREEN_W - 4 - textWidth(txt), 24, col);
-        }
-        const bw = 44, bx2 = SCREEN_W - 4 - bw;
-        rd.rect(bx2 - 1, 33, bw + 2, 4, [40, 30, 30]);
-        rd.rect(bx2, 34, Math.max(1, Math.round(bw * threat)), 2, col);
-      } else if (p.autorotating) {
+      if (p.autorotating) {
         drawText(rd, 'AUTOROTATE', SCREEN_W - 4 - textWidth('AUTOROTATE'), 24,
                  [255, 200, 90]);
       } else if (p.flat) {

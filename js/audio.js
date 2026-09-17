@@ -242,12 +242,13 @@ export class Audio {
   engine(level) {
     if (!this.enabled) return;
     const t = this.ctx.currentTime;
-    // Half what it was. The rotors run continuously and everything else in
-    // the game has to be heard over them -- a warning most of all.
-    const target = level === 2 ? 0.25 : level === 1 ? 0.135 : 0;
-    this.engineGain.gain.setTargetAtTime(target, t, 0.04);
+    // Quieter again, and duller. There is a soundtrack under this now and a
+    // rotor bed is the one thing capable of sitting on top of everything
+    // else; taking the top off it leaves air rather than noise.
+    const target = level === 2 ? 0.17 : level === 1 ? 0.095 : 0;
+    this.engineGain.gain.setTargetAtTime(target, t, 0.06);
     this.engineFilter.frequency.setTargetAtTime(
-      level === 2 ? 900 : level === 1 ? 520 : 300, t, 0.06);
+      level === 2 ? 600 : level === 1 ? 380 : 240, t, 0.08);
   }
 
   _burst(dur, freq, type, gain, sweepTo) {
@@ -535,16 +536,39 @@ export class Audio {
   // rather than the charge chirp's sine, so the two are not mistaken for each
   // other while sitting on the pad with the meter still low.
   lowBattery(urgency = 0) {
-    const f = 820 + urgency * 420;
-    this._beep(f, 0.075, 0.30 + urgency * 0.10);
-    // Two blips once it is genuinely nearly out, which reads as alarm rather
-    // than as an instrument politely repeating itself.
-    if (urgency > 0.55) setTimeout(() => this._beep(f, 0.075, 0.40), 105);
+    // A chime, not an alarm. The square wave and the hard edges were right
+    // when this was a game about being shot at; in a quiet one they are the
+    // loudest and least welcome thing in the mix. The level is kept -- it
+    // still has to carry over the rotors -- and only the timbre changes: two
+    // sine tones a fifth apart, the upper one following a moment later, which
+    // the ear reads as a bell rather than a buzzer.
+    const f = 560 + urgency * 220;
+    this._chime(f, 0.42, 0.42 + urgency * 0.14);
+    this._chime(f * 1.5, 0.34, 0.26 + urgency * 0.10, 0.09);
+    if (urgency > 0.6) this._chime(f * 2, 0.30, 0.18, 0.20);
+  }
+
+  // A struck tone with a long tail: fast on, slow off, no edges anywhere.
+  _chime(freq, dur, gain, delay = 0) {
+    if (!this.enabled) return;
+    const ctx = this.ctx, t = ctx.currentTime + delay;
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = freq;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(this.master);
+    o.start(t);
+    o.stop(t + dur + 0.02);
   }
 
   // A tank's gun going off in the distance.
   tankGun()   { this._boom(0.34); }
   gameOver()  {
-    [440, 370, 294, 220].forEach((f, i) => setTimeout(() => this.tone(f, 0.3, 'square', 0.2), i * 180));
+    // Falling sine tones that overlap rather than a square fanfare: the same
+    // four notes, allowed to ring into each other.
+    [440, 370, 294, 220].forEach((f, i) => this._chime(f, 1.1, 0.16, i * 0.26));
   }
 }

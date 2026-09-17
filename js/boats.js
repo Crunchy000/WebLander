@@ -1,5 +1,8 @@
 // boats.js -- vessels patrolling the sea.
 //
+// Unarmed now, and staying. They are the one moving thing left in the world:
+// something to fly out to, circle, and leave alone.
+//
 // The sea covers a good deal of the map and until now did nothing at all, so
 // these give it a reason to be flown over. They work like the tanks -- a small
 // recycled pool spawned in a ring around the player -- but the water changes
@@ -32,27 +35,6 @@ const HIT_RADIUS = 1.45;        // a bigger target than a tank
 const BLAST_RADIUS = 2.8;
 const SINK_TIME = 260;          // frames from hit to gone
 const CLEARANCE = 2.2 * TILE;   // open water needed around a spawn
-
-// Point defence. Very short ranged: barely wider than the hull, so it is not
-// an approach you have to respect but a place you cannot sit. Attack from any
-// distance at all and a vessel cannot touch you; hold station directly over
-// one while the bomb bay cycles and she will.
-//
-// It does not kill outright either -- the airframe takes three (see
-// HULL_HITS), and a vessel needs a good ten seconds of you parked on top of
-// her to land them all.
-//
-// The range is measured across the water, not through it, exactly as the
-// tanks' is. Measured as a straight line it would be useless: the sea sits
-// five and a third tiles below the eye, so a craft merely passing over a
-// vessel is already six tiles from her mounting before it has gone anywhere
-// at all, and a five-tile sphere could never have contained anything.
-const LASER_RANGE = 1.04 * TILE;
-const LASER_CHARGE = 34;        // frames of spooling up, which is the warning
-const LASER_RELOAD = 150;
-const BEAM_LIFE = 7;            // frames the bolt stays on screen
-const BEAM_COL = [255, 96, 96];
-const BEAM_HOT = [255, 236, 210];
 
 // --- models ----------------------------------------------------------------
 
@@ -207,7 +189,6 @@ for (let i = 0; i < MAX_BOATS; i++) boats.push({ live: false, state: AFLOAT });
 
 export function resetBoats() {
   for (const b of boats) { b.live = false; b.state = AFLOAT; }
-  beams.length = 0;
 }
 
 export function boatCount() {
@@ -245,8 +226,6 @@ function placeBoat(b, px, pz) {
     b.damage = 0;
     b.list = 0;
     b.wakeTick = rndInt(8);
-    b.charge = 0;
-    b.reload = rndInt(LASER_RELOAD);
     return true;
   }
   return false;
@@ -326,26 +305,6 @@ export function updateBoats(player, game) {
       b.x = nx; b.z = nz;
     }
 
-    // Point defence. She spools up for two thirds of a second before firing,
-    // and the mounting glows while she does: a weapon that kills the instant
-    // you cross a line you cannot see is a trap, not a threat. Break off
-    // inside that window and nothing happens.
-    if (b.reload > 0) b.reload--;
-    const inRange = !player.dead &&
-                    Math.hypot(px - b.x, pz - b.z) < LASER_RANGE;
-    if (inRange && b.reload === 0) {
-      if (++b.charge >= LASER_CHARGE) {
-        fireLaser(b, player, game);
-        b.charge = 0;
-        b.reload = LASER_RELOAD + rndInt(60);
-      }
-    } else if (b.charge > 0) {
-      // Let it fall away rather than resetting, so weaving in and out of
-      // range still costs you something.
-      b.charge -= 2;
-      if (b.charge < 0) b.charge = 0;
-    }
-
     // A wake, which is mostly what makes her visible on open water.
     if ((b.wakeTick = (b.wakeTick + 1) % 7) === 0) {
       const sx = Math.sin(b.heading), sz = Math.cos(b.heading);
@@ -359,69 +318,6 @@ export function updateBoats(player, game) {
               [214, 232, 246], 34 + rndInt(20), P_FADE, 2);
       }
     }
-  }
-}
-
-// --- point defence ---------------------------------------------------------
-
-// Beams are hitscan: the bolt arrives the instant it is fired, and what is
-// drawn is the streak it left. A travelling projectile at five tiles would
-// be over before it registered as anything, and giving it flight time would
-// only invite dodging a shot that has already hit.
-const beams = [];
-
-function laserMount(b) {
-  return {
-    x: (b.x + Math.sin(b.heading) * TILE * 0.55) | 0,
-    y: (SEA_LEVEL - TILE * 1.15) | 0,
-    z: (b.z + Math.cos(b.heading) * TILE * 0.55) | 0,
-  };
-}
-
-function fireLaser(b, player, game) {
-  const m = laserMount(b);
-  beams.push({
-    x0: m.x, y0: m.y, z0: m.z,
-    x1: player.x, y1: player.y, z1: player.z,
-    life: BEAM_LIFE,
-  });
-  spawnSparks(m.x, m.y, m.z, 5);
-  game.onBoatFired(m.x, m.y, m.z);
-  game.onPlayerLasered();
-}
-
-export function updateBeams() {
-  for (let i = beams.length - 1; i >= 0; i--) {
-    if (--beams[i].life <= 0) beams.splice(i, 1);
-  }
-}
-
-// How hot a vessel's mounting is glowing, 0 to 1, for the model to light by.
-export function laserGlow(b) {
-  return b.charge ? Math.min(1, b.charge / LASER_CHARGE) : 0;
-}
-
-const bp0 = { x: 0, y: 0 }, bp1 = { x: 0, y: 0 };
-
-// Beams are drawn straight rather than bucketed by row, for the same reason
-// shells are: they are brief, and losing one behind a hill costs the player
-// the one piece of information the shot carries.
-export function drawBeams(rd, camX, camY, camZ) {
-  for (const s of beams) {
-    if (!project((s.x0 - camX) | 0, (s.y0 - camY) | 0, (s.z0 - camZ) | 0, bp0)) continue;
-    if (!project((s.x1 - camX) | 0, (s.y1 - camY) | 0, (s.z1 - camZ) | 0, bp1)) continue;
-    const dx = bp1.x - bp0.x, dy = bp1.y - bp0.y;
-    const len = Math.hypot(dx, dy) || 1;
-    // Fading, and thinning as it fades.
-    const t = s.life / BEAM_LIFE;
-    const w = 0.6 + 1.8 * t;
-    const nx = (-dy / len) * w, ny = (dx / len) * w;
-    rd.quad(bp0.x + nx, bp0.y + ny, bp1.x + nx, bp1.y + ny,
-            bp1.x - nx, bp1.y - ny, bp0.x - nx, bp0.y - ny, BEAM_COL);
-    // A white core, which is what makes it read as a beam and not a stick.
-    const cx = (-dy / len) * w * 0.34, cy = (dx / len) * w * 0.34;
-    rd.quad(bp0.x + cx, bp0.y + cy, bp1.x + cx, bp1.y + cy,
-            bp1.x - cx, bp1.y - cy, bp0.x - cx, bp0.y - cy, BEAM_HOT);
   }
 }
 
@@ -572,14 +468,4 @@ export function drawBoat(rd, b, camX, camY, camZ, fog = 0) {
   }
 
   drawModel(rd, hull, boatMat, b.x, y, b.z, camX, camY, camZ, fog);
-
-  // The mounting glowing is the only warning there is, so it is drawn last,
-  // over the hull, and it brightens and swells as the charge builds.
-  const glow = b.state === AFLOAT ? laserGlow(b) : 0;
-  if (glow > 0) {
-    const m = laserMount(b);
-    drawLamp(rd, m.x, (m.y + heave) | 0, m.z, camX, camY, camZ,
-             0.035 + 0.075 * glow,
-             [255, Math.round(70 + 60 * (1 - glow)), Math.round(60 + 40 * (1 - glow))], fog);
-  }
 }

@@ -16,7 +16,7 @@ import { MODELS, objectAt, objectOffset, isWreck, isBlocks, structureIndex } fro
 import { topple, isKnocked } from './blocks.js';
 import { weather } from './weather.js';
 import { project } from './renderer.js';
-import { spawnExhaust, spawnBomb, spawnExplosion, spawnSparks, spawnSmoke, spawnDust } from './particles.js';
+import { spawnExhaust, spawnExplosion, spawnSparks, spawnSmoke, spawnDust } from './particles.js';
 import { drawUav } from './uav.js';
 
 // Which airframe to fly. The faceted lander and the tilt-rotor UAV share the
@@ -42,7 +42,16 @@ export const CHARGE_MAX = 0x8000;
 
 const THRUST_HOVER = 0x06600;   // hover thrust, doubled again for a much faster feel
 const THRUST_FULL  = 0x0C000;   // full-throttle thrust, doubled again
-const MAX_LEAN = Math.PI / 2;   // radians at full stick deflection -- exactly 90 degrees of lean
+// Radians of tilt at full stick. Pi, so the craft can go all the way over --
+// nose straight down, and every attitude on the way there. Combined with the
+// heading, which already covers the whole circle, that is the full sphere.
+//
+// It has a consequence worth knowing rather than discovering: thrust acts
+// along the roof, so past ninety degrees it points at the ground. Bury the
+// stick under full power and the craft drives itself down rather than merely
+// failing to climb. Hover is still capped at forty-five and still holds its
+// height, so there is always a setting that behaves.
+const MAX_LEAN = Math.PI;
 // How far the craft may lean while hover is held. Thrust acts along the roof,
 // so leaning trades lift for speed, and past a certain angle there is not
 // enough lift left to stand the craft up. Measured: hover holds altitude out
@@ -404,13 +413,6 @@ export class Player {
     this.y = (this.y + this.vy) | 0;
     this.z = (this.z + this.vz) | 0;
 
-    if (this.fireCooldown > 0) this.fireCooldown--;
-    if (fire && this.fireCooldown === 0) {
-      this.fire();
-      game.onShot();
-      this.fireCooldown = 45;
-    }
-
     this.checkGround(game);
   }
 
@@ -456,22 +458,6 @@ export class Player {
         TILE * 0.006,
       );
     }
-  }
-
-  fire() {
-    // Bombs are dropped, not fired. They leave the bay along the craft's own
-    // down axis, carrying its velocity, and gravity does the rest -- so you
-    // aim by flying over the target rather than by pointing at it.
-    const down = matApply(this.matrix, 0, 1, 0);
-
-    spawnBomb(
-      (this.x + down[0] * BAY_OFFSET) | 0,
-      (this.y + down[1] * BAY_OFFSET) | 0,
-      (this.z + down[2] * BAY_OFFSET) | 0,
-      (this.vx + down[0] * RELEASE_SPEED) | 0,
-      (this.vy + down[1] * RELEASE_SPEED) | 0,
-      (this.vz + down[2] * RELEASE_SPEED) | 0,
-    );
   }
 
   // -- contact with the ground ----------------------------------------------
