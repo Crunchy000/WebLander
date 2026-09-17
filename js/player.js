@@ -76,12 +76,6 @@ const SCAN = 2;            // tiles either way to test for scenery
 // seconds of every life are free: you can scrape the ground, clip a tree or
 // come down hard without losing a ship. At 50Hz this is five seconds.
 export const LAUNCH_GRACE = 250;
-// For most of that window the height is pinned too -- gravity may not take
-// the craft down, whatever the stick is doing -- which leaves both hands free
-// to work out which way is which. The pin is let go over the last second
-// rather than at the stroke of zero: a craft that starts falling the instant
-// a counter runs out reads as a glitch, not as a rule.
-const PIN_FADE = 50;
 const CAMERA_CEILING = -((TILE * 3) / 2);  // how far the eye may rise above y = 0
 
 // --- the ship model --------------------------------------------------------
@@ -211,6 +205,11 @@ export class Player {
     this.deathTimer = 0;
     this.fireCooldown = 0;
     this.thrusting = 0;   // 0 none, 1 hover, 2 full
+    // Which lean limit is in force. It follows the last thrust setting the
+    // pilot asked for and stays there when the trigger is let go, so the
+    // craft handles the same whether you are holding power or coasting.
+    // Full range until told otherwise.
+    this.leanMode = 2;
     this.grace = LAUNCH_GRACE;
     this.rotorSpin = 0;
   }
@@ -266,10 +265,14 @@ export class Player {
     // where it was, so the craft holds its facing rather than snapping back.
     const mag = Math.min(1, Math.hypot(stick.x, stick.y));
     // Hover asks for a gentle machine, so it gets one: the same stick travel
-    // buys half the lean. Asked for rather than delivered -- a flat battery
-    // takes the lift away below, but it should not silently hand back the
-    // authority the pilot chose to give up.
-    const targetLean = mag * (thrust === 1 ? HOVER_LEAN : MAX_LEAN);
+    // buys half the lean. The setting latches on the last thrust hit rather
+    // than lasting only while the trigger is down -- otherwise the craft's
+    // handling changes under you every time you ease off the power, which is
+    // the moment you can least afford a surprise. Asked for rather than
+    // delivered: a flat battery takes the lift away below, but it should not
+    // silently hand back the authority the pilot chose to give up.
+    if (thrust) this.leanMode = thrust;
+    const targetLean = mag * (this.leanMode === 1 ? HOVER_LEAN : MAX_LEAN);
     const targetDir = (mag > 0.02) ? Math.atan2(stick.x, stick.y) : this.leanDir;
 
     // Interpolate the direction the short way round the circle.
@@ -343,14 +346,6 @@ export class Player {
     this.vx = (this.vx * DRAG) | 0;
     this.vy = (this.vy * DRAG) | 0;
     this.vz = (this.vz * DRAG) | 0;
-
-    // The launch pin. Downwards only: you can still climb out of it, and it
-    // eases off over the last second so the craft is not simply dropped when
-    // the counter reaches zero.
-    if (this.grace > 0 && this.vy > 0) {
-      const hold = Math.min(1, this.grace / PIN_FADE);
-      this.vy = (this.vy * (1 - hold)) | 0;
-    }
 
     this.x = (this.x + this.vx) | 0;
     this.y = (this.y + this.vy) | 0;
