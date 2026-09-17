@@ -193,16 +193,19 @@ function frame(now) {
 
 requestAnimationFrame(frame);
 
-// Offline play, and an end to the stale-module problem: the worker is
-// network first, so online you get whatever was last deployed and the cache
-// only answers when the network will not. Registered after the game is
-// running so it never delays the first frame, and quietly ignored where the
-// browser or the origin will not have it -- a service worker needs https or
-// localhost, and the game is perfectly happy without one.
+// The game used to install a service worker. Anyone who ran it then still
+// has one registered, and it would go on intercepting every request for this
+// origin indefinitely -- including after this code stopped shipping one. So
+// it is explicitly unregistered rather than merely no longer installed.
 if ('serviceWorker' in navigator) {
-  addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
-  });
+  navigator.serviceWorker.getRegistrations?.()
+    .then((rs) => rs.forEach((r) => r.unregister()))
+    .catch(() => {});
+  // globalThis, not a bare `caches`: the binding only exists in a secure
+  // context, and referring to it directly would throw over plain http.
+  globalThis.caches?.keys?.()
+    .then((keys) => keys.forEach((k) => caches.delete(k)))
+    .catch(() => {});
 }
 
 // Expose for debugging from the console.
