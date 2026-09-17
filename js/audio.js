@@ -242,7 +242,9 @@ export class Audio {
   engine(level) {
     if (!this.enabled) return;
     const t = this.ctx.currentTime;
-    const target = level === 2 ? 0.5 : level === 1 ? 0.27 : 0;
+    // Half what it was. The rotors run continuously and everything else in
+    // the game has to be heard over them -- a warning most of all.
+    const target = level === 2 ? 0.25 : level === 1 ? 0.135 : 0;
     this.engineGain.gain.setTargetAtTime(target, t, 0.04);
     this.engineFilter.frequency.setTargetAtTime(
       level === 2 ? 900 : level === 1 ? 520 : 300, t, 0.06);
@@ -472,17 +474,37 @@ export class Audio {
   touchdown() { this.tone(520, 0.14); setTimeout(() => this.tone(780, 0.2), 120); }
   charge()    { this.tone(1100, 0.05, 'sine', 0.12); }
 
+  // A beep, as distinct from a ping: flat body, hard edges, no decay. `tone`
+  // starts at full gain and falls away from the first sample, which is why
+  // everything built on it sounds struck rather than sounded. The four
+  // milliseconds at each end are there only to stop the speaker clicking.
+  _beep(freq, dur, gain) {
+    if (!this.enabled) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    o.type = 'square';
+    o.frequency.value = freq;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + 0.004);
+    g.gain.setValueAtTime(gain, t + dur - 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(this.master);
+    o.start(t);
+    o.stop(t + dur + 0.01);
+  }
+
   // The low-battery warning. `urgency` runs 0 as the meter turns red to 1 as
   // the last of it goes, and takes the pitch up with it so the sound itself
-  // says how bad it is -- the cadence alone would need counting. A triangle
+  // says how bad it is -- the cadence alone would need counting. A square
   // rather than the charge chirp's sine, so the two are not mistaken for each
   // other while sitting on the pad with the meter still low.
   lowBattery(urgency = 0) {
-    const f = 620 + urgency * 300;
-    this.tone(f, 0.06, 'triangle', 0.13 + urgency * 0.07);
+    const f = 820 + urgency * 420;
+    this._beep(f, 0.075, 0.30 + urgency * 0.10);
     // Two blips once it is genuinely nearly out, which reads as alarm rather
     // than as an instrument politely repeating itself.
-    if (urgency > 0.55) setTimeout(() => this.tone(f, 0.06, 'triangle', 0.16), 90);
+    if (urgency > 0.55) setTimeout(() => this._beep(f, 0.075, 0.40), 105);
   }
 
   // A tank's gun going off in the distance.
