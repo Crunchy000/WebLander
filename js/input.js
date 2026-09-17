@@ -436,7 +436,11 @@ export class Input {
 
     // Right trigger or A for full power, left trigger or X to hover.
     this.padThrust = (btn(7) || btn(0)) ? 2 : (btn(6) || btn(2)) ? 1 : 0;
-    this.padFire = btn(5) || btn(1) || btn(4);
+    // The right trigger drops as well as thrusts. It is the finger already
+    // doing the work on a bombing run -- you are holding power to get over
+    // the target anyway -- and the bay reloads on its own timer, so holding
+    // it down cannot dump the whole load at once.
+    this.padFire = btn(5) || btn(1) || btn(4) || btn(7);
 
     let any = false;
     for (const b of pad.buttons) if (b && (b.pressed || b.value > 0.5)) { any = true; break; }

@@ -43,6 +43,14 @@ export const CHARGE_MAX = 0x8000;
 const THRUST_HOVER = 0x06600;   // hover thrust, doubled again for a much faster feel
 const THRUST_FULL  = 0x0C000;   // full-throttle thrust, doubled again
 const MAX_LEAN = Math.PI / 2;   // radians at full stick deflection -- exactly 90 degrees of lean
+// How far the craft may lean while hover is held. Thrust acts along the roof,
+// so leaning trades lift for speed, and past a certain angle there is not
+// enough lift left to stand the craft up. Measured: hover holds altitude out
+// to 66.9 degrees and sinks at 2.0 tiles/s at the full 90, where full thrust
+// carries to 78.0. Hover is the mode you use to place the craft, so it is
+// capped where it always climbs -- at 45 degrees it still makes 1.6 tiles/s
+// with the stick buried.
+const HOVER_LEAN = Math.PI / 4;
 const LEAN_RATE = 0.30;         // how fast the craft follows the stick -- snappier response
 const DRAG = 0.985;             // damping; without it the craft is unflyable
 
@@ -245,7 +253,11 @@ export class Player {
     // becomes how far its nose drops. Centring the stick leaves the heading
     // where it was, so the craft holds its facing rather than snapping back.
     const mag = Math.min(1, Math.hypot(stick.x, stick.y));
-    const targetLean = mag * MAX_LEAN;
+    // Hover asks for a gentle machine, so it gets one: the same stick travel
+    // buys half the lean. Asked for rather than delivered -- a flat battery
+    // takes the lift away below, but it should not silently hand back the
+    // authority the pilot chose to give up.
+    const targetLean = mag * (thrust === 1 ? HOVER_LEAN : MAX_LEAN);
     const targetDir = (mag > 0.02) ? Math.atan2(stick.x, stick.y) : this.leanDir;
 
     // Interpolate the direction the short way round the circle.
