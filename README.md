@@ -102,14 +102,21 @@ seconds of you parked on top of her to land all three.
 
 **Radar and missile sites** are the only thing in the game that punishes
 altitude, and they are rare — two on the map, trickled in slowly, so meeting
-one is a route to plan rather than a tax on flying. A site sees thirteen tiles
-but cannot see below two and a bit, which is roughly the height of its own
-dish: crossing its ground under the dish is free and crossing it over the dish
-is not. The dish swings round to face you, the apron lamps blink faster, the
+one is a route to plan rather than a tax on flying.
+
+A site sees what its dish can see, and nothing else. Two conditions: you have
+to be **above the dish itself**, and the **straight line from the dish to you
+has to be clear** — of hills, buildings, blocks and trees alike. So the way
+past is either to stay under the dish, which you can judge by eye because the
+dish is right there on its tower, or to put something between the two of you.
+A ridge works. So does a big enough building. Nothing about your own height
+above your own ground matters: what counts is the line between you and it.
+
+The dish swings round to face you, the plinth lamps blink faster, the
 HUD reads `RADAR` and fills a bar, and about four and a half seconds later you
 get `SAM LOCK` and a round that has to turn to follow you — limited homing, so
-it can be made to overshoot. Drop back under the floor and the lock decays,
-slower than it built, so a hop up and straight back down still costs you.
+it can be made to overshoot. Break the line and the lock decays, slower than
+it built, so a bob up and straight back down still costs you.
 Sites are static, worth more than anything else on the map, and the rounds
 still on the rails go up with them.
 

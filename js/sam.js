@@ -15,6 +15,7 @@ import { Model, shade, facet, drawModel, drawLamp } from './model.js';
 import { sky, beacon } from './daylight.js';
 import { landAltitude, SEA_LEVEL, isOnLaunchpad, UNDERCARRIAGE_Y } from './landscape.js';
 import { spawnExplosion, spawnSparks, spawnSmoke } from './particles.js';
+import { objectAt, MODELS } from './objects.js';
 import { project } from './renderer.js';
 
 // Rare on purpose. A site is a landmark rather than a population: two of them
@@ -31,13 +32,27 @@ const HIT_RADIUS = 1.70;        // tiles, for a bomb passing through one
 const BLAST_RADIUS = 3.00;
 const WRECK_LIFE = 900;
 
-// The radar. Range is generous and the floor is the whole point: below it the
-// site is blind, and a craft crossing at a tile and a half is simply not
-// there. Two and a bit tiles is low enough to be a decision -- it is under the
-// height most people fly at without thinking -- and high enough that hugging
-// the ground is not the only way through.
+// The radar sees what the dish can see, and nothing else.
+//
+// The first version asked whether the craft was more than a couple of tiles
+// above the ground directly beneath it, which is a rule about the craft
+// rather than about the site. It gave the wrong answer in both directions: a
+// craft high over a valley the site could not possibly see into counted as
+// visible, and one skimming a ridge in plain view of the dish did not.
+//
+// Now there are two conditions, and both are about the line between them.
+// The craft has to be above the dish itself -- a dish cannot look down
+// through the plinth it is bolted to -- and the straight line from the dish
+// to the craft has to be clear of everything standing between: hills,
+// buildings, blocks, trees.
+// How much bigger than its nominal size the whole site is drawn. It sets the
+// dish height, so the radar geometry needs it as much as the models do.
+const S = 1.30;
+
 const RADAR_RANGE = 13 * TILE;
-const RADAR_FLOOR = TILE * 2.2;
+const DISH_EYE = TILE * 1.50 * S;   // where the dish sits above its own ground
+const LOS_STEP = TILE * 0.5;        // how finely the line is walked
+const LOS_MAX_STEPS = 48;
 const SWEEP_RATE = 0.022;       // radians a frame, idling
 const TRACK_RATE = 0.055;       // ... and once it has something to look at
 
@@ -82,8 +97,6 @@ const MARK     = TRIM;
 const ALERT    = [255,  64,  56];
 const CHAR     = [ 46,  42,  40];
 const CHAR_B   = [ 68,  62,  58];
-
-const S = 1.30;
 
 // --- models ----------------------------------------------------------------
 
@@ -405,12 +418,16 @@ export function updateSams(player, game) {
       continue;
     }
 
-    // Can it see you? Range, and height above the ground under the craft --
-    // height above the ground rather than world height, because a craft down
-    // in a valley is behind the hills whatever its altitude says.
+    // Can it see you? In range, above the dish, and nothing in the way. The
+    // first two are arithmetic and the third is a walk along the line, so
+    // they are asked in that order -- most of the time the answer is no
+    // before the expensive question is reached.
+    const base = landAltitude(s.x, s.z);
+    const eyeY = (base - DISH_EYE) | 0;
     const range = Math.hypot(px - s.x, pz - s.z);
     const seen = !player.dead && range < RADAR_RANGE &&
-                 player.altitude > RADAR_FLOOR;
+                 player.y < eyeY &&
+                 clearLine(s.x, eyeY, s.z, px, player.y, pz);
 
     if (seen) {
       // Swing onto the bearing rather than snapping to it: the dish coming
@@ -436,6 +453,41 @@ export function updateSams(player, game) {
   }
 
   updateMissiles(player, game);
+}
+
+// Is the straight line from the dish to the craft clear of the landscape and
+// of whatever is standing on it? Walked at half-tile steps, which is fine
+// enough that a single hill cannot be stepped over and coarse enough to cost
+// about as much as one row of the landscape scan.
+//
+// Remember +y points down: ground is in the way when its top is ABOVE the
+// ray, which means a smaller y.
+function clearLine(x0, y0, z0, x1, y1, z1) {
+  const dx = x1 - x0, dz = z1 - z0;
+  const flat = Math.hypot(dx, dz);
+  let steps = Math.ceil(flat / LOS_STEP);
+  if (steps < 2) return true;
+  if (steps > LOS_MAX_STEPS) steps = LOS_MAX_STEPS;
+
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    const x = (x0 + dx * t) | 0;
+    const z = (z0 + dz * t) | 0;
+    const rayY = y0 + (y1 - y0) * t;
+
+    let top = landAltitude(x, z);
+    // Whatever is standing on that tile stands in the way too. The model's
+    // own height is enough -- a tree is not wide enough for its footprint to
+    // matter at this sampling, and the tile it is recorded on is where it is.
+    const type = objectAt(x >> 24, z >> 24);
+    if (type >= 0) {
+      const m = MODELS[type];
+      if (m) top -= m.height;
+    }
+
+    if (top < rayY) return false;
+  }
+  return true;
 }
 
 function launch(s, player, game) {
