@@ -40,6 +40,21 @@ import {
 
 export const STATE = { TITLE: 0, PLAYING: 1, DYING: 2, GAMEOVER: 3 };
 
+// What the screen says about each way of losing a craft.
+//
+// This used to be a chain of conditionals ending in CRASHED, which meant any
+// cause nobody had thought to add reported itself as flying into the ground.
+// Point defence and missiles both did exactly that. The fallback now prints
+// whatever cause it was handed instead: a new one turning up unlabelled is a
+// thing you notice, where a new one claiming to be a crash is not.
+const DEATH_MESSAGE = {
+  crash: 'CRASHED',
+  sea: 'LOST AT SEA',
+  shelled: 'SHOT DOWN',
+  beam: 'HULL BREACHED',
+  missile: 'MISSILE HIT',
+};
+
 
 const STARTING_LIVES = 4;
 
@@ -191,8 +206,7 @@ export class Game {
   onDeath(how) {
     this.audio.explosion();
     this.state = STATE.DYING;
-    this.setMessage(how === 'sea' ? 'LOST AT SEA'
-      : how === 'shelled' ? 'SHOT DOWN' : 'CRASHED', 110);
+    this.setMessage(DEATH_MESSAGE[how] || String(how).toUpperCase(), 110);
   }
 
   setMessage(text, frames) {

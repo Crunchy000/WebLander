@@ -66,16 +66,19 @@ const MAX_MISSILES = 6;
 
 // --- palette ---------------------------------------------------------------
 
-const CONCRETE = [104, 108, 104];
-const CONCRETE_B = [ 78,  84,  82];
-const MAST     = [ 86,  92, 104];
-const DISH     = [206, 212, 216];   // the face, which catches the light
-const DISH_B   = [ 96, 104, 116];   // and its back
-const RAIL     = [ 72,  80,  76];
-const TUBE     = [ 62,  66,  74];
+const BODY     = [ 56,  62,  70];   // charcoal, the colour of the whole thing
+const BODY_D   = [ 40,  45,  52];   // its shaded faces
+const BODY_L   = [ 74,  81,  90];   // and the ones catching the light
+const TRIM     = [242, 150,  46];   // orange, round every edge that matters
+const CYAN     = [ 64, 226, 232];   // ribs, and the panel slot
+const PANEL_A  = [238, 240, 242];   // the white plates on the plinth
+const PANEL_B  = [176, 180, 184];
+const HUB      = [240, 242, 245];
+const RAIL     = [ 62,  68,  76];
+const TUBE     = [ 48,  53,  60];
 const WARHEAD  = [214,  74,  58];
 const FIN      = [236, 214,  84];
-const MARK     = [255, 150,  40];
+const MARK     = TRIM;
 const ALERT    = [255,  64,  56];
 const CHAR     = [ 46,  42,  40];
 const CHAR_B   = [ 68,  62,  58];
@@ -104,113 +107,200 @@ function box(m, x0, y0, z0, x1, y1, z1, cols) {
   return q;
 }
 
-// The emplacement: a concrete apron, the launch rails with their rounds still
-// on them, and the tower the dish turns on. All of it static.
-//
-// The tower is what sets the scale of the whole thing. Its head comes out at
-// about the height of the radar floor, which is not a coincidence: the rule
-// for getting past a site is "stay below the dish", and a rule you can see
-// from the air is worth more than one you have to be told.
+// A ring of points on a horizontal circle, for the plinth and its collar.
+// Everything here is an n-gon rather than a box: the whole shape of the thing
+// is round, and four sides would read as a crate with a dish on it.
+function ring(m, n, r, y, turn = 0) {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + turn;
+    out.push(m.vert(Math.cos(a) * r * S, y * S, Math.sin(a) * r * S));
+  }
+  return out;
+}
+
+// The emplacement: a tapered octagonal plinth with a trimmed lip and lit
+// panels, a bearing collar, and the launch rails set out either side. The
+// tower and the lattice mast are gone -- the dish sits on its own plinth, and
+// the whole thing reads as one machine rather than an aerial bolted to a shed.
+const PLINTH_N = 8;
+const PLINTH_R0 = 0.94;    // at the ground
+const PLINTH_R1 = 0.66;    // at the lip
+const PLINTH_TOP = -0.66;
+
 function buildBase(burnt) {
   const m = new Model();
   const v = (x, y, z) => m.vert(x * S, y * S, z * S);
+  const body = burnt ? CHAR : BODY;
+  const dark = burnt ? CHAR : BODY_D;
 
-  // Apron.
-  box(m, -0.86, -0.20, -0.86, 0.86, 0.02, 0.86, burnt ? CHAR : {
-    all: CONCRETE_B, top: CONCRETE, front: CONCRETE, right: CONCRETE_B,
-  });
+  const foot = ring(m, PLINTH_N, PLINTH_R0, 0.02, Math.PI / PLINTH_N);
+  const lip = ring(m, PLINTH_N, PLINTH_R1, PLINTH_TOP, Math.PI / PLINTH_N);
+
+  // The tapered flanks, alternating light and dark so the facets read.
+  for (let i = 0; i < PLINTH_N; i++) {
+    const j = (i + 1) % PLINTH_N;
+    facet(m, [lip[i], lip[j], foot[j], foot[i]], i % 2 ? body : dark);
+  }
+  facet(m, lip.slice().reverse(), burnt ? CHAR_B : BODY_L);
 
   if (!burnt) {
-    // Hazard banding round the apron, so it reads as a target from the air
-    // rather than as a lump of rock.
-    for (const sgn of [1, -1]) {
-      for (const [z0, z1] of [[-0.66, -0.34], [-0.10, 0.22], [0.46, 0.72]]) {
-        facet(m, [
-          v(sgn * 0.865, -0.18, z0), v(sgn * 0.865, -0.18, z1),
-          v(sgn * 0.865, -0.02, z1), v(sgn * 0.865, -0.02, z0),
-        ], MARK);
+    // The orange lip, as a band standing just proud of the top edge, and a
+    // second one round the foot. It is the only warm colour on the model and
+    // it is what makes the silhouette legible against grass or snow.
+    const lipA = ring(m, PLINTH_N, PLINTH_R1 + 0.035, PLINTH_TOP + 0.005, Math.PI / PLINTH_N);
+    const lipB = ring(m, PLINTH_N, PLINTH_R1 + 0.09, PLINTH_TOP + 0.10, Math.PI / PLINTH_N);
+    for (let i = 0; i < PLINTH_N; i++) {
+      const j = (i + 1) % PLINTH_N;
+      facet(m, [lipA[i], lipA[j], lipB[j], lipB[i]], TRIM);
+    }
+
+    // White plates on the flanks, and a cyan slot between them. Proud of the
+    // face by a hair so the sort puts them in front of it.
+    for (let i = 0; i < PLINTH_N; i++) {
+      const a = (i / PLINTH_N) * Math.PI * 2 + Math.PI / PLINTH_N + Math.PI / PLINTH_N;
+      const cx = Math.cos(a), cz = Math.sin(a);
+      const tx = -cz, tz = cx;                 // along the face
+      const push = 0.03;
+      const at = (w, y) => v(cx * (0.80 + push) + tx * w, y, cz * (0.80 + push) + tz * w);
+      if (i % 2 === 0) {
+        facet(m, [at(-0.20, -0.50), at(0.20, -0.50), at(0.20, -0.16), at(-0.20, -0.16)],
+              i % 4 === 0 ? PANEL_A : PANEL_B);
+      } else {
+        facet(m, [at(-0.035, -0.46), at(0.035, -0.46), at(0.055, -0.14), at(-0.055, -0.14)], CYAN);
       }
     }
   }
 
-  // Launch rails, each with a round on it, set out at the corners so the
-  // tower has the middle to itself.
-  for (const sx of [-0.52, 0.52]) {
-    box(m, sx - 0.13, -0.38, -0.44, sx + 0.13, -0.20, 0.34, burnt ? CHAR_B : RAIL);
-    box(m, sx - 0.09, -0.56, -0.32, sx + 0.09, -0.38, 0.26, burnt ? CHAR_B : TUBE);
+  // The bearing the dish turns on: a squat collar, stepped.
+  const cA = ring(m, PLINTH_N, 0.40, PLINTH_TOP, 0);
+  const cB = ring(m, PLINTH_N, 0.40, -0.92, 0);
+  for (let i = 0; i < PLINTH_N; i++) {
+    const j = (i + 1) % PLINTH_N;
+    facet(m, [cB[i], cB[j], cA[j], cA[i]], i % 2 ? body : dark);
+  }
+  facet(m, cB.slice().reverse(), burnt ? CHAR : BODY_L);
+
+  // Launch rails, low and out to the sides, so the plinth keeps the middle.
+  for (const sx of [-0.78, 0.78]) {
+    box(m, sx - 0.13, -0.34, -0.42, sx + 0.13, -0.16, 0.34, burnt ? CHAR_B : RAIL);
+    box(m, sx - 0.09, -0.50, -0.30, sx + 0.09, -0.34, 0.26, burnt ? CHAR_B : TUBE);
     if (!burnt) {
-      // Nose and fins, which is all it takes to read as a missile at this size.
       facet(m, [
-        v(sx - 0.09, -0.56, 0.262), v(sx + 0.09, -0.56, 0.262),
-        v(sx + 0.09, -0.38, 0.262), v(sx - 0.09, -0.38, 0.262),
+        v(sx - 0.09, -0.50, 0.262), v(sx + 0.09, -0.50, 0.262),
+        v(sx + 0.09, -0.34, 0.262), v(sx - 0.09, -0.34, 0.262),
       ], WARHEAD);
       facet(m, [
-        v(sx - 0.09, -0.565, -0.32), v(sx + 0.09, -0.565, -0.32),
-        v(sx + 0.09, -0.565, -0.14), v(sx - 0.09, -0.565, -0.14),
+        v(sx - 0.09, -0.505, -0.30), v(sx + 0.09, -0.505, -0.30),
+        v(sx + 0.09, -0.505, -0.12), v(sx - 0.09, -0.505, -0.12),
       ], FIN);
     }
   }
-
-  // The tower: a wide plinth, a shaft, and a collar under the bearing. Three
-  // boxes rather than one reads as built rather than extruded.
-  box(m, -0.26, -0.44, -0.26, 0.26, -0.16, 0.26, burnt ? CHAR : shade(MAST, 0.85));
-  box(m, -0.15, -1.66, -0.15, 0.15, -0.42, 0.15, burnt ? CHAR : MAST);
-  box(m, -0.22, -1.80, -0.22, 0.22, -1.62, 0.22, burnt ? CHAR : shade(MAST, 1.2));
   return m;
 }
 
 // The dish, built about its own bearing so it can turn independently of the
-// tower under it. An octagon rather than a rectangle, a real rim, and big
-// enough to be the thing you see: the whole warning system is "that dish is
-// pointing at me", which only works if you can tell where it points.
-const DISH_R = 0.86;
-const DISH_RAKE = 0.42;         // radians it leans back, looking up and out
-const DISH_FACES = 8;
+// plinth under it.
+//
+// A twelve-sided charcoal face with an orange rim, cyan ribs running out from
+// a white hub, and the feed on a short spike out of the middle. The face is
+// dark, so what you actually see when it comes round is the rim and the ribs
+// lighting up -- and when it turns away there is nothing on the back at all.
+// That contrast is the whole warning system: you can tell where it is looking
+// from further away than you can read any instrument.
+const DISH_R = 0.84;
+const DISH_RAKE = 0.46;         // radians it leans back, looking up and out
+const DISH_FACES = 12;
+const YOKE = -1.02;             // where the dish hangs off the collar
 
 function buildDish(burnt) {
   const m = new Model();
   const v = (x, y, z) => m.vert(x * S, y * S, z * S);
 
-  // A point on the rim, `depth` forward of the dish plane. Leaning the panel
-  // back is done by rolling the up axis into z, so the whole disc stays flat
-  // and the rim ring stays a ring.
-  const rim = (i, r, depth) => {
-    const a = (i / DISH_FACES) * Math.PI * 2 + Math.PI / DISH_FACES;
+  // A point on the dish at radius r, `depth` forward of the panel. Leaning it
+  // back rolls the panel's up axis into z, so the disc stays flat and the rim
+  // stays a ring.
+  const at = (i, r, depth, spin = 0) => {
+    const a = ((i + spin) / DISH_FACES) * Math.PI * 2 + Math.PI / DISH_FACES;
     const x = Math.cos(a) * r;
-    const u = Math.sin(a) * r;                   // up, within the panel
+    const u = Math.sin(a) * r;
     return v(x, -u * Math.cos(DISH_RAKE), depth - u * Math.sin(DISH_RAKE));
   };
 
-  const front = [], back = [];
+  const front = [], back = [], rim = [];
   for (let i = 0; i < DISH_FACES; i++) {
-    front.push(rim(i, DISH_R, 0.10));
-    back.push(rim(i, DISH_R * 0.94, -0.06));
+    front.push(at(i, DISH_R * 0.93, 0.10));
+    rim.push(at(i, DISH_R, 0.05));
+    back.push(at(i, DISH_R * 0.93, -0.04));
   }
 
-  // The face, as one polygon -- drawModel fans anything above four corners.
-  facet(m, front, burnt ? CHAR_B : DISH);
-  facet(m, back.slice().reverse(), burnt ? CHAR : DISH_B);
-  // The rim, which is what gives it thickness as it turns edge on.
+  // The face goes in as twelve wedges rather than one polygon. That is not
+  // decoration: faces are sorted back to front by their centre, and a single
+  // disc has one centre, so anything drawn on the half of it that leans away
+  // from you sorts behind the whole disc and vanishes. The first build lost
+  // the top six ribs to exactly that. Wedges put each rib next to facets at
+  // its own depth, and they give the dish the faceted shading it wants.
+  const hubF = [];
+  for (let i = 0; i < DISH_FACES; i++) hubF.push(at(i, 0.20, 0.10));
   for (let i = 0; i < DISH_FACES; i++) {
     const j = (i + 1) % DISH_FACES;
-    facet(m, [front[i], front[j], back[j], back[i]], burnt ? CHAR : shade(DISH_B, 1.15));
+    facet(m, [hubF[i], front[i], front[j], hubF[j]],
+          burnt ? CHAR_B : shade(BODY_D, i % 2 ? 1.0 : 0.86));
+  }
+  const hubB = [];
+  for (let i = 0; i < DISH_FACES; i++) hubB.push(at(i, 0.20, -0.04));
+  for (let i = 0; i < DISH_FACES; i++) {
+    const j = (i + 1) % DISH_FACES;
+    facet(m, [hubB[j], back[j], back[i], hubB[i]],
+          burnt ? CHAR : shade(BODY, i % 2 ? 1.0 : 0.88));
+  }
+  // The rim, in orange, as a band round the edge on both sides.
+  for (let i = 0; i < DISH_FACES; i++) {
+    const j = (i + 1) % DISH_FACES;
+    facet(m, [front[i], front[j], rim[j], rim[i]], burnt ? CHAR : TRIM);
+    facet(m, [rim[i], rim[j], back[j], back[i]], burnt ? CHAR : shade(TRIM, 0.62));
   }
 
   if (!burnt) {
-    // A darker inner disc, so the face is not one flat slab of white and the
-    // dish reads as concave at a glance.
-    const inner = [];
-    for (let i = 0; i < DISH_FACES; i++) inner.push(rim(i, DISH_R * 0.46, 0.115));
-    facet(m, inner, shade(DISH, 0.82));
+    // Ribs out from the hub, a hair proud of the face so the depth sort puts
+    // them in front of it rather than fighting with it.
+    // Each rib goes in as three segments rather than one long quad. Same
+    // reason the face is wedges: a quad spanning several wedges sorts by its
+    // middle, so the far end of it disappears behind the panel it lies on.
+    // One long rib came out dashed; three short ones do not.
+    const SEGS = 3;
+    for (let i = 0; i < DISH_FACES; i++) {
+      for (let k = 0; k < SEGS; k++) {
+        const r0 = 0.19 + (DISH_R * 0.90 - 0.19) * (k / SEGS);
+        const r1 = 0.19 + (DISH_R * 0.90 - 0.19) * ((k + 1) / SEGS);
+        const w0 = 0.036 - 0.018 * (k / SEGS);
+        const w1 = 0.036 - 0.018 * ((k + 1) / SEGS);
+        facet(m, [
+          at(i - w0, r0, 0.125), at(i + w0, r0, 0.125),
+          at(i + w1, r1, 0.125), at(i - w1, r1, 0.125),
+        ], CYAN);
+      }
+    }
+    // The hub, over the top of where they all meet.
+    const hub = [];
+    for (let i = 0; i < DISH_FACES; i++) hub.push(at(i, 0.23, 0.15));
+    facet(m, hub, HUB);
   }
 
-  // The feed, on a boom out in front of the face, with its horn on the end.
-  box(m, -0.045, -0.045, 0.10, 0.045, 0.045, 0.52, burnt ? CHAR : MAST);
-  box(m, -0.12, -0.12, 0.50, 0.12, 0.12, 0.64, burnt ? CHAR_B : shade(DISH_B, 1.3));
+  // The feed, on a spike out of the hub, angled as the reference has it.
+  box(m, -0.045, -0.30, 0.12, 0.045, -0.04, 0.30, burnt ? CHAR : BODY_D);
+  if (!burnt) {
+    facet(m, [
+      v(-0.045, -0.34, 0.26), v(0.045, -0.34, 0.26),
+      v(0.045, -0.28, 0.32), v(-0.045, -0.28, 0.32),
+    ], CYAN);
+  }
 
-  // And a counterweight behind the bearing, which is what a real one needs
-  // and what stops the back of the dish reading as empty.
-  box(m, -0.20, -0.13, -0.30, 0.20, 0.13, -0.12, burnt ? CHAR : shade(MAST, 0.75));
+  // The pedestal, from the back of the dish down to the bearing it turns on.
+  // It has to reach: with a short stub the dish hung in mid air the moment it
+  // came side on and the gap was in plain sight.
+  box(m, -0.24, -0.10, -0.32, 0.24, 0.34, -0.04, burnt ? CHAR : BODY);
+  box(m, -0.17, 0.30, -0.26, 0.17, 0.60, -0.02, burnt ? CHAR : BODY_D);
   return m;
 }
 
@@ -479,7 +569,7 @@ export function drawSam(rd, s, camX, camY, camZ, fog = 0) {
 
   matRotY(s.dish, dishMat);
   drawModel(rd, wrecked ? DISH_WRECK : DISH_M, dishMat,
-            s.x, (base - TILE * 1.88 * S) | 0, s.z, camX, camY, camZ, fog);
+            s.x, (base - TILE * 1.50 * S) | 0, s.z, camX, camY, camZ, fog);
 
   if (wrecked) return;
 
@@ -491,12 +581,12 @@ export function drawSam(rd, s, camX, camY, camZ, fog = 0) {
   if (beacon(period, Math.max(3, period >> 1), s.blinkAt | 0)) {
     // On the apron corners rather than the tower: the dish swings right round,
     // and a warning light the warning itself can hide is no warning.
-    for (const sx of [-0.80, 0.80]) {
-      for (const sz of [-0.80, 0.80]) {
-        drawLamp(rd, (s.x + sx * S * TILE) | 0, (base - TILE * 0.22 * S) | 0,
-                 (s.z + sz * S * TILE) | 0, camX, camY, camZ,
-                 0.028 + 0.042 * t, t > 0.02 ? ALERT : MARK, fog);
-      }
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      drawLamp(rd, (s.x + Math.cos(a) * 0.74 * S * TILE) | 0,
+               (base - TILE * 0.60 * S) | 0,
+               (s.z + Math.sin(a) * 0.74 * S * TILE) | 0, camX, camY, camZ,
+               0.018 + 0.030 * t, t > 0.02 ? ALERT : MARK, fog);
     }
   }
 }

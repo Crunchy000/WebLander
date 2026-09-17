@@ -618,7 +618,7 @@ export class Player {
     this.hitFlash = 22;
     spawnSparks(this.x, this.y, this.z, 14);
     if (this.hits >= HULL_HITS) {
-      this.die(game, 'shot down');
+      this.die(game, 'beam');
       return true;
     }
     return false;
