@@ -20,8 +20,8 @@ import { serene } from './style.js';
 // Anything that will not load is dropped quietly, so a half-populated list
 // still works.
 export const TRACKS = [
-  // 'audio/dunes.mp3',
-  // 'audio/nightfall.mp3',
+  'audio/twilight-on-the-horizon.mp3',
+  'audio/cooling-sands-at-dusk.mp3',
 ];
 
 // Music sits a long way under the effects. It is a bed, not a feature: the
@@ -118,6 +118,19 @@ function next() {
 // Whether a soundtrack is actually running, for anything that wants to know.
 export function musicPlaying() {
   return !!(enabled && playing && !playing.el.paused);
+}
+
+// What it is playing and how far in. The element is detached -- it is never
+// put in the document -- so there is no other way to look at it, and "is it
+// paused" is not the same question as "is it moving".
+export function musicStatus() {
+  if (!playing) return null;
+  const el = playing.el;
+  return {
+    src: el.src.split('/').pop(),
+    at: +el.currentTime.toFixed(2),
+    duration: isFinite(el.duration) ? +el.duration.toFixed(1) : null,
+  };
 }
 
 // The serene style is the one the music was chosen for; the original is a
