@@ -32,8 +32,9 @@ function showControlHelp() {
   document.getElementById('controls-desktop').hidden = touch;
   document.getElementById('controls-touch').hidden = !touch;
   // Say which button, when we know there is one. On a television across the
-  // room "START" is a word, not an instruction; "PRESS A" is the thing to do.
-  startBtn.textContent = input.padConnected ? 'PRESS  A' : 'START';
+  // room "start flying" is a label, not an instruction; "press A" is the
+  // thing to do.
+  startBtn.textContent = input.padConnected ? 'press A to fly' : 'start flying';
 
   // Focused, so a console's A button activates it natively. That native
   // press carries user activation; a click synthesised from a gamepad poll

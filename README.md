@@ -304,9 +304,13 @@ software rasterisation, so a phone GPU does not notice it.
 | `js/sam.js` | radar and missile sites, and what they do to anyone flying high |
 | `js/player.js` | faceted hull, flight physics, collisions |
 | `js/particles.js` | exhaust, bullets, explosions, smoke, spray |
+| `js/ribbon.js` | the streamer trailing the craft, which draws its own loops |
+| `js/ridges.js` | parallax silhouette ranges along the horizon |
+| `js/style.js` | the palette transform the serene style is made of |
+| `js/music.js` | the soundtrack, if there is one |
 | `js/input.js` | mouse, keyboard, touch and tilt |
 | `js/audio.js` | synthesised sound, no assets |
-| `js/font.js` | 5×7 bitmap font for the HUD |
+| `js/font.js` | 5×8 bitmap font for the HUD, caps and lowercase |
 | `js/game.js` | main loop, landscape scan, HUD, game states |
 | `scripts/assemble-web.mjs` | stages the playable files, for Pages and for Tauri alike |
 | `src-tauri/` | the desktop shell: a window round the same web build |

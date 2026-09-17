@@ -45,11 +45,11 @@ export const STATE = { TITLE: 0, PLAYING: 1, DYING: 2, GAMEOVER: 3 };
 // whatever cause it was handed instead: a new one turning up unlabelled is a
 // thing you notice, where a new one claiming to be a crash is not.
 const DEATH_MESSAGE = {
-  crash: 'CRASHED',
-  sea: 'LOST AT SEA',
-  shelled: 'SHOT DOWN',
-  beam: 'HULL BREACHED',
-  missile: 'MISSILE HIT',
+  crash: 'a heavy landing',
+  sea: 'down in the water',
+  shelled: 'shot down',
+  beam: 'hull breached',
+  missile: 'missile hit',
 };
 
 
@@ -122,18 +122,18 @@ export class Game {
   onCharging() {
     // Chirp occasionally rather than every frame.
     if ((this.chargeTick = (this.chargeTick | 0) + 1) % 7 === 0) this.audio.charge();
-    this.setMessage('CHARGING', 12);
+    this.setMessage('charging', 12);
   }
 
   // A tank shell found the craft while it sat on the ground.
   onBoatHit(x, y, z) {
     this.audio.explosion();
-    this.setMessage('SHIP HIT', 60);
+    this.setMessage('boat hit', 60);
   }
 
   onBoatSunk(x, y, z) {
     this.audio.bigBoom();
-    this.setMessage('SHIP SUNK  +' + BOAT_SCORE, 90);
+    this.setMessage('boat down  +' + BOAT_SCORE, 90);
   }
 
   onShipGoesUnder(x, y, z) {
@@ -149,13 +149,13 @@ export class Game {
   onBlocksKnocked(type, x, y, z, force) {
     this.addScore(OBJ_SCORE[type] || 0);
     this.audio.clatter(Math.min(1, force / 2.2));
-    this.setMessage('TIMBER  +' + (OBJ_SCORE[type] || 0), 60);
+    this.setMessage('timber  +' + (OBJ_SCORE[type] || 0), 60);
   }
 
   onDeath(how) {
     this.audio.explosion();
     this.state = STATE.DYING;
-    this.setMessage(DEATH_MESSAGE[how] || String(how).toUpperCase(), 110);
+    this.setMessage(DEATH_MESSAGE[how] || String(how), 110);
   }
 
   setMessage(text, frames) {
@@ -298,7 +298,7 @@ export class Game {
           spawnSparks(wx, (base - MODELS[type].height / 2) | 0, wz, 12);
           this.audio.blast();
           this.audio.clatter(1);
-          this.setMessage('TIMBER  +' + (OBJ_SCORE[type] || 0), 60);
+          this.setMessage('timber  +' + (OBJ_SCORE[type] || 0), 60);
           return true;
         }
 
@@ -609,28 +609,37 @@ export class Game {
   drawHud() {
     const rd = this.rd;
     const p = this.player;
-    const WHITE = [230, 245, 230];
-    const DIM = [120, 170, 130];
+    // Nothing on this display shouts. The old set was arcade colours -- a
+    // hard white on a saturated green, warnings in pure red -- which is the
+    // right palette for a machine that wants your attention and the wrong one
+    // for a game about pottering about at dusk. These are the same readings
+    // in the colours the sky is already using: chalk, sage, clay, and a warm
+    // sand for anything that matters.
+    const WHITE = [236, 240, 228];
+    const DIM = [146, 166, 152];
+    const WARM = [236, 198, 140];
+    const CLAY = [232, 142, 116];
+    const COOL = [156, 198, 214];
 
-    drawText(rd, 'SCORE', 4, 4, DIM);
-    drawText(rd, pad(this.score, 6), 4 + textWidth('SCORE '), 4, WHITE);
+    drawText(rd, 'score', 4, 4, DIM);
+    drawText(rd, pad(this.score, 6), 4 + textWidth('score '), 4, WHITE);
 
-    const hi = 'HI ' + pad(this.highScore, 6);
+    const hi = 'best ' + pad(this.highScore, 6);
     drawText(rd, hi, SCREEN_W - 4 - textWidth(hi), 4, DIM);
 
     // Charge meter.
-    const BAR_W = 92, BAR_H = 6, bx = 4, by = SCREEN_H - 12;
+    const BAR_W = 92, BAR_H = 6, bx = 4, by = SCREEN_H - 14;
     const frac = Math.max(0, p.charge / CHARGE_MAX);
     // The label flashes on the same threshold the beeps use, so there is
     // something to see for anyone playing with the sound off.
     const low = !p.charging && frac < LOW_CHARGE;
-    drawText(rd, p.charging ? 'CHARGING' : 'BATTERY', bx, by - 9,
-             p.charging ? [120, 230, 255]
-             : low && beacon(28, 16) ? [255, 90, 70] : DIM);
-    rd.rect(bx - 1, by - 1, BAR_W + 2, BAR_H + 2, [40, 60, 45]);
-    let barCol = frac > 0.5 ? [80, 220, 100] : frac > LOW_CHARGE ? [230, 200, 60] : [230, 70, 50];
+    drawText(rd, p.charging ? 'charging' : 'battery', bx, by - 10,
+             p.charging ? COOL
+             : low && beacon(28, 16) ? CLAY : DIM);
+    rd.rect(bx - 1, by - 1, BAR_W + 2, BAR_H + 2, [58, 66, 60]);
+    let barCol = frac > 0.5 ? [138, 196, 150] : frac > LOW_CHARGE ? WARM : CLAY;
     // Pulse while taking on charge, so it is obviously happening.
-    if (p.charging && ((this.chargeTick | 0) >> 2) % 2 === 0) barCol = [140, 240, 255];
+    if (p.charging && ((this.chargeTick | 0) >> 2) % 2 === 0) barCol = COOL;
     if (frac > 0) rd.rect(bx, by, Math.max(1, Math.round(BAR_W * frac)), BAR_H, barCol);
 
     // What is left of the airframe, shown only once some of it is not. An
@@ -638,54 +647,57 @@ export class Game {
     // glance, next to the other thing that runs out.
     if (p.hits > 0 && this.state === STATE.PLAYING) {
       const hx = bx + BAR_W + 12;
-      drawText(rd, 'HULL', hx, by - 9, p.hits >= HULL_HITS - 1 ? [255, 90, 70] : [230, 200, 60]);
+      drawText(rd, 'hull', hx, by - 10, p.hits >= HULL_HITS - 1 ? CLAY : WARM);
       for (let i = 0; i < HULL_HITS; i++) {
         const gone = i >= HULL_HITS - p.hits;
         rd.rect(hx + i * 6, by, 4, BAR_H,
-                gone ? [70, 40, 38] : p.hits >= HULL_HITS - 1 ? [230, 70, 50] : [230, 200, 60]);
+                gone ? [72, 58, 52] : p.hits >= HULL_HITS - 1 ? CLAY : WARM);
       }
     }
 
     // Lives, as a row of pips.
-    const lifeText = 'DRONES ' + Math.max(0, this.lives - 1);
-    drawText(rd, lifeText, SCREEN_W - 4 - textWidth(lifeText), SCREEN_H - 12, DIM);
+    const lifeText = 'drones ' + Math.max(0, this.lives - 1);
+    drawText(rd, lifeText, SCREEN_W - 4 - textWidth(lifeText), by, DIM);
 
     // Altitude, which matters most when you are trying to put down.
     if (this.state === STATE.PLAYING) {
       const alt = Math.max(0, p.altitude / TILE);
-      const txt = 'ALT ' + alt.toFixed(1);
+      const txt = 'alt ' + alt.toFixed(1);
       drawText(rd, txt, SCREEN_W - 4 - textWidth(txt), 14, DIM);
 
       // Say why the machine is not climbing. Both of these used to happen in
       // silence, which is how a limit gets mistaken for a fault.
+      // Worded as what the machine is doing rather than as a fault. It is
+      // the same information -- you are coming down, there is nothing left,
+      // there is no more air -- said the way you would say it to someone
+      // sitting next to you.
       if (p.autorotating) {
-        drawText(rd, 'AUTOROTATE', SCREEN_W - 4 - textWidth('AUTOROTATE'), 24,
-                 [255, 200, 90]);
+        drawText(rd, 'gliding down', SCREEN_W - 4 - textWidth('gliding down'), 25, WARM);
       } else if (p.flat) {
-        drawText(rd, 'BATTERY FLAT', SCREEN_W - 4 - textWidth('BATTERY FLAT'), 24,
-                 [255, 90, 70]);
+        drawText(rd, 'out of charge', SCREEN_W - 4 - textWidth('out of charge'), 25, CLAY);
       } else if (p.ceiling > 0.12) {
-        drawText(rd, 'CEILING', SCREEN_W - 4 - textWidth('CEILING'), 24,
-                 [255, 200, 90]);
+        drawText(rd, 'thin air up here', SCREEN_W - 4 - textWidth('thin air up here'), 25, WARM);
       }
     }
 
     if (this.state === STATE.PLAYING && p.protected) {
       const secs = Math.ceil(p.grace / 50);
-      drawTextCentred(rd, 'SAFE ' + secs, CENTRE_X, 30, [110, 200, 255]);
+      drawTextCentred(rd, 'take your time  ' + secs, CENTRE_X, 30, COOL);
     }
 
     if (this.message) {
-      drawTextCentred(rd, this.message, CENTRE_X, 96, [255, 230, 120], 2);
+      drawTextCentred(rd, this.message, CENTRE_X, 96, [240, 224, 190], 2);
     }
 
     if (this.state === STATE.TITLE) {
-      drawTextCentred(rd, 'WEBLANDER', CENTRE_X, 78, [160, 255, 200], 3);
-      drawTextCentred(rd, 'PRESS START TO FLY', CENTRE_X, 120, WHITE);
+      drawTextCentred(rd, 'weblander', CENTRE_X, 78, [238, 232, 216], 3);
+      drawTextCentred(rd, 'press start to fly', CENTRE_X, 122, WHITE);
     } else if (this.state === STATE.GAMEOVER) {
-      drawTextCentred(rd, 'GAME OVER', CENTRE_X, 92, [255, 120, 100], 3);
-      drawTextCentred(rd, 'SCORE ' + this.score, CENTRE_X, 126, WHITE);
-      drawTextCentred(rd, 'PRESS START', CENTRE_X, 142, DIM);
+      // Not GAME OVER. Nothing has been failed here -- the drones are simply
+      // used up, and the next line is an invitation rather than a verdict.
+      drawTextCentred(rd, 'out of drones', CENTRE_X, 92, [226, 172, 148], 2);
+      drawTextCentred(rd, 'you scored ' + this.score, CENTRE_X, 118, WHITE);
+      drawTextCentred(rd, 'press start to fly again', CENTRE_X, 136, DIM);
     }
   }
 }

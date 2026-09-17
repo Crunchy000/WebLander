@@ -1,5 +1,16 @@
 :root {
-  --ink: #6f8;
+  /* The same palette the game is drawn in, so the card you read before you
+     fly and the sky you fly in are the same place. Chalk on a warm dark,
+     sand for anything you can press, a cool blue for anything measured.
+     It replaces a phosphor green on black, which was the right colour for a
+     tribute to a 1987 monitor and the wrong one for anything restful. */
+  --ink: #e8e3d6;
+  --sand: #e0bd8a;
+  --sky: #9dc3d4;
+  --dim: #9a9c96;
+  --edge: rgba(232, 227, 214, .22);
+  --soft: rgba(232, 227, 214, .10);
+  --deep: #12131a;
   color-scheme: dark;
 }
 
@@ -8,9 +19,12 @@
 html, body {
   margin: 0;
   height: 100%;
-  background: #000;
+  background: var(--deep);
   color: var(--ink);
-  font: 14px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* Not a terminal typeface. The HUD inside the game is a bitmap font and
+     always will be; everything outside it is prose, and prose set in a
+     monospace reads as output rather than as writing. */
+  font: 15px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   overflow: hidden;
   overscroll-behavior: none;
   -webkit-text-size-adjust: 100%;
@@ -37,7 +51,7 @@ html, body {
   max-height: 100vh;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
-  background: #000;
+  background: var(--deep);
   cursor: none;
   touch-action: none;
 }
@@ -60,11 +74,11 @@ html, body {
   width: 104px;
   height: 104px;
   border-radius: 50%;
-  border: 2px solid rgba(110, 255, 150, .45);
-  background: rgba(0, 40, 16, .35);
+  border: 1px solid var(--edge);
+  background: var(--soft);
   color: var(--ink);
-  font: 600 13px/1 ui-monospace, monospace;
-  letter-spacing: .08em;
+  font: 500 13px/1 inherit;
+  letter-spacing: .06em;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
   touch-action: none;
@@ -72,8 +86,8 @@ html, body {
 
 .padbtn:active,
 .padbtn[data-on] {
-  background: rgba(110, 255, 150, .3);
-  border-color: rgba(170, 255, 200, .9);
+  background: rgba(224, 189, 138, .30);
+  border-color: var(--sand);
 }
 
 /* ---- title / pause overlay ---- */
@@ -83,7 +97,9 @@ html, body {
   inset: 0;
   display: grid;
   place-items: center;
-  background: rgba(0, 0, 0, .78);
+  /* A wash rather than a blackout: the landscape stays faintly visible
+     behind the card, which is friendlier than dropping the lights. */
+  background: linear-gradient(170deg, rgba(18, 20, 32, .90), rgba(38, 28, 30, .93));
   padding: 24px 16px;
   overflow-y: auto;
 }
@@ -96,30 +112,31 @@ html, body {
 }
 
 #panel h1 {
-  margin: 0 0 .2em;
-  font-size: clamp(28px, 7vw, 44px);
-  letter-spacing: .18em;
-  color: #9fc;
+  margin: 0 0 .1em;
+  font-size: clamp(30px, 7vw, 46px);
+  font-weight: 300;
+  letter-spacing: .06em;
+  color: var(--ink);
 }
 
 #panel p { margin: .5em 0; }
-#panel b { color: #cfe; font-weight: 600; }
-.dim { color: #5a7; font-size: .9em; }
+#panel b { color: var(--sand); font-weight: 600; }
+.dim { color: var(--dim); font-size: .92em; }
 
 #start {
   margin-top: 1.4em;
-  padding: .7em 2.4em;
-  font: 600 16px/1 ui-monospace, monospace;
-  letter-spacing: .2em;
-  color: #000;
-  background: var(--ink);
+  padding: .8em 2.4em;
+  font: 600 16px/1 inherit;
+  letter-spacing: .08em;
+  color: #241f1a;
+  background: var(--sand);
   border: 0;
-  border-radius: 3px;
+  border-radius: 999px;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 
-#start:hover { background: #9fc; }
+#start:hover { background: #eed2a6; }
 
 /* ---- calibration ---- */
 
@@ -129,7 +146,7 @@ html, body {
   z-index: 10;
   display: grid;
   place-items: center;
-  background: #000;
+  background: var(--deep);
   padding: 24px 20px;
   text-align: center;
 }
@@ -141,18 +158,19 @@ html, body {
 #cal-panel h2 {
   margin: 0 0 .6em;
   font-size: clamp(20px, 6vw, 28px);
-  letter-spacing: .16em;
-  color: #9fc;
+  font-weight: 300;
+  letter-spacing: .06em;
+  color: var(--ink);
 }
 
 #cal-panel p { margin: .6em 0; }
-#cal-panel b { color: #cfe; }
+#cal-panel b { color: var(--sand); }
 
 /* Progress towards a captured reading. */
 #cal-track {
   height: 6px;
   margin: 1.2em 0 .6em;
-  background: rgba(110, 255, 150, .16);
+  background: var(--soft);
   border-radius: 3px;
   overflow: hidden;
 }
@@ -160,7 +178,7 @@ html, body {
 #cal-bar {
   height: 100%;
   width: 0;
-  background: var(--ink);
+  background: var(--sand);
   transition: width .08s linear;
 }
 
@@ -170,11 +188,11 @@ html, body {
   width: 120px;
   height: 120px;
   margin: 1.2em auto .6em;
-  border: 1px solid rgba(110, 255, 150, .35);
-  border-radius: 6px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
   background:
-    linear-gradient(rgba(110,255,150,.18), rgba(110,255,150,.18)) 50% 0/1px 100% no-repeat,
-    linear-gradient(rgba(110,255,150,.18), rgba(110,255,150,.18)) 0 50%/100% 1px no-repeat;
+    linear-gradient(var(--soft), var(--soft)) 50% 0/1px 100% no-repeat,
+    linear-gradient(var(--soft), var(--soft)) 0 50%/100% 1px no-repeat;
 }
 
 #cal-dot {
@@ -185,8 +203,8 @@ html, body {
   height: 14px;
   margin: -7px 0 0 -7px;
   border-radius: 50%;
-  background: var(--ink);
-  box-shadow: 0 0 10px rgba(110, 255, 150, .8);
+  background: var(--sand);
+  box-shadow: 0 0 12px rgba(224, 189, 138, .7);
 }
 
 #cal-btn {
@@ -194,12 +212,12 @@ html, body {
   width: 100%;
   margin-top: 1.2em;
   padding: .8em 1em;
-  font: 600 15px/1 ui-monospace, monospace;
-  letter-spacing: .14em;
-  color: #000;
-  background: var(--ink);
+  font: 600 15px/1 inherit;
+  letter-spacing: .06em;
+  color: #241f1a;
+  background: var(--sand);
   border: 0;
-  border-radius: 3px;
+  border-radius: 999px;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
@@ -209,8 +227,8 @@ html, body {
 .linkish {
   margin-top: 1em;
   padding: .4em;
-  font: 400 12px/1 ui-monospace, monospace;
-  color: #5a7;
+  font: 400 13px/1 inherit;
+  color: var(--dim);
   background: none;
   border: 0;
   text-decoration: underline;
@@ -219,8 +237,8 @@ html, body {
 
 .err {
   min-height: 1.2em;
-  font-size: 12px;
-  color: #f97;
+  font-size: 13px;
+  color: #e08e78;
 }
 
 /* ---- tilt options on the title card ---- */
@@ -228,31 +246,31 @@ html, body {
 #tiltopts {
   margin-top: 1.2em;
   padding-top: 1em;
-  border-top: 1px solid rgba(110, 255, 150, .22);
+  border-top: 1px solid var(--edge);
 }
 
 .toggle {
   display: inline-block;
   margin: .25em .3em;
   padding: .6em 1em;
-  font: 500 13px/1 ui-monospace, monospace;
+  font: 500 13px/1 inherit;
   color: var(--ink);
-  background: rgba(0, 40, 16, .35);
-  border: 1px solid rgba(110, 255, 150, .45);
-  border-radius: 3px;
+  background: var(--soft);
+  border: 1px solid var(--edge);
+  border-radius: 999px;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 
 .toggle[aria-pressed="true"] {
-  color: #000;
-  background: var(--ink);
-  border-color: var(--ink);
+  color: #241f1a;
+  background: var(--sand);
+  border-color: var(--sand);
 }
 
 .read {
   margin-top: .8em;
-  font-size: 11px;
-  color: #4a6;
+  font-size: 12px;
+  color: var(--dim);
   font-variant-numeric: tabular-nums;
 }

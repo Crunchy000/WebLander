@@ -14,21 +14,21 @@ import { TiltMapper, SteadyHold, delta, magnitude } from './tilt.js';
 const STEPS = [
   {
     key: 'zero',
-    title: 'HOLD IT STILL',
+    title: 'hold it still',
     body: 'Hold the phone however you want to fly — however is comfortable.',
     hint: 'This becomes the centre position.',
     manual: true,
-    button: 'SET CENTRE',
+    button: 'set centre',
   },
   {
     key: 'away',
-    title: 'TILT AWAY',
+    title: 'tilt away',
     body: 'Now tip it as if flying <b>away</b> from you, towards the horizon.',
     hint: 'Hold it there — it captures itself.',
   },
   {
     key: 'right',
-    title: 'TILT RIGHT',
+    title: 'tilt right',
     body: 'Now tip it as if flying to your <b>right</b>.',
     hint: 'Hold it there — it captures itself.',
   },
@@ -149,11 +149,11 @@ export class Calibration {
 
   showPreview() {
     this.previewing = true;
-    this.titleEl.textContent = 'TRY IT';
+    this.titleEl.textContent = 'try it';
     this.bodyEl.innerHTML = 'Tilt the phone — the dot should follow.';
     this.hintEl.textContent = 'Up is away from you, right is right.';
     this.btnEl.hidden = false;
-    this.btnEl.textContent = 'LOOKS RIGHT';
+    this.btnEl.textContent = 'looks right';
     this.padEl.hidden = false;
     this.barEl.parentElement.hidden = true;
     this.errEl.textContent = '';

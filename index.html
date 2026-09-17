@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<meta name="theme-color" content="#0d1a44">
-<meta name="description" content="WebLander - a browser port of the 1987 Archimedes classic Lander.">
+<meta name="theme-color" content="#12131a">
+<meta name="description" content="WebLander - a quiet flight over a low-poly desert, after the 1987 Archimedes classic Lander.">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>WebLander</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23000'/%3E%3Cpath d='M16 5l6 11H10z' fill='%236f8'/%3E%3Crect x='11' y='17' width='10' height='5' fill='%23ccc'/%3E%3C/svg%3E">
@@ -21,33 +21,33 @@
 
   <!-- Touch controls, shown only on devices with a touchscreen -->
   <div id="touch" hidden>
-    <button id="btn-thrust" class="padbtn" aria-label="Thrust">THRUST</button>
+    <button id="btn-thrust" class="padbtn" aria-label="Thrust">thrust</button>
   </div>
 
   <div id="overlay">
     <div id="panel">
-      <h1>WEBLANDER</h1>
-      <p id="blurb">Fly the lander, blast the scenery, don't hit the ground too hard.</p>
+      <h1>weblander</h1>
+      <p id="blurb">A drone, a desert, and a long evening. Fly where you like and set down gently.</p>
       <div id="controls-desktop">
         <p><b>Mouse</b> steers &mdash; the further from centre, the harder you tilt.</p>
-        <p><b>Left button</b> full thrust &nbsp;&middot;&nbsp; <b>Middle</b> hover. The gun shoots by itself.</p>
+        <p><b>Left button</b> full thrust &nbsp;&middot;&nbsp; <b>Middle</b> hover.</p>
         <p class="dim">Keyboard: arrows steer, <b>Z</b> thrust, <b>X</b> hover</p>
-        <p class="dim">Gamepad: left stick steers, <b>RT</b> or <b>A</b> thrust, <b>LT</b> or <b>X</b> hover, <b>RB</b> or <b>B</b> drops</p>
-        <p class="dim">Full thrust climbs, hover holds the height you are at, nothing descends. Hover also latches the lean to 45&deg;; full thrust puts it back to 90&deg;.</p>
+        <p class="dim">Gamepad: left stick steers, <b>RT</b> or <b>A</b> thrust, <b>LT</b> or <b>X</b> hover</p>
+        <p class="dim">Full thrust climbs, hover holds the height you are at, and nothing ever drops out of the sky. Hover keeps the lean inside 45&deg;; full thrust opens it all the way round &mdash; hold the stick hard over and you will loop, and the streamer will draw it for you.</p>
         <p class="dim">Flat battery? Hold hover anyway &mdash; the rotors autorotate and you come down slowly enough to walk away.</p>
         <p class="dim"><b>F</b> toggles fullscreen. The pointer is captured while you fly &mdash; <b>Esc</b> releases it, a click takes it back.</p>
       </div>
       <div id="controls-touch" hidden>
         <p><b>Tilt</b> your phone to steer.</p>
-        <p><b>One finger</b> anywhere fires the engine. <b>Two fingers</b> shoot.</p>
+        <p><b>One finger</b> anywhere fires the engine.</p>
         <p class="dim">Hold the phone comfortably, then tap Start to set the neutral position.</p>
 
         <div id="tiltopts">
-          <button id="cal-open" class="toggle">CALIBRATE TILT</button>
+          <button id="cal-open" class="toggle">calibrate tilt</button>
           <p id="tiltread" class="read">tilt: waiting for sensor…</p>
         </div>
       </div>
-      <button id="start">START</button>
+      <button id="start">start flying</button>
       <p id="tiltnote" class="dim" hidden>Motion access is needed for tilt steering.</p>
     </div>
   </div>
@@ -55,7 +55,7 @@
 
   <div id="calibrate" hidden>
     <div id="cal-panel">
-      <h2 id="cal-title">HOLD IT STILL</h2>
+      <h2 id="cal-title">hold it still</h2>
       <p id="cal-body"></p>
       <div id="cal-track"><div id="cal-bar"></div></div>
       <div id="cal-pad" hidden><div id="cal-dot"></div></div>
