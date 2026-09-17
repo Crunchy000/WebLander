@@ -15,17 +15,18 @@ import {
 } from './maths.js';
 import { Model, facet, shade, drawModel, drawShadow } from './model.js';
 import { landAltitude, SEA_LEVEL } from './landscape.js';
+import { paint } from './style.js';
 
 // --- the paint box ---------------------------------------------------------
 
-const RED    = [214,  58,  48];
-const BLUE   = [ 44,  98, 194];
-const YELLOW = [244, 192,  46];
-const GREEN  = [ 62, 164,  86];
-const ORANGE = [236, 128,  40];
-const PURPLE = [136,  80, 180];
-const WOOD   = [206, 168, 112];   // unpainted, for the plain shapes
-const WOOD_D = [176, 138,  88];
+const RED    = paint([214,  58,  48]);
+const BLUE   = paint([ 44,  98, 194]);
+const YELLOW = paint([244, 192,  46]);
+const GREEN  = paint([ 62, 164,  86]);
+const ORANGE = paint([236, 128,  40]);
+const PURPLE = paint([136,  80, 180]);
+const WOOD   = paint([206, 168, 112]);   // unpainted, for the plain shapes
+const WOOD_D = paint([176, 138,  88]);
 
 // --- block shapes ----------------------------------------------------------
 //

@@ -9,6 +9,7 @@ import { Model, shade, mergeAt } from './model.js';
 import { STRUCTURES, resetBlocks } from './blocks.js';
 import { floraBiome, DENSITY, TUNDRA, TEMPERATE, DESERT } from './biome.js';
 import { landAltitude, isOnLaunchpad, SEA_LEVEL, TILES_X, TILES_Z } from './landscape.js';
+import { paint } from './style.js';
 
 // --- the models ------------------------------------------------------------
 
@@ -17,23 +18,23 @@ import { landAltitude, isOnLaunchpad, SEA_LEVEL, TILES_X, TILES_Z } from './land
 // so the family keeps its relative sizes however it is tuned.
 const TREE = 1.5;
 
-const TRUNK  = [102, 68, 34];
-const LEAF   = [34, 153, 51];
-const LEAF2  = [51, 170, 68];
-const FIR    = [17, 119, 68];
-const CHAR   = [51, 42, 38];
+const TRUNK  = paint([102, 68, 34]);
+const LEAF   = paint([34, 153, 51]);
+const LEAF2  = paint([51, 170, 68]);
+const FIR    = paint([17, 119, 68]);
+const CHAR   = paint([51, 42, 38]);
 
 // Desert.
-const CACTUS  = [ 58, 122,  62];
-const CACTUS2 = [ 88, 158,  86];
-const ROCK_W  = [178, 122,  78];   // sun-baked sandstone
+const CACTUS  = paint([ 58, 122,  62]);
+const CACTUS2 = paint([ 88, 158,  86]);
+const ROCK_W  = paint([178, 122,  78]);   // sun-baked sandstone
 
 // Tundra.
-const TRUNK_D = [ 78,  54,  32];
-const FIR_C   = [ 26,  84,  62];   // conifer, colder and darker
-const SNOW    = [236, 242, 250];
-const ICE     = [150, 200, 222];
-const ICE_P   = [198, 228, 240];
+const TRUNK_D = paint([ 78,  54,  32]);
+const FIR_C   = paint([ 26,  84,  62]);   // conifer, colder and darker
+const SNOW    = paint([236, 242, 250]);
+const ICE     = paint([150, 200, 222]);
+const ICE_P   = paint([198, 228, 240]);
 
 function smallLeafyTree() {
   const m = new Model();
