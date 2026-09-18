@@ -202,6 +202,24 @@ const CORD_COL = [72, 64, 58];
 // midnight sky like a shop sign.
 const buntCol = [0, 0, 0, 255];
 
+// Fairy lights along the cord: one bulb at every joint, between the flags.
+//
+// They are lights, so two rules that apply to everything else do not apply to
+// them. They do not take the daylight tint, because a lamp run through the
+// evening's colour is darker than the thing carrying it at exactly the hour
+// it is meant to show. And they do not take the near-camera silhouette --
+// same reason the canoe's lantern does not: a light that dims as it comes
+// towards you is not a light.
+//
+// They do fade in with `sky.lamp`, which is the game's own measure of how
+// dark it is, so they come on with the burners and the lanterns on the water
+// rather than at a threshold of their own. By day they are unlit bulbs on a
+// string, which is to say nothing at all.
+const BULB = [255, 216, 150];
+const BULB_HALO = [255, 186, 96];
+const bulbCol = [0, 0, 0, 255];
+const haloCol = [0, 0, 0, 255];
+
 function dayLit(col, fog, sil, out) {
   const c = litColour(col, fog);
   const k = sil > 0.01 ? 1 - sil : 1;
@@ -300,6 +318,7 @@ const flagCol = [0, 0, 0, 255];
 // keeps a cord one pixel wide at any distance instead of vanishing.
 function drawBunting(rd, p, camX, camY, camZ, sil, fog) {
   const N = 16;
+  const lamp = sky.lamp;
   const ax = p.a.x, ay = p.a.y, az = p.a.z;
   const bx = p.b.x, by = p.b.y, bz = p.b.z;
   // Bunting is tied to the baskets, which hang below the envelopes.
@@ -336,6 +355,21 @@ function drawBunting(rd, p, camX, camY, camZ, sil, fog) {
       const w = Math.max(1.2, len * 0.42);
       rd.tri(mx - w, my, mx + w, my, mx, my + h,
              dayLit(FLAGS[i % FLAGS.length], fog, sil, flagCol));
+
+      // A bulb at this joint, sized off the same span the flag is, and
+      // breathing slightly out of step with its neighbours.
+      if (lamp > 0.04) {
+        const twinkle = 0.72 + 0.28 * Math.sin(sky.tick * 0.055 + i * 1.7);
+        // Small, and capped: a fairy light is a pinprick, and one sized off
+        // the span alone becomes a lit window when the pair is close.
+        const r = Math.min(1.6, Math.max(0.5, len * 0.10));
+        bulbCol[0] = BULB[0]; bulbCol[1] = BULB[1]; bulbCol[2] = BULB[2];
+        bulbCol[3] = Math.min(255, Math.round(255 * lamp * twinkle));
+        haloCol[0] = BULB_HALO[0]; haloCol[1] = BULB_HALO[1]; haloCol[2] = BULB_HALO[2];
+        haloCol[3] = Math.round(70 * lamp * twinkle);
+        rd.rect(prev.x - r * 1.9, prev.y - r * 1.9, r * 3.8, r * 3.8, haloCol);
+        rd.rect(prev.x - r, prev.y - r, r * 2, r * 2, bulbCol);
+      }
     }
     prev = { x: pt.x, y: pt.y };
   }
