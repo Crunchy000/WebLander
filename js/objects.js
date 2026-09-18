@@ -6,7 +6,7 @@
 
 import { TILE, hash2 } from './maths.js';
 import { Model, facet, shade, recolour, mergeAt } from './model.js';
-import { STRUCTURES, dressModel, resetBlocks } from './blocks.js';
+import { STRUCTURES, BUILT, PLANT, PLANT_INDICES, dressModel, resetBlocks } from './blocks.js';
 import { floraBiome, DENSITY, TUNDRA, TEMPERATE, DESERT } from './biome.js';
 import { landAltitude, isOnLaunchpad, SEA_LEVEL, TILES_X, TILES_Z } from './landscape.js';
 import { paint, icebound } from './style.js';
@@ -214,7 +214,8 @@ export const OBJ_SCORE = [
   10, 15, 15,        // temperate trees
   12, 8, 15, 10,     // cactus, rock, snow fir, ice
   35, 22,            // mesa, hoodoo
-  50, 60, 90, 70, 55, 45,
+  50, 60, 90, 70, 55, 45,       // the six built things
+  15, 15, 10, 15, 12,           // fir, snow fir, small tree, tall tree, cactus
   0, 0,
 ];
 
@@ -244,13 +245,22 @@ export function structureIndex(type) {
 // so does it by substitution rather than by ramp.
 const ROCKY = new Set([OBJ.DESERT_ROCK, OBJ.MESA, OBJ.HOODOO]);
 
+// Trees are block structures now, and the biome paint is not for them. A
+// cactus dressed in sandstone is a rock, and a fir dressed in rime is an ice
+// shard -- both of which have just been taken out of the world on purpose.
+const NATURAL = new Set(PLANT_INDICES.map((i) => OBJ.BLOCKS_0 + i));
+
+export function isNatural(type) {
+  return NATURAL.has(type);
+}
+
 const dressed = [];
 
 function variantsFor(biome) {
   let list = dressed[biome];
   if (list) return list;
   list = dressed[biome] = MODELS.map((model, type) => {
-    if (isBlocks(type)) return dressModel(model, biome);
+    if (isBlocks(type)) return NATURAL.has(type) ? model : dressModel(model, biome);
     if (biome === TUNDRA && ROCKY.has(type)) return recolour(model, icebound);
     return model;
   });
@@ -285,13 +295,19 @@ const TREE_LINE = (TILE * 0.8) | 0;
 // opposite treatment. Trees are allowed to crowd: a stand of firs is a wood,
 // and a wood is a good thing to fly over. A toy castle every fourth tile is
 // not a landmark, it is wallpaper.
+// Everything that grows is a stack of blocks now, so it goes over when you
+// clip it rather than ending the flight. The single-model trees are still in
+// the file above; nothing spawns them.
+const plant = (i) => OBJ.BLOCKS_0 + i;
+
 const FLORA = [];
-FLORA[TUNDRA] = [OBJ.SNOW_FIR];
+FLORA[TUNDRA] = [plant(PLANT.SNOW_FIR)];
 FLORA[TEMPERATE] = [
-  OBJ.SMALL_TREE, OBJ.SMALL_TREE, OBJ.SMALL_TREE,
-  OBJ.TALL_TREE, OBJ.TALL_TREE, OBJ.FIR_TREE, OBJ.FIR_TREE,
+  plant(PLANT.SMALL_TREE), plant(PLANT.SMALL_TREE), plant(PLANT.SMALL_TREE),
+  plant(PLANT.TALL_TREE), plant(PLANT.TALL_TREE),
+  plant(PLANT.FIR), plant(PLANT.FIR),
 ];
-FLORA[DESERT] = [OBJ.CACTUS];
+FLORA[DESERT] = [plant(PLANT.CACTUS)];
 
 // There is no rock in the world any more, of any size.
 //
@@ -343,7 +359,7 @@ function spawnTable(flora, scatter, built) {
 }
 
 const SPAWN_TABLE = FLORA.map((flora, biome) => spawnTable(
-  flora, SCATTER[biome], STRUCTURES.map((_, i) => OBJ.BLOCKS_0 + i)));
+  flora, SCATTER[biome], BUILT.map(plant)));
 
 // ---------------------------------------------------------------------------
 // The object map
@@ -396,11 +412,13 @@ export function objectAt(tx, tz) {
   // having to work that out again. It costs a quarter of a percent of the
   // land area either way.
   if (alt < TREE_LINE) {
-    if (type === OBJ.TALL_TREE || type === OBJ.FIR_TREE) return OBJ.SMALL_TREE;
+    if (type === plant(PLANT.TALL_TREE) || type === plant(PLANT.FIR)) {
+      return plant(PLANT.SMALL_TREE);
+    }
     // High ground used to swap a snow fir for an ice shard and a cactus for a
     // boulder. With both gone from the world it is bare up there instead,
     // which is what "above the treeline" meant in the first place.
-    if (type === OBJ.SNOW_FIR || type === OBJ.CACTUS) return -1;
+    if (type === plant(PLANT.SNOW_FIR) || type === plant(PLANT.CACTUS)) return -1;
   }
 
   return type;

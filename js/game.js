@@ -20,7 +20,7 @@ import { Player, GRAVITY_START, CHARGE_MAX, HULL_HITS } from './player.js';
 import { drawModel, drawShadow, drawLightPool, silhouetteAmount } from './model.js';
 import {
   MODELS, OBJ_SCORE, objectAt, objectOffset, destroyObject, isWreck,
-  isBlocks, structureIndex, resetObjects, modelFor, biomeAt,
+  isBlocks, isNatural, structureIndex, resetObjects, modelFor, biomeAt,
 } from './objects.js';
 import { topple, updateBlocks, drawPile, pileAt } from './blocks.js';
 import {
@@ -593,7 +593,10 @@ export class Game {
       // its blocks again, wherever they have got to.
       const pile = isBlocks(type) ? pileAt(tx, tz) : null;
       if (pile) {
-        drawPile(this.rd, pile, eyeX, eyeY, eyeZ, haze, row, biomeAt(tx, tz), sil);
+        // A fallen tree keeps its own colours; only the painted blocks take
+        // the biome's.
+        const dress = isNatural(type) ? -1 : biomeAt(tx, tz);
+        drawPile(this.rd, pile, eyeX, eyeY, eyeZ, haze, row, dress, sil);
         continue;
       }
 

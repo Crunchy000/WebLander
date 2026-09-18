@@ -361,7 +361,107 @@ function steps() {
   return out;
 }
 
-const RECIPES = [tower, archway, castle, bridge, wobbly, steps];
+// --- things that grow, built the same way -----------------------------------
+//
+// Trees and cacti used to be single models, and flying into one ended the
+// flight. They are stacks now, for the same reason everything else here is:
+// so they go over when you clip them. It costs a handful of faces each and it
+// turns every wood in the world into something you can knock about.
+//
+// It also means a tree is no longer lethal. That is the trade, and it is the
+// right way round for this game -- the ground is the thing that ends a
+// flight, and a fir tree was never going to be the other one.
+const TRUNK    = [118,  92,  66];
+const LEAF_A   = [ 96, 124,  84];
+const LEAF_B   = [ 78, 106,  72];
+const FIR_A    = [ 74, 102,  82];
+const FIR_B    = [ 58,  84,  68];
+const SNOW_W   = [222, 230, 238];
+const CACTUS_A = [110, 142, 106];
+const CACTUS_B = [ 92, 124,  92];
+
+// A conifer: a trunk and three square tiers, each a little smaller and a
+// little turned. Square rather than conical because these are blocks -- and
+// because a stack of squares is what falls apart interestingly.
+function conifer(snowy) {
+  const out = [];
+  const t = U * 0.26;
+  const trunkH = U * 0.80;
+  out.push(place(boxBlock(t, trunkH, t, TRUNK), 0, trunkH / 2, 0,
+                 [t / 2, trunkH / 2, t / 2]));
+  let y = trunkH;
+  const tiers = [[U * 1.34, U * 0.56], [U * 1.02, U * 0.50], [U * 0.68, U * 0.44]];
+  tiers.forEach(([w, h], i) => {
+    const col = snowy ? (i % 2 ? FIR_B : SNOW_W) : (i % 2 ? FIR_B : FIR_A);
+    out.push(place(boxBlock(w, h, w, col), 0, y + h / 2, 0,
+                   [w / 2, h / 2, w / 2], (i - 1) * 0.24));
+    y += h * 0.84;
+  });
+  const cap = U * 0.58;
+  out.push(place(pyrBlock(cap, cap * 1.1, cap, snowy ? SNOW_W : FIR_A),
+                 0, y + cap * 0.55, 0, [cap / 2, cap * 0.55, cap / 2]));
+  return out;
+}
+
+// A broadleaf: a turned trunk and a canopy of two blocks, the upper one
+// shoved off to one side so no two trees look stamped.
+function broadleaf(tall) {
+  const out = [];
+  const trunkH = tall ? U * 1.66 : U * 1.02;
+  const r = U * 0.15;
+  out.push(place(cylBlock(r, trunkH, TRUNK), 0, trunkH / 2, 0, [r, trunkH / 2, r]));
+  const c = tall ? U * 1.20 : U * 0.98;
+  const h1 = U * 0.72, h2 = U * 0.52;
+  out.push(place(boxBlock(c, h1, c * 0.92, LEAF_A), 0, trunkH + h1 / 2, 0,
+                 [c / 2, h1 / 2, c * 0.46], 0.26));
+  out.push(place(boxBlock(c * 0.70, h2, c * 0.70, LEAF_B),
+                 U * 0.10, trunkH + h1 + h2 / 2, -U * 0.06,
+                 [c * 0.35, h2 / 2, c * 0.35], -0.32));
+  return out;
+}
+
+// A columnar cactus: a trunk and two arms that spur out and turn up, at
+// different heights and on opposite sides.
+function saguaro() {
+  const out = [];
+  const h = U * 2.46, r = U * 0.21;
+  out.push(place(cylBlock(r, h, CACTUS_A), 0, h / 2, 0, [r, h / 2, r]));
+  for (const [side, at, reach, rise] of [[1, 0.92, 0.38, 0.72], [-1, 1.42, 0.32, 0.54]]) {
+    const armW = U * 0.17;
+    out.push(place(boxBlock(U * reach, armW, armW, CACTUS_B),
+                   side * U * (reach / 2 + 0.16), U * at, 0,
+                   [U * reach / 2, armW / 2, armW / 2]));
+    const ar = U * 0.13;
+    out.push(place(cylBlock(ar, U * rise, CACTUS_A),
+                   side * U * (reach + 0.14), U * (at + rise / 2), 0,
+                   [ar, U * rise / 2, ar]));
+  }
+  return out;
+}
+
+// Built things first, then growing things, and the split is named rather than
+// implied: objects.js spawns them from different tables, and the biome paint
+// -- sandstone in the desert, rime in the cold -- belongs to the toy blocks
+// only. A cactus dressed as sandstone is a rock, and we have just spent three
+// commits taking the rocks out.
+const BUILT_RECIPES = [tower, archway, castle, bridge, wobbly, steps];
+const PLANT_RECIPES = [
+  () => conifer(false), () => conifer(true),
+  () => broadleaf(false), () => broadleaf(true), saguaro,
+];
+
+const RECIPES = [...BUILT_RECIPES, ...PLANT_RECIPES];
+
+// Which index in STRUCTURES each one is.
+export const BUILT = BUILT_RECIPES.map((_, i) => i);
+export const PLANT = {
+  FIR: BUILT_RECIPES.length,
+  SNOW_FIR: BUILT_RECIPES.length + 1,
+  SMALL_TREE: BUILT_RECIPES.length + 2,
+  TALL_TREE: BUILT_RECIPES.length + 3,
+  CACTUS: BUILT_RECIPES.length + 4,
+};
+export const PLANT_INDICES = Object.values(PLANT);
 
 // Build each recipe once: the block list for toppling, and the whole thing
 // merged into a single model for while it is standing.
