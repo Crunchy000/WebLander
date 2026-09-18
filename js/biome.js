@@ -187,4 +187,9 @@ export function floraBiome(wx, wz, h) {
 // rock and the toy blocks rather than the trees: a stand of firs is a wood,
 // and a wood is worth flying over. The mix is weighted separately in
 // objects.js, and that is what does most of the thinning.
-export const DENSITY = [12, 17, 7];
+//
+// Trimmed again when the rock went. Formations used to keep a five-by-five
+// clearing round every mesa, and taking the mesas out handed all of that back
+// to the trees -- the count on screen went up by a sixth without anybody
+// asking for more trees. These numbers put it back where it was.
+export const DENSITY = [10, 15, 6];

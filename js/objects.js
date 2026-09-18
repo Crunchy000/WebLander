@@ -293,12 +293,21 @@ FLORA[TEMPERATE] = [
 ];
 FLORA[DESERT] = [OBJ.CACTUS];
 
-// Loose rock, spires and ice shards used to be a third of every table, then a
-// few per cent, and are now none of it. They were the litter of a world you
-// were meant to shoot at -- something on every other tile to give the gun a
-// reason -- and with nothing to shoot they read as gravel scattered over the
-// view. The ground itself is the rock now, and the mesas are the rock you
-// notice.
+// There is no rock in the world any more, of any size.
+//
+// It went in two goes, and the second is the instructive one. First the loose
+// stuff -- boulders, spires, ice shards -- which used to be a third of every
+// table and was the litter of a world you were meant to shoot at: something
+// on every other tile to give the gun a reason. Then the mesas, which I had
+// argued were different, being placed one to a cell with a clearing round
+// them rather than scattered. They were still rock, and a flat-topped cone
+// standing in the desert is the most rock-looking thing there was. "Placed
+// carefully" is not a category of object; it is a way of placing one.
+//
+// So the ground is the only rock now. It is the thing this engine is actually
+// good at -- a six-term altitude function with a hundred-odd tiles of it on
+// screen -- and a model of a rock standing on top of a landscape made of rock
+// was never adding anything to it.
 //
 // The models stay in the file. They cost nothing that is not spawned, and
 // nothing renumbers if they come back.
@@ -337,71 +346,6 @@ const SPAWN_TABLE = FLORA.map((flora, biome) => spawnTable(
   flora, SCATTER[biome], STRUCTURES.map((_, i) => OBJ.BLOCKS_0 + i)));
 
 // ---------------------------------------------------------------------------
-// Formations
-// ---------------------------------------------------------------------------
-//
-// The big things -- arches, gateways, mesas -- are placed by a different rule
-// from everything else, because the rule everything else uses cannot give
-// them what they need.
-//
-// That rule is per tile: roll a hash, and if it comes up, stand something
-// here. It is perfect for trees, which want to be in among each other, and
-// hopeless for an arch, which is three and a half tiles across and wants
-// nothing near it. Rolled per tile, arches came up in twos and threes with
-// cactus growing through the opening, and the one thing an arch is for --
-// being seen from a distance, lined up, and flown through -- was the one
-// thing you could not do with it.
-//
-// So the world is divided into cells five tiles square, and a cell either has
-// a formation or it does not. When it does, it stands in the middle three by
-// three of the cell, never on the edge, which is what guarantees the spacing:
-// two formations in neighbouring cells are at least three tiles apart however
-// the hashes fall, and no formation can ever land inside another's clearing.
-// The clearing is two tiles in every direction, and nothing else grows there.
-//
-// The whole thing is still a pure function of the tile -- no storage, no
-// generation pass, and the same landscape every time.
-const CELL = 5;
-const CLEAR = 2;                  // tiles kept empty around a formation
-const FORMATION_CHANCE = 22;      // in a hundred cells
-
-const FORMATIONS = [OBJ.MESA];
-
-// Floor division, which is not what % gives for negative tiles -- and the
-// world runs in both directions.
-const cellOf = (t) => Math.floor(t / CELL);
-
-// What this cell holds, written into `out` as [tx, tz, type], or false.
-function cellFormation(cx, cz, out) {
-  const h = hash2(cx ^ 0x27d4eb2f, cz ^ 0x165667b1);
-  if (h % 100 >= FORMATION_CHANCE) return false;
-  out[0] = cx * CELL + 1 + ((h >>> 8) % 3);
-  out[1] = cz * CELL + 1 + ((h >>> 16) % 3);
-  out[2] = FORMATIONS[(h >>> 24) % FORMATIONS.length];
-  return true;
-}
-
-const scratchCell = [0, 0, 0];
-
-// The formation standing on this tile, or CLEARING if the tile is inside one
-// formation's space, or -1 if this tile is ordinary ground.
-const CLEARING = -2;
-
-function formationAt(tx, tz) {
-  const cx = cellOf(tx), cz = cellOf(tz);
-  for (let ox = -1; ox <= 1; ox++) {
-    for (let oz = -1; oz <= 1; oz++) {
-      if (!cellFormation(cx + ox, cz + oz, scratchCell)) continue;
-      const dx = Math.abs(tx - scratchCell[0]);
-      const dz = Math.abs(tz - scratchCell[1]);
-      if (dx === 0 && dz === 0) return scratchCell[2];
-      if (dx <= CLEAR && dz <= CLEAR) return CLEARING;
-    }
-  }
-  return -1;
-}
-
-// ---------------------------------------------------------------------------
 // The object map
 // ---------------------------------------------------------------------------
 //
@@ -435,18 +379,6 @@ export function objectAt(tx, tz) {
   // desert's emptiness is most of what makes it read as desert rather than
   // as temperate ground that happens to be beige.
   const biome = floraBiome(x, z, h);
-
-  // A formation and its clearing are decided before the density roll, since
-  // the whole point of them is that they do not depend on how crowded the
-  // ground happens to be here. An empty desert gets its arches; a thick
-  // temperate valley still gets the space cleared round one.
-  const big = formationAt(tx, tz);
-  if (big === CLEARING) return -1;
-  if (big >= 0) {
-    const wrecked = destroyed.get(KEY(tx, tz));
-    return wrecked !== undefined ? wrecked : big;
-  }
-
   if (h % 100 >= DENSITY[biome]) return -1;
 
   const wreck = destroyed.get(KEY(tx, tz));
