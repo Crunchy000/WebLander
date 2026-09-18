@@ -388,14 +388,19 @@ export class Game {
     rd.gradientBand(SKY_BAND_1, SKY_BAND_2, sky.mid, sky.horizon);
     rd.gradientBand(SKY_BAND_2, SCREEN_H, sky.horizon, sky.horizon);
 
-    // Balloons beyond the drawn landscape go in before the ranges, so a range
-    // hides any that have drifted down behind it and the rest float over the
-    // skyline. There are no rows out there to bucket them into.
-    drawFarBalloons(rd, eyeX, eyeY, eyeZ);
-
     // Ranges stand between the sky and everything else, so they go in here --
     // after the sky, before a single tile of landscape.
     if (serene()) drawRidges(rd, eyeX, eyeZ);
+
+    // Balloons beyond the drawn landscape have no row to be bucketed into, so
+    // they get a pass of their own -- here, after the ranges. They went in
+    // before them at first, on the reasoning that a range in front should
+    // hide one that had drifted down behind it. That was the wrong picture:
+    // the ranges are a parallax backdrop standing at the very back of the
+    // world, and the furthest balloon is nearer than the nearest of them, so
+    // a balloon disappearing behind a ridge read as the balloon being miles
+    // further off than it is. In front, where they belong.
+    drawFarBalloons(rd, eyeX, eyeY, eyeZ);
     this.drawStars();
     this.drawCelestial();
     // Clouds go over the sun and under the landscape, which is the only
