@@ -302,13 +302,35 @@ const pt = { x: 0, y: 0 };
 // drawn closer than that, which is the pop itself -- a lit, sixty-pixel tree
 // simply ceases to exist as it crosses the line.
 //
-// So the fade runs from thirteen and a half tiles down to nine: by the time
-// anything reaches the edge of what is drawn it is already a flat dark shape,
-// and a shape leaving the bottom of the frame is a thing passing rather than
-// a thing vanishing. It also puts the dark exactly where the style wants it,
+// The front of the view is a fixed distance, not a guess: the landscape is
+// scanned from 26 tiles out down to 10, so the nearest row of ground sits
+// between 9 and 10.3 tiles from the camera once the row's own slide and an
+// object's jitter within its tile are counted. Nothing exists closer than
+// that. So the fade reaches its end at 10.6, which puts every object in that
+// last row at flat black rather than merely nearly there.
+//
+// So the fade runs from thirteen and a half tiles down to ten and a half: by
+// anything reaches the edge of what is drawn it is already a flat shape, and
+// a shape leaving the bottom of the frame is a thing passing rather than a
+// thing vanishing. It also puts the dark exactly where the style wants it,
 // since the near ground behind it is going the same way at the same time.
+//
+// The last stretch of that fade goes somewhere the rest of the world does
+// not: to flat black. Everything else that turns into a silhouette here --
+// the horizon ranges, the near ground -- stops at a dusk-coloured dark, so it
+// still sits in the picture. The things crossing the front of the view are
+// the one case where that is not enough: they are enormous, they are gone a
+// moment later, and half-shading them just makes a large soft grey object
+// where what you want is a shape. Black is also flat by definition, so the
+// facets stop existing and a tree passing the camera is one silhouette rather
+// than nine polygons agreeing with each other.
 const SIL_FAR = 13.5;
-const SIL_NEAR = 9.0;
+const SIL_NEAR = 10.6;
+
+// Where in that fade the target stops being the dusk dark and becomes black.
+// Below this the near objects match the hills behind them, above it they
+// separate from them on purpose.
+const SIL_BLACK_AT = 0.55;
 
 export function silhouetteAmount(dx, dz) {
   const d = Math.sqrt(dx * dx + dz * dz);
@@ -363,16 +385,25 @@ export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ, fog =
   }
   order.sort((a, b) => b[0] - a[0]);
 
-  if (sil > 0.01) silhouetteDark(silDark);
+  if (sil > 0.01) {
+    silhouetteDark(silDark);
+    // Towards black over the last part of the fade, so the closest things are
+    // a flat cut-out and the ones still some way off are only dusk-dark.
+    const toBlack = sil <= SIL_BLACK_AT ? 0
+                  : (sil - SIL_BLACK_AT) / (1 - SIL_BLACK_AT);
+    silDark[0] *= 1 - toBlack;
+    silDark[1] *= 1 - toBlack;
+    silDark[2] *= 1 - toBlack;
+  }
 
   for (const [, f] of order) {
     const face = faces[f];
     const { idx } = face;
     let col = face.glow ? emissive(face.col, fog) : litColour(face.col, fog);
     if (sil > 0.01) {
-      // Towards the dark, never all the way: a shape that is exactly the
-      // colour of the ranges behind it disappears into them.
-      const k = sil * 0.92;
+      // All the way at the front. Short of the front it is still a mix, so
+      // an object does not snap from lit to black in one frame.
+      const k = sil;
       silCol[0] = Math.round(col[0] + (silDark[0] - col[0]) * k);
       silCol[1] = Math.round(col[1] + (silDark[1] - col[1]) * k);
       silCol[2] = Math.round(col[2] + (silDark[2] - col[2]) * k);
