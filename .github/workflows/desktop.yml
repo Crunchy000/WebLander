@@ -1,10 +1,32 @@
 name: Desktop build
 
+# Weekly, rather than on every commit.
+#
+# The bundle takes several minutes -- a Rust release build, a .deb, an
+# AppImage, then a flatpak in a container -- and almost every commit here is
+# game content that cannot affect it. Building it each time was paying that
+# cost dozens of times a week to prove the same thing.
+#
+# So: once a week on a Monday morning, which is the standing notice that the
+# desktop shell still assembles; any time somebody asks for it by hand; and on
+# a push that actually touches the shell, since a broken tauri.conf.json is
+# worth hearing about in three minutes rather than in six days.
+#
+# GitHub emails the repository owner when a scheduled run fails, so the weekly
+# job is the notice as well as the check.
 on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
   push:
     branches: [main]
-  pull_request:
-  workflow_dispatch:
+    paths:
+      - 'src-tauri/**'
+      - 'flatpak/**'
+      - 'scripts/assemble-web.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/desktop.yml'
 
 permissions:
   contents: read

@@ -69,8 +69,12 @@ runtime, which has no webview at all. The sandbox is opened just far enough
 for the game: `--device=dri` for WebGL, `--device=input` for gamepads and
 `--socket=pulseaudio` for the engine and the weather.
 
-`.github/workflows/desktop.yml` does all of this on every push: bundle first,
-then flatpak from the bundle it just made.
+`.github/workflows/desktop.yml` does all of this -- bundle first, then flatpak
+from the bundle it just made. It runs weekly on a Monday morning rather than
+on every push: the build takes several minutes and almost every commit here is
+game content that cannot affect it. It also runs on demand, and on any push
+that touches the desktop shell itself (`src-tauri/`, `flatpak/`, the assembler
+or the lockfile), since a broken manifest is worth hearing about at once.
 
 ## Controls
 
