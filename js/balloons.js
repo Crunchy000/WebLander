@@ -21,7 +21,7 @@ import { HIGHEST_ALTITUDE } from './player.js';
 import { project, SCREEN_W, SCREEN_H, CENTRE_X, FOCAL_X } from './renderer.js';
 import { weather } from './weather.js';
 
-export const MAX_PAIRS = 5;
+export const MAX_PAIRS = 4;
 
 // Everything scales from here.
 const S = 1.15;
@@ -31,18 +31,25 @@ const S = 1.15;
 // The landscape is drawn from 10 to 26 tiles out and the balloons used to be
 // bucketed into its rows, so anything past 26 was simply never drawn -- which
 // is why they all had to be put down close. Far balloons have their own pass
-// now (see drawFarBalloons), so the band runs right out to sixty: near ones
-// to fly through, far ones sitting over the ranges the way they do in the
-// picture this is all after.
+// now (see drawFarBalloons), so the band reaches past the drawn landscape:
+// near ones to fly through, far ones sitting over the ranges the way they do
+// in the picture this is all after.
+//
+// It went out to sixty tiles first, and sixty is too far. A balloon that far
+// back is four or five pixels of envelope hanging in the haze -- not scenery,
+// just specks -- and with enough of them out there the sky read as busy while
+// nothing in it was legible. Thirty-eight is about one and a half times the
+// depth of the drawn ground: far enough to sit behind the ranges and read as
+// distance, near enough that you can still tell it is a balloon.
 const SPAWN_MIN = 12 * TILE;
-const SPAWN_MAX = 58 * TILE;
-const RETIRE = 78 * TILE;
+const SPAWN_MAX = 38 * TILE;
+const RETIRE = 52 * TILE;
 
 // Past here a balloon is beyond the drawn landscape and belongs to the far
 // pass instead of to a row.
 const FAR_MIN = 26 * TILE;
 // ... and by here it is as hazy as it is going to get.
-const FAR_HAZE = 70 * TILE;
+const FAR_HAZE = 46 * TILE;
 
 // And they appear inside the camera's cone rather than on a ring around the
 // craft. The camera never turns, so the frame is a fixed wedge of the world:
