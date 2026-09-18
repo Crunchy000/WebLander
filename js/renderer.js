@@ -196,7 +196,6 @@ export class Renderer {
   blend(mode) {
     if (mode === this.blendMode) return;
     this.flush();
-    this.count = 0;
     this.blendMode = mode;
     const gl = this.gl;
     if (mode === 'add') gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
@@ -284,7 +283,13 @@ export class Renderer {
     if (this.gl2) gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.f32, 0, floats);
     else gl.bufferSubData(gl.ARRAY_BUFFER, 0, new Float32Array(this.buffer, 0, floats));
     gl.drawArrays(gl.TRIANGLES, 0, this.count);
+    // Those vertices have been handed over, so the batch starts again from
+    // empty. It used to be left standing and cleared by whoever called --
+    // blend() did, begin() did, and the end-of-frame flush did not, so
+    // triangleCount added the last batch to itself and every figure taken
+    // after a frame was drawn came out that much too high.
     this.drawn = (this.drawn || 0) + this.count;
+    this.count = 0;
   }
 
   // Triangles in the frame, counting the ones already sent. A mid-frame blend
