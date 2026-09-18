@@ -12,7 +12,7 @@ import {
   UNDERCARRIAGE_Y, LANDING_SPEED, LANDSCAPE_Z_MID, isOnLaunchpad,
   groundRoughness, FLAT_ENOUGH,
 } from './landscape.js';
-import { MODELS, objectAt, objectOffset, isWreck, isBlocks, isOpen, structureIndex } from './objects.js';
+import { MODELS, objectAt, objectOffset, isWreck, isBlocks, structureIndex } from './objects.js';
 import { topple, isKnocked } from './blocks.js';
 import { weather } from './weather.js';
 import { project } from './renderer.js';
@@ -112,6 +112,14 @@ const SCAN = 2;            // tiles either way to test for scenery
 // Getting off the pad is the fiddliest moment in the game, so the first few
 // seconds of every life are free: you can scrape the ground, clip a tree or
 // come down hard without losing a ship. At 50Hz this is five seconds.
+//
+// It does not start until you first ask for power. It used to start the
+// instant the craft appeared, which meant the clock was running while you
+// were still reading the screen, working out which way the wind was going, or
+// simply not there yet -- and a beginner who sat and looked at it for five
+// seconds got no grace at all, which is the exact opposite of what it is for.
+// Sitting on the pad costs nothing now: the five seconds begin the moment you
+// lift.
 export const LAUNCH_GRACE = 250;
 const CAMERA_CEILING = -((TILE * 3) / 2);  // how far the eye may rise above y = 0
 
@@ -252,6 +260,7 @@ export class Player {
     this.hits = 0;
     this.hitFlash = 0;
     this.grace = LAUNCH_GRACE;
+    this.launched = false;      // has the pilot asked for power yet?
     this.rotorSpin = 0;
   }
 
@@ -302,7 +311,10 @@ export class Player {
       return;
     }
 
-    if (this.grace > 0) this.grace--;
+    // The safe window runs from the first touch of power, not from the
+    // moment the craft appears.
+    if (thrust > 0) this.launched = true;
+    if (this.launched && this.grace > 0) this.grace--;
 
     // Rotor phase: idling at rest, winding up with the throttle.
     this.rotorSpin = (this.rotorSpin + 0.34 + this.thrusting * 0.30) % (Math.PI * 2);
@@ -580,7 +592,7 @@ export class Player {
       for (let dx = -SCAN; dx <= SCAN; dx++) {
         const ox = (tx + dx) | 0, oz = (tz + dz) | 0;
         const type = objectAt(ox, oz);
-        if (type < 0 || isWreck(type) || isOpen(type)) continue;
+        if (type < 0 || isWreck(type)) continue;
 
         const blocks = isBlocks(type);
         if (blocks && isKnocked(ox, oz)) continue;   // already down; fly over it

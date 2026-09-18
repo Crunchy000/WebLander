@@ -13,9 +13,10 @@
 import {
   TILE, hash2, matMul, matRotX, matRotY, matRotZ, matApply,
 } from './maths.js';
-import { Model, facet, shade, drawModel, drawShadow } from './model.js';
+import { Model, facet, shade, recolour, drawModel, drawShadow } from './model.js';
 import { landAltitude, SEA_LEVEL } from './landscape.js';
 import { paint } from './style.js';
+import { TUNDRA, DESERT } from './biome.js';
 
 // --- the paint box ---------------------------------------------------------
 
@@ -38,6 +39,101 @@ const ORANGE = paint([202, 128,  74]);   // terracotta
 const PURPLE = paint([140,  94, 148]);   // dusty plum
 const WOOD   = paint([198, 166, 118]);   // unpainted, for the plain shapes
 const WOOD_D = paint([150, 118,  80]);
+
+// The same set, mixed for the ground it is standing on.
+//
+// A red-and-blue tower in the middle of a desert was the only thing for miles
+// that the sun had not got to, and a painted castle on an ice field looked
+// like it had been dropped there from another game. Out here things weather
+// into what they are standing on: timber left in a desert goes the colour of
+// the sand, and anything left in a frozen place ends up rimed.
+//
+// One counterpart per colour rather than a formula, so a stack is still six
+// blocks you can tell apart. Where a formula does come in is the shading: a
+// face is its block's colour scaled by how the light catches it, so the
+// substitution keeps that scale factor and only swaps what it is a factor of.
+// Every facet, edge and roof pitch stays exactly as legible as it was.
+const PAINTBOX = [RED, BLUE, YELLOW, GREEN, ORANGE, PURPLE, WOOD, WOOD_D];
+
+// Written in the style's own terms rather than passed through `paint()` like
+// every other palette here, and that is deliberate. The serene transform
+// posterises value into four steps; run a set of eight through it and they
+// come out as two, which is exactly what you do not want from a set whose
+// whole job is to stay distinguishable from itself. These are already mixed
+// for the style -- muted, inside its value band -- and are simply spread
+// across it rather than bunched.
+const SANDSTONE = [
+  [158, 108,  84],   // rust
+  [110,  92,  78],   // shadowed sand
+  [204, 186, 152],   // pale sand
+  [170, 152, 120],   // dun
+  [190, 154, 104],   // ochre
+  [136, 118, 112],   // mauve rock
+  [196, 176, 142],   // bleached timber
+  [146, 124,  96],
+];
+
+const RIME = [
+  [186, 198, 210],   // rime
+  [112, 142, 176],   // deep ice
+  [210, 220, 230],   // snow
+  [150, 184, 190],   // glacier
+  [164, 180, 202],   // frost
+  [128, 138, 166],   // shadowed drift
+  [200, 212, 224],   // frosted timber
+  [142, 158, 182],
+];
+
+const BIOME_SET = [];
+BIOME_SET[TUNDRA] = RIME;
+BIOME_SET[DESERT] = SANDSTONE;
+
+const lum = (c) => 0.30 * c[0] + 0.59 * c[1] + 0.11 * c[2];
+const clamp8 = (v) => (v < 0 ? 0 : v > 255 ? 255 : Math.round(v));
+
+// Which of the eight a face came from. Shading multiplies all three channels
+// by the same figure, so the direction of the colour survives it and the
+// nearest direction is the right answer rather than a guess -- see the check
+// in the tests, which reproduces every face in every structure to within a
+// couple of levels.
+function nearest(col) {
+  const l = lum(col) || 1;
+  let best = 0, bestErr = 1e9;
+  for (let i = 0; i < PAINTBOX.length; i++) {
+    const b = PAINTBOX[i];
+    const bl = lum(b) || 1;
+    let err = 0;
+    for (let k = 0; k < 3; k++) {
+      const d = col[k] / l - b[k] / bl;
+      err += d * d;
+    }
+    if (err < bestErr) { bestErr = err; best = i; }
+  }
+  return best;
+}
+
+export function dressColour(col, biome) {
+  const set = BIOME_SET[biome];
+  if (!set) return col;
+  const i = nearest(col);
+  const f = lum(col) / (lum(PAINTBOX[i]) || 1);
+  const t = set[i];
+  return [clamp8(t[0] * f), clamp8(t[1] * f), clamp8(t[2] * f)];
+}
+
+// Re-dressed models, built the first time a biome asks for one. `recolour`
+// shares the vertices, so a variant is a face list and nothing else.
+const dressCache = new Map();
+
+export function dressModel(model, biome) {
+  if (!BIOME_SET[biome]) return model;
+  let byBiome = dressCache.get(model);
+  if (!byBiome) dressCache.set(model, (byBiome = []));
+  if (!byBiome[biome]) {
+    byBiome[biome] = recolour(model, (c) => dressColour(c, biome));
+  }
+  return byBiome[biome];
+}
 
 // --- block shapes ----------------------------------------------------------
 //
@@ -116,7 +212,7 @@ function pyrBlock(w, h, d, col) {
 
 // The half-round that caps an archway: a half cylinder standing on its
 // diameter, flat face down.
-function archBlock(r, d, col, alongX) {
+function archBlock(r, d, col) {
   const m = new Model();
   const hd = d / 2;
   const SIDES = 6;
@@ -130,10 +226,8 @@ function archBlock(r, d, col, alongX) {
   for (let i = 0; i <= SIDES; i++) {
     const a = (i / SIDES) * Math.PI;                 // half a turn only
     const cx = -Math.cos(a) * r, cy = -Math.sin(a) * r + mid;
-    // Which way the barrel runs. Turning the finished block instead would
-    // light it for the way it was built, not the way it ends up facing.
-    top.push(alongX ? m.vert(-hd, cy, cx) : m.vert(cx, cy, -hd));
-    bot.push(alongX ? m.vert(hd, cy, cx) : m.vert(cx, cy, hd));
+    top.push(m.vert(cx, cy, -hd));
+    bot.push(m.vert(cx, cy, hd));
   }
   for (let i = 0; i < SIDES; i++) {
     facet(m, [top[i], bot[i], bot[i + 1], top[i + 1]],
@@ -267,65 +361,7 @@ function steps() {
   return out;
 }
 
-// A gateway: two piers and a beam across them, built at a size you can fly
-// through rather than a size you can knock over.
-//
-// The small archway above is a toy: its opening is barely wider than the
-// craft and it goes over like everything else in the box. This is the other
-// thing entirely -- the built answer to the rock arch, standing where a rock
-// arch would stand and open in the same way. It is the one structure that
-// does not topple, because a thing you are meant to aim at has to be a thing
-// you can pass through, and collision here is a cylinder that would put an
-// invisible wall across the very gap you were lining up for.
-//
-// `alongZ` faces it the other way. Like the rock arch it is built facing that
-// way rather than turned afterwards: the shading of every block is worked out
-// when the block is made, so a block turned a quarter turn later would be lit
-// as though it had not been.
-function gateway(alongZ) {
-  const out = [];
-  const span = U * 2.6;          // half the distance between the piers
-  const pierW = U * 0.92, pierD = U * 1.05;
-  const pierH = U * 3.2;
-  // Across the span and along it: the piers are deeper than they are wide,
-  // so the gateway reads as something with a front and a back.
-  const dim = (w, d) => (alongZ ? [d, w] : [w, d]);
-  const at = (u, v) => (alongZ ? [v, u] : [u, v]);
-
-  for (const [su, col] of [[-1, RED], [1, BLUE]]) {
-    const [w, d] = dim(pierW, pierD);
-    const [px, pz] = at(su * span, 0);
-    out.push(place(boxBlock(w, pierH, d, col), px, pierH / 2, pz,
-                   [w / 2, pierH / 2, d / 2]));
-    // A wider foot, so it looks like it is standing rather than planted.
-    const [fw, fd] = dim(pierW * 1.5, pierD * 1.2);
-    out.push(place(boxBlock(fw, U * 0.4, fd, WOOD_D), px, U * 0.2, pz,
-                   [fw / 2, U * 0.2, fd / 2]));
-  }
-
-  const beamH = U * 0.62;
-  const [bw, bd] = dim(span * 2 + pierW * 1.6, pierD * 0.9);
-  out.push(place(boxBlock(bw, beamH, bd, WOOD), 0, pierH + beamH / 2, 0,
-                 [bw / 2, beamH / 2, bd / 2]));
-
-  // A half round over the beam, lying along the span, and a plain block on
-  // top of that -- the same grammar as the little archway, at four times the
-  // size.
-  const capR = U * 1.05;
-  out.push(place(archBlock(capR, pierD * 0.92, YELLOW, alongZ),
-                 0, pierH + beamH + capR * 0.5, 0,
-                 [capR, capR * 0.5, capR]));
-  return out;
-}
-
-const RECIPES = [tower, archway, castle, bridge, wobbly, steps,
-                 () => gateway(false), () => gateway(true)];
-
-// Which recipes you can fly through, and which of those face along z. They
-// are placed like the rock arches -- on their own, with room round them --
-// rather than sprinkled in with the rest.
-export const OPEN_STRUCTURES = [6, 7];
-export const OPEN_ALONG_Z = [7];
+const RECIPES = [tower, archway, castle, bridge, wobbly, steps];
 
 // Build each recipe once: the block list for toppling, and the whole thing
 // merged into a single model for while it is standing.
@@ -551,7 +587,7 @@ export function updateBlocks() {
   }
 }
 
-export function drawPile(rd, ent, camX, camY, camZ, fog, row) {
+export function drawPile(rd, ent, camX, camY, camZ, fog, row, biome, sil = 0) {
   // Shadows for the whole pile first, then the blocks, so no block is drawn
   // underneath another's shadow.
   for (const p of ent.parts) {
@@ -563,7 +599,7 @@ export function drawPile(rd, ent, camX, camY, camZ, fog, row) {
   }
   for (const p of ent.parts) {
     if (p.sunk) continue;
-    drawModel(rd, p.model, p.mat, p.x, p.y, p.z, camX, camY, camZ, fog);
+    drawModel(rd, dressModel(p.model, biome), p.mat, p.x, p.y, p.z, camX, camY, camZ, fog, sil);
   }
 }
 

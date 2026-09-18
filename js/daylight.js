@@ -242,6 +242,20 @@ const FOG_STEPS = 24;
 // Both happen here rather than at the call sites because they have to happen
 // in that order -- tint first, haze second -- or distant land at night comes
 // out darker than the sky it is supposed to be dissolving into.
+// The dark that anything too close to look at properly goes to.
+//
+// The horizon ranges use it, the near ground uses it, and now so do the
+// objects standing on that ground -- one colour for the whole idea, warm by
+// day and cool at night, so foreground, midground and horizon are all
+// speaking the same language rather than three different ones.
+export function silhouetteDark(out) {
+  const warm = sky.sunStrength;
+  out[0] = 26 + 30 * warm;
+  out[1] = 22 + 16 * warm;
+  out[2] = 40 + 8 * warm;
+  return out;
+}
+
 export function litColour(col, fog) {
   const q = fog > 0.01 ? Math.round(fog * FOG_STEPS) : 0;
   const key = (col[0] << 18) | (col[1] << 10) | (col[2] << 2) | 0;

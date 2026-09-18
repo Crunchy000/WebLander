@@ -8,7 +8,7 @@
 
 import { TILE, matApply } from './maths.js';
 import { landAltitude, SEA_LEVEL } from './landscape.js';
-import { sky, litColour, emissive, skyColourAt } from './daylight.js';
+import { sky, litColour, emissive, skyColourAt, silhouetteDark } from './daylight.js';
 import { project, projScale } from './renderer.js';
 
 // --- model construction ----------------------------------------------------
@@ -282,7 +282,45 @@ const pt = { x: 0, y: 0 };
 // Draw a model's faces back to front. With only a dozen or so faces per
 // object a straight depth sort is cheaper than anything cleverer, and it
 // copes with the concave shapes (legs, fins) that culling alone would not.
-export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ, fog = 0) {
+// How close a thing has to get before it stops being lit and becomes a shape,
+// and how close before it is nothing but a shape. In tiles.
+//
+// Painter's algorithm has no answer for an object you are about to fly into.
+// It is sorted by the middle of each face, so at a couple of tiles the near
+// faces of a tree start swapping order with its far ones, and what you see is
+// a flicker rather than a tree -- and at the same moment it is filling a
+// quarter of the screen, so it is the most distracting thing on it. The style
+// already answers this for the near ground and for the horizon by dropping
+// to a flat dark shape, and a shape has no face order to get wrong.
+// Measured rather than guessed, and the measurement moved these numbers twice.
+//
+// The camera rides fifteen tiles behind the craft, so "close to the camera"
+// means well behind you, in the bottom of the frame -- not ahead. And the
+// landscape scan stops queueing objects at a fixed range: over five hundred
+// frames of low flying, the nearest object ever drawn was 8.74 tiles from the
+// camera, with the population starting in earnest at nine. Nothing is ever
+// drawn closer than that, which is the pop itself -- a lit, sixty-pixel tree
+// simply ceases to exist as it crosses the line.
+//
+// So the fade runs from thirteen and a half tiles down to nine: by the time
+// anything reaches the edge of what is drawn it is already a flat dark shape,
+// and a shape leaving the bottom of the frame is a thing passing rather than
+// a thing vanishing. It also puts the dark exactly where the style wants it,
+// since the near ground behind it is going the same way at the same time.
+const SIL_FAR = 13.5;
+const SIL_NEAR = 9.0;
+
+export function silhouetteAmount(dx, dz) {
+  const d = Math.sqrt(dx * dx + dz * dz);
+  if (d >= SIL_FAR) return 0;
+  if (d <= SIL_NEAR) return 1;
+  return (SIL_FAR - d) / (SIL_FAR - SIL_NEAR);
+}
+
+const silDark = [0, 0, 0];
+const silCol = [0, 0, 0];
+
+export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ, fog = 0, sil = 0) {
   const verts = model.verts;
   const n = verts.length / 3;
 
@@ -325,10 +363,21 @@ export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ, fog =
   }
   order.sort((a, b) => b[0] - a[0]);
 
+  if (sil > 0.01) silhouetteDark(silDark);
+
   for (const [, f] of order) {
     const face = faces[f];
     const { idx } = face;
-    const col = face.glow ? emissive(face.col, fog) : litColour(face.col, fog);
+    let col = face.glow ? emissive(face.col, fog) : litColour(face.col, fog);
+    if (sil > 0.01) {
+      // Towards the dark, never all the way: a shape that is exactly the
+      // colour of the ranges behind it disappears into them.
+      const k = sil * 0.92;
+      silCol[0] = Math.round(col[0] + (silDark[0] - col[0]) * k);
+      silCol[1] = Math.round(col[1] + (silDark[1] - col[1]) * k);
+      silCol[2] = Math.round(col[2] + (silDark[2] - col[2]) * k);
+      col = silCol;
+    }
     const i0 = idx[0] * 3, i1 = idx[1] * 3, i2 = idx[2] * 3;
     if (idx.length === 3) {
       rd.tri(scratch[i0], scratch[i0 + 1], scratch[i1], scratch[i1 + 1],

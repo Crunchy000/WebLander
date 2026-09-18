@@ -52,3 +52,39 @@ export function sereneTone(col) {
 export function paint(col) {
   return serene() ? sereneTone(col) : col;
 }
+
+// --- dressing a model for where it stands ----------------------------------
+//
+// The same toy blocks turn up in every biome, and in the desert a red-and-blue
+// tower was the only thing for miles that had not been bleached by the sun.
+// Rather than a second set of models per biome -- which would be the same
+// geometry three times over -- a model is re-dressed at build time: its
+// colours are remapped onto a ramp belonging to the ground it stands on.
+//
+// Value is what carries a flat-shaded model. Every face of a block already
+// differs from its neighbours by brightness alone -- that is the facet
+// lighting -- so remapping brightness onto a new ramp keeps every edge, every
+// corner and every roof pitch exactly as legible as it was, and only the hue
+// changes. A little of the original colour is kept so a stack is still six
+// distinguishable blocks rather than one lump.
+function ramp(col, lo, hi, keep) {
+  const lum = 0.30 * col[0] + 0.59 * col[1] + 0.11 * col[2];
+  const t = Math.pow(lum / 255, 0.92);
+  return [
+    clamp(lo[0] + (hi[0] - lo[0]) * t + (col[0] - lum) * keep),
+    clamp(lo[1] + (hi[1] - lo[1]) * t + (col[1] - lum) * keep),
+    clamp(lo[2] + (hi[2] - lo[2]) * t + (col[2] - lum) * keep),
+  ];
+}
+
+// Sandstone, from the shadowed underside of a mesa to its sunlit cap -- the
+// same two ends the rocks out there are already drawn between, so a painted
+// tower and the cliff behind it are made of the same stuff.
+const SAND_LO = [84, 58, 42], SAND_HI = [226, 192, 148];
+
+// Ice: not white. Snow in shadow is blue, and a bright white would put the
+// brightest thing in a frozen scene on a toy block rather than on the sun.
+const ICE_LO = [96, 118, 150], ICE_HI = [236, 244, 250];
+
+export function sandstone(col) { return ramp(col, SAND_LO, SAND_HI, 0.16); }
+export function icebound(col) { return ramp(col, ICE_LO, ICE_HI, 0.12); }

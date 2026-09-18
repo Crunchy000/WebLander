@@ -5,11 +5,11 @@
 // been shot -- and, for the block structures, which have been knocked over.
 
 import { TILE, hash2 } from './maths.js';
-import { Model, facet, shade, mergeAt } from './model.js';
-import { STRUCTURES, OPEN_STRUCTURES, OPEN_ALONG_Z, resetBlocks } from './blocks.js';
+import { Model, facet, shade, recolour, mergeAt } from './model.js';
+import { STRUCTURES, dressModel, resetBlocks } from './blocks.js';
 import { floraBiome, DENSITY, TUNDRA, TEMPERATE, DESERT } from './biome.js';
 import { landAltitude, isOnLaunchpad, SEA_LEVEL, TILES_X, TILES_Z } from './landscape.js';
-import { paint } from './style.js';
+import { paint, icebound } from './style.js';
 
 // --- the models ------------------------------------------------------------
 
@@ -115,137 +115,6 @@ function blob(rx, ry, rz, col, seed) {
   return m.scale3(rx, ry, rz);
 }
 
-// A natural arch.
-//
-// Two attempts at this were wrong in the same way before it came right, and
-// both are worth recording because the mistake is an inviting one.
-//
-// The first was a ring of round lumps traced over a half circle. It read as a
-// croquet hoop: two legs and a bend, all of it as deep as it was wide. The
-// second kept the lumps and made them slabs, which is nearer -- but a lump is
-// a lump, and sizing them so they touch all the way round is a losing game:
-// spaced along the arc they either leave gaps or cost four hundred faces to
-// close them. It came out beaded, and at 396 faces it was the most expensive
-// thing in the world by a factor of five.
-//
-// What an arch actually is: a fin. A wall of rock standing on its own, thin
-// across and long along, with a hole worn through the middle of it. So this
-// is swept rather than stacked -- one continuous band walked up one leg, over
-// the opening and down the other, four faces a step. The inner surface of
-// that band is the hole, the outer surface is the rock, and they are
-// separately shaped, which is the whole trick: the opening can be a clean
-// ellipse while the rock around it is lumpy and flat-topped and heavier at
-// the feet.
-//
-// Sixty-odd faces for the whole thing, and nothing can come apart, because
-// consecutive rings share their vertices by construction.
-//
-// It is also the one piece of scenery you can fly through rather than over.
-// The opening is a bit over three tiles across and two high -- room to line
-// up and go through at speed, where the first one was tight enough that you
-// had to mean it.
-//
-// `alongZ` builds the same arch facing the other way. It is built rather than
-// turned: the shading is worked out when the model is made, so an arch turned
-// afterwards would be lit as though it still faced the way it was built.
-function rockArch(alongZ) {
-  const m = new Model();
-  const RIN = 1.06;          // half the width of the opening
-  const HIN = 1.30;          // height of the underside of the crown
-  const SPRING = 0.58;       // how far up the legs stand before the arc starts
-  const TOP = HIN + 0.34;    // a flat top, as a weathered fin has
-  const WOUT = RIN + 0.62;   // and how far out the rock stands beside it
-  const ARC = 10;
-
-  const jig = (i, k) => {
-    let h = (i * 374761393 + k * 668265263) | 0;
-    h = (h ^ (h >>> 13)) * 1274126177;
-    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
-  };
-
-  // The path of the band, from the foot of one leg to the foot of the other.
-  // Each ring carries where it is and which way is out.
-  const path = [];
-  const LEG = 2;
-  for (let j = 0; j <= LEG; j++) {
-    path.push({ u: -RIN, y: -SPRING * (j / LEG), nu: -1, ny: 0 });
-  }
-  for (let j = 1; j < ARC; j++) {
-    const a = (Math.PI * j) / ARC;
-    path.push({
-      u: -Math.cos(a) * RIN,
-      y: -SPRING - Math.sin(a) * (HIN - SPRING),
-      nu: -Math.cos(a), ny: -Math.sin(a),
-    });
-  }
-  for (let j = LEG; j >= 0; j--) {
-    path.push({ u: RIN, y: -SPRING * (j / LEG), nu: 1, ny: 0 });
-  }
-
-  // Build the four corners of each ring: inner and outer, front and back.
-  const rings = [];
-  for (let i = 0; i < path.length; i++) {
-    const p = path[i];
-    const up = -p.y / TOP;                      // 0 at the ground, 1 at the top
-
-    // The outer surface is not the inner one pushed out by a fixed amount.
-    // That was the last thing wrong with this: a band of even thickness bent
-    // round a curve is a hoop, whatever it is made of, and no amount of
-    // shading makes it read as rock.
-    //
-    // Instead the band is run outward from the hole until it meets the
-    // outline of the fin -- a flat top and two sides, leaning in a little as
-    // it rises. So the rock is deep at the haunches, where the corner of that
-    // outline is furthest from the curve, and shallow over the crown, which
-    // is exactly where an arch is thinnest and why they eventually fall down.
-    const wall = WOUT - 0.16 * up;
-    let reach = p.nu > 0 ? (wall - p.u) / p.nu
-              : p.nu < 0 ? (-wall - p.u) / p.nu : 1e9;
-    if (p.ny < 0) reach = Math.min(reach, (-TOP - p.y) / p.ny);
-    // Eroded rather than cut: every ring stops a little short of the outline,
-    // by its own amount, and the left leg carries more than the right.
-    reach *= (0.80 + 0.30 * jig(i, 1)) * (p.u < 0 ? 1.06 : 0.96);
-    const ou = p.u + p.nu * reach;
-    const oy = p.y + p.ny * reach;
-    // The fin is thinner across than it is anywhere else, and thinner still
-    // over the opening than at the feet.
-    const d = (0.46 - 0.14 * up) * (0.84 + 0.3 * jig(i, 2));
-    const vert = (u, y, v) => (alongZ ? m.vert(v, y, u) : m.vert(u, y, v));
-    rings.push([
-      vert(p.u, p.y, -d), vert(ou, oy, -d),
-      vert(ou, oy, d), vert(p.u, p.y, d),
-      up,
-    ]);
-  }
-
-  // Strata: dark at the bottom, sandstone through the middle, the weathered
-  // cap on top. Flat bands rather than a gradient, because that is what makes
-  // it read as rock that was laid down rather than rock that was painted.
-  const band = (up) => (up < 0.30 ? ROCK_D : up < 0.74 ? ROCK_W : ROCK_L);
-
-  for (let i = 0; i + 1 < rings.length; i++) {
-    const a = rings[i], b = rings[i + 1];
-    const col = band((a[4] + b[4]) / 2);
-    facet(m, [a[1], b[1], b[2], a[2]], col);                  // outer
-    facet(m, [a[0], b[0], b[3], a[3]], shade(col, 0.80));     // the soffit
-    facet(m, [a[0], b[0], b[1], a[1]], col);                  // the two faces
-    facet(m, [a[3], b[3], b[2], a[2]], col);
-  }
-
-  // Fallen rock at the foot. An arch this size has been shedding for a long
-  // time, and a clean join to the ground is what gives a model away.
-  const rubble = (u, v, r, col, seed) => {
-    const b = new Model();
-    b.geode(r, -r * 0.55, r * 0.6, 6, 2, col, seed);
-    mergeAt(m, b, alongZ ? v : u, -r * 0.4, alongZ ? u : v);
-  };
-  rubble(-RIN - 0.46, 0.40, 0.26, ROCK_W, 97);
-  rubble(RIN + 0.52, -0.34, 0.19, shade(ROCK_D, 1.06), 103);
-  rubble(RIN * 0.2, 0.62, 0.15, ROCK_W, 109);
-
-  return m.scale(TREE);
-}
-
 // A mesa: flat-topped, stepped, and wider at every level down. Three drums
 // rather than one taper, because the steps are what say "this was laid down
 // in layers and then cut", which a smooth cone cannot.
@@ -317,13 +186,11 @@ export const OBJ = {
   DESERT_ROCK: 4,
   SNOW_FIR: 5,
   ICE_BLOCK: 6,
-  ROCK_ARCH: 7,
-  ROCK_ARCH_Z: 8,
-  MESA: 9,
-  HOODOO: 10,
-  BLOCKS_0: 11,
-  REMAINS_L: 11 + STRUCTURES.length,
-  REMAINS_R: 12 + STRUCTURES.length,
+  MESA: 7,
+  HOODOO: 8,
+  BLOCKS_0: 9,
+  REMAINS_L: 9 + STRUCTURES.length,
+  REMAINS_R: 10 + STRUCTURES.length,
 };
 
 export const MODELS = [
@@ -334,8 +201,6 @@ export const MODELS = [
   desertRock(),
   snowFir(),
   iceBlock(),
-  rockArch(false),
-  rockArch(true),
   mesa(),
   hoodoo(),
   ...STRUCTURES.map((st) => st.model),
@@ -348,41 +213,10 @@ export const MODELS = [
 export const OBJ_SCORE = [
   10, 15, 15,        // temperate trees
   12, 8, 15, 10,     // cactus, rock, snow fir, ice
-  40, 40, 35, 22,    // arch both ways, mesa, hoodoo
-  50, 60, 90, 70, 55, 45, 80, 80,
+  35, 22,            // mesa, hoodoo
+  50, 60, 90, 70, 55, 45,
   0, 0,
 ];
-
-// Scenery you can fly through rather than into.
-//
-// Collision is a cylinder of the model's radius, which is the right shape for
-// a tree and exactly the wrong one for an arch: the opening is the middle of
-// the cylinder, so the one place the arch is meant to let you through is the
-// one place it would stop you. Rather than teach the collision test about
-// holes -- which would mean a second geometry for every model that has one --
-// an arch is simply not solid. Clip a leg and you pass through it, which is a
-// smaller lie than a solid arch would be, and the only thing in this game
-// that can still end a flight is the ground.
-const OPEN = new Set([
-  OBJ.ROCK_ARCH, OBJ.ROCK_ARCH_Z,
-  ...OPEN_STRUCTURES.map((i) => OBJ.BLOCKS_0 + i),
-]);
-
-export function isOpen(type) {
-  return OPEN.has(type);
-}
-
-// Which way an open thing stands: false spans x, true spans z. Only the
-// shadows ask, and only because a thing with a hole in it does not cast a
-// solid circle.
-const ALONG_Z = new Set([
-  OBJ.ROCK_ARCH_Z,
-  ...OPEN_ALONG_Z.map((i) => OBJ.BLOCKS_0 + i),
-]);
-
-export function spansZ(type) {
-  return ALONG_Z.has(type);
-}
 
 // Is this one of the block structures?
 export function isBlocks(type) {
@@ -395,6 +229,46 @@ export function structureIndex(type) {
 }
 
 // Ground higher than this carries nothing tall -- see objectAt.
+// --- dressing the world for where it is ------------------------------------
+//
+// Rock is rock everywhere, except that in a frozen place it is under snow.
+// The boulders, the mesas and the spires are all drawn in sandstone, which is
+// right in the desert it was picked for and wrong on an ice field, where it
+// left a warm ochre outcrop sitting in the middle of a blue-white landscape
+// looking like it had been pasted in.
+//
+// A variant is built the first time a biome asks for one, and `recolour`
+// shares the vertices -- so the ice version of a mesa is a list of face
+// colours and nothing else. The block structures are re-dressed too, by their
+// own paint box in blocks.js, which has eight named colours to keep apart and
+// so does it by substitution rather than by ramp.
+const ROCKY = new Set([OBJ.DESERT_ROCK, OBJ.MESA, OBJ.HOODOO]);
+
+const dressed = [];
+
+function variantsFor(biome) {
+  let list = dressed[biome];
+  if (list) return list;
+  list = dressed[biome] = MODELS.map((model, type) => {
+    if (isBlocks(type)) return dressModel(model, biome);
+    if (biome === TUNDRA && ROCKY.has(type)) return recolour(model, icebound);
+    return model;
+  });
+  return list;
+}
+
+// The model to draw for a thing standing in this biome. Collision and
+// shadows use MODELS directly: every variant is the same geometry, so only
+// the drawing has to ask.
+export function modelFor(type, biome) {
+  return variantsFor(biome)[type] || MODELS[type];
+}
+
+// Which biome a tile belongs to, by the same reckoning objectAt uses.
+export function biomeAt(tx, tz) {
+  return floraBiome((tx * TILE) | 0, (tz * TILE) | 0, hash2(tx, tz));
+}
+
 const TREE_LINE = (TILE * 0.8) | 0;
 
 // Types that can be spawned onto the map, with their relative frequency.
@@ -424,8 +298,7 @@ FLORA[DESERT] = [
 
 const SPAWN_TABLE = FLORA.map((flora) => [
   ...flora, ...flora, ...flora,
-  ...STRUCTURES.map((_, i) => OBJ.BLOCKS_0 + i)
-    .filter((t) => !OPEN.has(t)),
+  ...STRUCTURES.map((_, i) => OBJ.BLOCKS_0 + i),
 ]);
 
 // ---------------------------------------------------------------------------
@@ -457,11 +330,7 @@ const CELL = 5;
 const CLEAR = 2;                  // tiles kept empty around a formation
 const FORMATION_CHANCE = 36;      // in a hundred cells
 
-const FORMATIONS = [
-  OBJ.ROCK_ARCH, OBJ.ROCK_ARCH_Z, OBJ.ROCK_ARCH, OBJ.ROCK_ARCH_Z,
-  OBJ.MESA, OBJ.MESA,
-  ...STRUCTURES.map((_, i) => OBJ.BLOCKS_0 + i).filter((t) => OPEN.has(t)),
-];
+const FORMATIONS = [OBJ.MESA];
 
 // Floor division, which is not what % gives for negative tiles -- and the
 // world runs in both directions.

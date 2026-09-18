@@ -7,7 +7,7 @@
 // it as you fly, which is why the horizon never moves.
 
 import { TILE, sinLookup } from './maths.js';
-import { sky, litColour } from './daylight.js';
+import { sky, litColour, silhouetteDark } from './daylight.js';
 import { groundBase, tintFor, tintLevel, TINT_STEPS } from './biome.js';
 import { serene } from './style.js';
 
@@ -237,6 +237,7 @@ const colourCache = new Map();
 // to the left, and fades the distance into shadow for free.
 const base = [0, 0, 0];
 const tintScratch = [0, 0, 0];
+const darkScratch = [0, 0, 0];
 
 export function tileColour(prevAlt, alt, row, wx, wz, lift = 0) {
   let slope = (prevAlt - alt) | 0;
@@ -315,8 +316,8 @@ export function tileColour(prevAlt, alt, row, wx, wz, lift = 0) {
     if (sil > 0.01) {
       // The same dark the ranges use, warm by day and cool by night, so the
       // foreground and the horizon are speaking the same language.
-      const warm = sky.sunStrength;
-      const dr = 26 + 30 * warm, dg = 22 + 16 * warm, db = 40 + 8 * warm;
+      silhouetteDark(darkScratch);
+      const dr = darkScratch[0], dg = darkScratch[1], db = darkScratch[2];
       const k = sil * 0.88;
       rgbS[0] = Math.round(rgbS[0] + (dr - rgbS[0]) * k);
       rgbS[1] = Math.round(rgbS[1] + (dg - rgbS[1]) * k);
