@@ -227,6 +227,70 @@ const BALLOONS_LIT = BALLOONS.map((model, i) => {
   return out;
 });
 
+// --- the night glow --------------------------------------------------------
+//
+// A burner firing into a mouth you cannot see from the side is not a balloon
+// glowing. What a balloon does after dark is the thing people drive out to
+// watch: the whole envelope comes up like a paper lamp, canvas and stripes
+// and all, because the light is inside it. The basket stays a dark shape
+// hanging underneath, which is what makes the envelope read as lit.
+//
+// So the canvas carries the flame's colour rather than being replaced by it,
+// the way the lanterns on the water do -- the stripes stay legible, they are
+// just made of light. Lower bands take more of it, since that is the end the
+// burner is at.
+function throughCanvas(col, flame, mix, lift) {
+  return [
+    Math.min(255, Math.round((col[0] * (1 - mix) + flame[0] * mix) * lift)),
+    Math.min(255, Math.round((col[1] * (1 - mix) + flame[1] * mix) * lift)),
+    Math.min(255, Math.round((col[2] * (1 - mix) + flame[2] * mix) * lift)),
+  ];
+}
+
+// The envelope is every face up to and including the mouth; the basket and
+// its cords come after it, and they are left exactly as they are so that
+// laying this copy over the plain one does nothing to them at all.
+function buildGlow(model, mouth, mix, lift) {
+  const out = recolour(model, () => null);
+  for (let f = 0; f <= mouth; f++) {
+    // 0 at the crown, 1 at the mouth.
+    const down = f / mouth;
+    const k = 0.84 + 0.16 * down;
+    const col = f === mouth
+      ? throughCanvas(BURNER, BURNER, 1, lift)
+      : throughCanvas(model.faces[f].col, BURNER, mix, lift * k);
+    out.faces[f] = { idx: model.faces[f].idx, col, glow: true };
+  }
+  return out;
+}
+
+// Two strengths: what it looks like sitting there, and what it looks like in
+// the second or two after the burner goes.
+const BALLOONS_GLOW  = BALLOONS.map((m, i) => buildGlow(m, mouthFaces[i], 0.55, 0.92));
+const BALLOONS_FLARE = BALLOONS.map((m, i) => buildGlow(m, mouthFaces[i], 0.78, 1.10));
+
+// How much of the glow shows. It rides sky.lamp, so it comes up through dusk
+// with the landing lights and the fairy lights rather than switching on, and
+// the burst is what the burner adds on top.
+const GLOW_REST = 0.62;
+
+// ... and haze takes less off a light than it takes off a surface. A lit
+// envelope at the far end of the band was coming out at [37, 36, 58] against
+// a night sky of [25, 26, 53] -- which is to say it was the night sky. That
+// is the wrong physics as well as the wrong picture: fog scatters the light
+// coming off a dim surface into nothing long before it swallows a lamp, which
+// is why a distant window is the last thing you lose in mist.
+const GLOW_HAZE = 0.5;
+
+function drawGlow(rd, p, b, camX, camY, camZ, fog, sil, burning) {
+  const lamp = sky.lamp;
+  if (lamp < 0.03) return;
+  const model = (burning ? BALLOONS_FLARE : BALLOONS_GLOW)[p.style];
+  const fade = lamp * (burning ? 1 : GLOW_REST);
+  drawModel(rd, model, null, b.x, b.y, b.z, camX, camY, camZ,
+            fog * GLOW_HAZE, sil, fade);
+}
+
 // --- bunting ---------------------------------------------------------------
 
 const FLAGS = [
@@ -384,6 +448,7 @@ export function drawFarBalloons(rd, camX, camY, camZ) {
     const lit = sky.lamp > 0.05 && beacon(150, 16, p.burnAt);
     const model = (lit ? BALLOONS_LIT : BALLOONS)[p.style];
     drawModel(rd, model, null, b.x, b.y, b.z, camX, camY, camZ, fog, 0);
+    drawGlow(rd, p, b, camX, camY, camZ, fog, 0, lit);
     // Only when both ends are out here. A pair straddling the line keeps its
     // bunting in the row pass, with the end of it the camera can reach.
     if (leads) drawBunting(rd, p, camX, camY, camZ, 0, fog);
@@ -480,6 +545,7 @@ export function drawBalloon(rd, entry, camX, camY, camZ, fog = 0) {
   const lit = sky.lamp > 0.05 && beacon(150, 16, p.burnAt);
   const model = lit ? BALLOONS_LIT[p.style] : BALLOONS[p.style];
   drawModel(rd, model, null, b.x, b.y, b.z, camX, camY, camZ, fog, sil);
+  drawGlow(rd, p, b, camX, camY, camZ, fog, sil, lit);
 
   // The bunting belongs to the pair, so only one of the two draws it.
   if (entry.which === 0) drawBunting(rd, p, camX, camY, camZ, sil, fog);

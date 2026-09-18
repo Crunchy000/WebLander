@@ -346,8 +346,16 @@ export function silhouetteAmount(dx, dz) {
 
 const silDark = [0, 0, 0];
 const silCol = [0, 0, 0];
+const fadeCol = [0, 0, 0, 255];
 
-export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ, fog = 0, sil = 0) {
+// `fade` draws the model translucent, which is only ever used for one thing:
+// laying a second, glowing copy of something over the plain one so it can
+// light up gradually instead of switching on. Face colours are baked at build
+// time, so a glow that comes up over a dusk has to be a blend at draw time,
+// and an ordinary alpha blend of a copy over the original is exactly that
+// blend -- no extra blend mode, no extra draw call.
+export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ,
+                          fog = 0, sil = 0, fade = 1) {
   const verts = model.verts;
   const n = verts.length / 3;
 
@@ -405,6 +413,11 @@ export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ, fog =
     const face = faces[f];
     const { idx } = face;
     let col = face.glow ? emissive(face.col, fog) : litColour(face.col, fog);
+    if (fade < 0.999) {
+      fadeCol[0] = col[0]; fadeCol[1] = col[1]; fadeCol[2] = col[2];
+      fadeCol[3] = Math.round(255 * fade);
+      col = fadeCol;
+    }
     // A light is exempt. Everything else near the camera goes to a shape,
     // but a lamp that dims as it approaches is not a lamp -- and on a dark
     // sea the lantern on a boat is the whole of how you find her.
