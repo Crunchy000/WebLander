@@ -405,7 +405,10 @@ export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ, fog =
     const face = faces[f];
     const { idx } = face;
     let col = face.glow ? emissive(face.col, fog) : litColour(face.col, fog);
-    if (sil > 0.01) {
+    // A light is exempt. Everything else near the camera goes to a shape,
+    // but a lamp that dims as it approaches is not a lamp -- and on a dark
+    // sea the lantern on a boat is the whole of how you find her.
+    if (sil > 0.01 && !face.glow) {
       // All the way at the front. Short of the front it is still a mix, so
       // an object does not snap from lit to black in one frame.
       const k = sil;

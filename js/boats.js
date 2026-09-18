@@ -11,7 +11,7 @@
 // than the hunt.
 
 import { TILE, matFromAim, matMul, matRotZ, rnd, rndSigned, rndInt } from './maths.js';
-import { Model, facet, drawModel, drawLamp, recolour } from './model.js';
+import { Model, facet, drawModel, recolour, silhouetteAmount } from './model.js';
 import { sky, beacon } from './daylight.js';
 import { landAltitude, SEA_LEVEL } from './landscape.js';
 import { depthAt, waveLift } from './sea.js';
@@ -25,8 +25,9 @@ export const BOAT_SCORE = 400;
 // the second finishes her. A ship should cost more than a tank to kill.
 export const BOAT_HP = 2;
 
-// Everything scales from here, so the whole vessel grows in one place.
-const S = 1.26;
+// Everything scales from here, so the whole vessel grows in one place. A
+// canoe is a smaller thing than a tug, and longer for her beam.
+const S = 1.05;
 
 const SPAWN_MIN = 15 * TILE;
 const SPAWN_MAX = 30 * TILE;
@@ -38,124 +39,118 @@ const CLEARANCE = 2.2 * TILE;   // open water needed around a spawn
 
 // --- models ----------------------------------------------------------------
 
-// A stubby patchwork tug. Rather than painting each part a sensible colour,
-// every facet takes its own from a bright palette, which is what gives the
-// patchwork look -- and it happens to suit a flat-shaded renderer perfectly,
-// since each panel is already a single flat colour with its own shading.
-
-const PATCH = [
-  [246, 124,  36],   // orange
-  [132,  86, 200],   // purple
-  [ 48, 198, 198],   // teal
-  [238,  92, 156],   // pink
-  [250, 202,  52],   // yellow
-  [ 58, 120, 214],   // blue
-  [ 74, 188,  98],   // green
-  [242, 242, 246],   // white
-  [228,  68,  68],   // red
-  [146, 208,  76],   // lime
-  [255, 158, 186],   // rose
-  [ 32, 158, 148],   // sea green
-];
+// A wooden canoe.
+//
+// What was here was a patchwork tug: a stubby hull, a wheelhouse, a funnel,
+// and every facet taking its own colour from a twelve-colour palette so that
+// no two panels matched. It was the best thing in the game to look at when
+// the game was about knocking things over, and it is the wrong boat entirely
+// for a sea you now fly across and leave alone. Twelve saturated colours on
+// the only moving object in the world is not a quiet sea.
+//
+// A canoe instead: long, narrow, open, double-ended, and made of one material
+// in three tones. It is also a better shape for this renderer -- a hull with
+// no deckhouse on it is read entirely by its sheer line, which is exactly
+// what a flat-shaded lofted surface is good at.
+const WOOD_UP  = [172, 134,  96];   // cedar, the strake above the wale
+const WOOD_LO  = [142, 106,  74];   // and the one below it
+const WOOD_BOT = [ 98,  74,  56];   // the wetted bottom, darker for being wet
+const INSIDE   = [ 92,  70,  52];   // you look down into an open boat, and it
+                                    // is in shadow: the face is almost sky-facing,
+                                    // so it takes the brightest facet multiplier
+                                    // going and has to start dark to end up dark
+const THWART   = [196, 170, 132];   // pale ash, across the beam
+const PACK     = [168, 158, 138];   // a canvas bundle amidships
+const LANTERN  = [ 78,  70,  62];
+const CAP      = [246, 236, 208];   // the lantern glass, unlit
 
 const CHAR   = [ 44,  40,  40];
 const CHAR_B = [ 70,  64,  60];
-const DOOR   = [ 36,  32,  40];   // the shaded arch of the doorway
-const CAP    = [248, 248, 250];   // wheelhouse roof
 
-// Where the masthead light sits, worked out while the hull is being built --
+// Where the lantern glass is, worked out while the hull is being built --
 // facet() shades a colour before it stores it, so these faces cannot be found
 // afterwards by looking for CAP.
 const capFaces = [];
 
-// Walk the palette with a stride coprime to its length, so neighbouring
-// panels never land on the same colour.
-let patchN = 0;
-const patch = () => PATCH[(patchN++ * 5) % PATCH.length];
-
-// Stations along the hull, bow towards +z: how wide she is at the rail and at
-// the keel, and how high the rail sits -- the sheer rising towards the bow.
+// Stations along the hull, bow towards +z. Three widths at each: the rail,
+// the wale a third of the way down, and the keel. Two strakes a side rather
+// than one, because planking is what says "wooden" before any colour does --
+// and a single face from rail to keel reads as a moulded shell.
+//
+// Double-ended, and both ends lift well clear of the water, which is the line
+// that makes a canoe a canoe. The bow lifts a fraction more than the stern,
+// which is the only asymmetry in her and is there so you can tell which way
+// she is pointing.
 const STATIONS = [
-  { z: -0.80, rail: 0.30, keel: 0.11, ry: -0.30, ky: 0.17 },
-  { z: -0.45, rail: 0.41, keel: 0.21, ry: -0.33, ky: 0.23 },
-  { z: -0.05, rail: 0.45, keel: 0.23, ry: -0.36, ky: 0.24 },
-  { z:  0.35, rail: 0.43, keel: 0.19, ry: -0.42, ky: 0.22 },
-  { z:  0.66, rail: 0.33, keel: 0.11, ry: -0.51, ky: 0.16 },
-  { z:  0.88, rail: 0.11, keel: 0.04, ry: -0.58, ky: 0.09 },
+  { z: -1.05, rail: 0.035, wale: 0.030, keel: 0.020, ry: -0.34, wy: -0.16, ky: -0.02 },
+  { z: -0.74, rail: 0.140, wale: 0.120, keel: 0.055, ry: -0.21, wy: -0.08, ky:  0.07 },
+  { z: -0.36, rail: 0.210, wale: 0.180, keel: 0.085, ry: -0.16, wy: -0.04, ky:  0.12 },
+  { z:  0.02, rail: 0.230, wale: 0.200, keel: 0.095, ry: -0.15, wy: -0.03, ky:  0.13 },
+  { z:  0.40, rail: 0.210, wale: 0.180, keel: 0.085, ry: -0.16, wy: -0.04, ky:  0.12 },
+  { z:  0.78, rail: 0.140, wale: 0.120, keel: 0.055, ry: -0.22, wy: -0.08, ky:  0.07 },
+  { z:  1.08, rail: 0.035, wale: 0.030, keel: 0.020, ry: -0.36, wy: -0.17, ky: -0.02 },
 ];
 
 function buildBoat(burnt) {
   const m = new Model();
   const v = (x, y, z) => m.vert(x * S, y * S, z * S);
-  patchN = burnt ? 0 : 3;              // a different shuffle for each build
-  const col = () => (burnt ? (patchN++ % 2 ? CHAR : CHAR_B) : patch());
+  // Everything is the same timber when she has burnt, in two tones so the
+  // planking still reads.
+  let n = 0;
+  const wood = (col) => (burnt ? (n++ % 2 ? CHAR : CHAR_B) : col);
 
-  // Hull: loft the sides and bottom between adjacent stations.
-  const rail = [], keel = [];
+  const box = (x0, y0, z0, x1, y1, z1, col) => {
+    const q = [
+      v(x0, y0, z0), v(x1, y0, z0), v(x1, y0, z1), v(x0, y0, z1),
+      v(x0, y1, z0), v(x1, y1, z0), v(x1, y1, z1), v(x0, y1, z1),
+    ];
+    facet(m, [q[0], q[1], q[2], q[3]], col);
+    facet(m, [q[4], q[5], q[6], q[7]], col);
+    facet(m, [q[0], q[1], q[5], q[4]], col);
+    facet(m, [q[3], q[2], q[6], q[7]], col);
+    facet(m, [q[1], q[2], q[6], q[5]], col);
+    facet(m, [q[0], q[3], q[7], q[4]], col);
+  };
+
+  // Loft the three lines the length of her.
+  const rail = [], wale = [], keel = [];
   for (const st of STATIONS) {
     rail.push([v(-st.rail, st.ry, st.z), v(st.rail, st.ry, st.z)]);
+    wale.push([v(-st.wale, st.wy, st.z), v(st.wale, st.wy, st.z)]);
     keel.push([v(-st.keel, st.ky, st.z), v(st.keel, st.ky, st.z)]);
   }
 
   for (let i = 0; i < STATIONS.length - 1; i++) {
-    // Port and starboard topsides.
-    facet(m, [rail[i][0], rail[i + 1][0], keel[i + 1][0], keel[i][0]], col());
-    facet(m, [rail[i][1], rail[i + 1][1], keel[i + 1][1], keel[i][1]], col());
-    // Bottom.
-    facet(m, [keel[i][0], keel[i + 1][0], keel[i + 1][1], keel[i][1]], col());
-    // Deck, inside the rail.
-    facet(m, [rail[i][0], rail[i + 1][0], rail[i + 1][1], rail[i][1]], col());
-  }
-  // Transom across the stern.
-  facet(m, [rail[0][0], rail[0][1], keel[0][1], keel[0][0]], col());
-
-  // Wheelhouse, a tall block forward of amidships with an arched doorway.
-  const hx = 0.30, hz0 = -0.28, hz1 = 0.30, hTop = -0.92, hBot = -0.34;
-  const wh = [
-    v(-hx, hTop, hz0), v(hx, hTop, hz0), v(hx, hTop, hz1), v(-hx, hTop, hz1),
-    v(-hx, hBot, hz0), v(hx, hBot, hz0), v(hx, hBot, hz1), v(-hx, hBot, hz1),
-  ];
-  facet(m, [wh[0], wh[1], wh[2], wh[3]], burnt ? CHAR : CAP);   // roof
-  if (!burnt) capFaces.push(m.faces.length - 1);
-  facet(m, [wh[0], wh[1], wh[5], wh[4]], col());                // aft face
-  facet(m, [wh[1], wh[2], wh[6], wh[5]], col());                // starboard
-  facet(m, [wh[0], wh[3], wh[7], wh[4]], col());                // port
-  facet(m, [wh[3], wh[2], wh[6], wh[7]], col());                // forward face
-
-  if (!burnt) {
-    // The doorway: a dark opening with a squared arch, set into the front.
-    const dz = hz1 + 0.006;
-    facet(m, [v(-0.12, -0.44, dz), v(0.12, -0.44, dz),
-              v(0.12, -0.34, dz), v(-0.12, -0.34, dz)], DOOR);
-    facet(m, [v(-0.12, -0.44, dz), v(0.12, -0.44, dz), v(0.00, -0.60, dz)], DOOR);
-    // A band of trim round the base of the wheelhouse.
-    for (const sgn of [1, -1]) {
-      facet(m, [v(sgn * (hx + 0.006), -0.40, hz0), v(sgn * (hx + 0.006), -0.40, hz1),
-                v(sgn * (hx + 0.006), -0.34, hz1), v(sgn * (hx + 0.006), -0.34, hz0)], patch());
+    for (const side of [0, 1]) {
+      // Upper strake, then lower.
+      facet(m, [rail[i][side], rail[i + 1][side], wale[i + 1][side], wale[i][side]],
+            wood(WOOD_UP));
+      facet(m, [wale[i][side], wale[i + 1][side], keel[i + 1][side], keel[i][side]],
+            wood(WOOD_LO));
     }
+    // The bottom, and the inside of her seen over the rail.
+    facet(m, [keel[i][0], keel[i + 1][0], keel[i + 1][1], keel[i][1]], wood(WOOD_BOT));
+    facet(m, [rail[i][0], rail[i + 1][0], rail[i + 1][1], rail[i][1]], wood(INSIDE));
   }
 
-  // Funnel, tall and set aft of the wheelhouse.
-  const fx = 0.13, fz = -0.46;
-  const fn = [
-    v(-fx, -1.08, fz - fx), v(fx, -1.08, fz - fx), v(fx, -1.08, fz + fx), v(-fx, -1.08, fz + fx),
-    v(-fx, -0.34, fz - fx), v(fx, -0.34, fz - fx), v(fx, -0.34, fz + fx), v(-fx, -0.34, fz + fx),
-  ];
-  facet(m, [fn[0], fn[1], fn[2], fn[3]], burnt ? CHAR : CAP);
+  // Thwarts: three of them, sitting just under the rail where they belong,
+  // and the only pale thing aboard. They are also what stops the inside
+  // reading as a painted trough.
+  for (const [z, w] of [[-0.52, 0.195], [0.04, 0.222], [0.56, 0.195]]) {
+    box(-w, -0.182, z - 0.038, w, -0.144, z + 0.038, wood(THWART));
+  }
+
+  // A canvas bundle amidships. Something to be carrying, and it gives her a
+  // little height to be read by at a distance.
+  box(-0.125, -0.28, -0.38, 0.125, -0.165, -0.12, wood(PACK));
+
+  // A lantern on the foredeck. The tug had a masthead light and a funnel top
+  // that warmed at night; a canoe has neither, but the wink is worth keeping
+  // -- it is how you find her on a dark sea -- so she carries a lamp.
+  box(-0.05, -0.30, 0.66, 0.05, -0.20, 0.76, wood(LANTERN));
+  facet(m, [v(-0.05, -0.31, 0.66), v(0.05, -0.31, 0.66),
+            v(0.05, -0.31, 0.76), v(-0.05, -0.31, 0.76)], burnt ? CHAR : CAP);
   if (!burnt) capFaces.push(m.faces.length - 1);
-  facet(m, [fn[0], fn[1], fn[5], fn[4]], col());
-  facet(m, [fn[1], fn[2], fn[6], fn[5]], col());
-  facet(m, [fn[0], fn[3], fn[7], fn[4]], col());
-  facet(m, [fn[3], fn[2], fn[6], fn[7]], col());
-
-  if (!burnt) {
-    // A band round the funnel, in a different patch again.
-    const b = fx + 0.008;
-    for (const [a, c] of [[-b, 0], [b, 0]]) {
-      facet(m, [v(a, -0.98, fz - fx), v(a, -0.98, fz + fx),
-                v(a, -0.86, fz + fx), v(a, -0.86, fz - fx)], patch());
-    }
-  }
 
   return m;
 }
@@ -165,9 +160,9 @@ const BOAT_WRECK = buildBoat(true);
 
 // Running lights used to be lamps: screen-space squares with a halo round
 // them, hung off the hull. At this resolution that reads as a sticker rather
-// than as light. Instead the white of the wheelhouse roof and the funnel top
-// warms for a few frames -- from a distance it is a wink somewhere on the
-// vessel, which is all a masthead light ever is.
+// than as light. Instead the lantern glass warms for a few frames -- from a
+// distance it is a wink somewhere on the water, which is all a light on a
+// small boat ever is.
 const LAMP = [255, 238, 176];
 
 const BOAT_LIT = (() => {
@@ -467,5 +462,9 @@ export function drawBoat(rd, b, camX, camY, camZ, fog = 0) {
     hull = BOAT_LIT;
   }
 
-  drawModel(rd, hull, boatMat, b.x, y, b.z, camX, camY, camZ, fog);
+  // The same treatment as everything else standing in the world: a boat
+  // crossing the front of the view goes to a flat shape rather than staying
+  // lit while the trees either side of her have gone dark.
+  const sil = silhouetteAmount((b.x - camX) / TILE, (b.z - camZ) / TILE);
+  drawModel(rd, hull, boatMat, b.x, y, b.z, camX, camY, camZ, fog, sil);
 }

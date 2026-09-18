@@ -300,7 +300,7 @@ software rasterisation, so a phone GPU does not notice it.
 | `js/model.js` | flat-shaded polygon model primitives |
 | `js/objects.js` | scenery models and the stateless object map |
 | `js/tanks.js` | roving armour, their gunnery and their destruction |
-| `js/boats.js` | shipping on the sea, its point defence, and sinking it |
+| `js/boats.js` | canoes on the sea, the one moving thing left out there |
 | `js/sam.js` | radar and missile sites, and what they do to anyone flying high |
 | `js/player.js` | faceted hull, flight physics, collisions |
 | `js/particles.js` | exhaust, bullets, explosions, smoke, spray |
