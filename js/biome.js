@@ -176,4 +176,15 @@ export function floraBiome(wx, wz, h) {
 // How crowded each biome is, as a percentage of tiles carrying something.
 // Desert is the emptiest; that emptiness is most of what makes it read as
 // desert rather than as temperate ground that happens to be beige.
-export const DENSITY = [16, 21, 10];
+//
+// These were set when the world was a shooting gallery and every tree was a
+// target: more of them was more to do. Nothing is a target now and the ground
+// has gone quiet, so the crowd reads as clutter rather than as scenery -- and
+// with the foreground going to silhouette, a crowd of it fills the bottom of
+// the frame with black.
+//
+// Eased back rather than cut, though, because what was too thick was the
+// rock and the toy blocks rather than the trees: a stand of firs is a wood,
+// and a wood is worth flying over. The mix is weighted separately in
+// objects.js, and that is what does most of the thinning.
+export const DENSITY = [12, 17, 7];

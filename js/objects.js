@@ -281,25 +281,55 @@ const TREE_LINE = (TILE * 0.8) | 0;
 //
 // Toy blocks turn up in all three. They are what you are here to knock over,
 // and a desert with nothing in it to hit would be a long flight.
+// Growing things are one list, and everything else is another, because they
+// want opposite treatment. Trees are allowed to crowd: a stand of firs is a
+// wood, and a wood is a good thing to fly over. A boulder every third tile is
+// not a landscape, it is gravel, and a toy castle every fourth tile is not a
+// landmark -- it is wallpaper. Weighting them separately is what lets the
+// trees stay thick while the rest thins right out.
 const FLORA = [];
-FLORA[TUNDRA] = [
-  OBJ.SNOW_FIR, OBJ.SNOW_FIR, OBJ.SNOW_FIR, OBJ.SNOW_FIR,
-  OBJ.ICE_BLOCK, OBJ.ICE_BLOCK, OBJ.ICE_BLOCK,
-];
+FLORA[TUNDRA] = [OBJ.SNOW_FIR];
 FLORA[TEMPERATE] = [
   OBJ.SMALL_TREE, OBJ.SMALL_TREE, OBJ.SMALL_TREE,
   OBJ.TALL_TREE, OBJ.TALL_TREE, OBJ.FIR_TREE, OBJ.FIR_TREE,
 ];
-FLORA[DESERT] = [
-  OBJ.CACTUS, OBJ.CACTUS, OBJ.CACTUS, OBJ.CACTUS,
-  OBJ.DESERT_ROCK, OBJ.DESERT_ROCK, OBJ.DESERT_ROCK,
-  OBJ.HOODOO, OBJ.HOODOO,
-];
+FLORA[DESERT] = [OBJ.CACTUS];
 
-const SPAWN_TABLE = FLORA.map((flora) => [
-  ...flora, ...flora, ...flora,
-  ...STRUCTURES.map((_, i) => OBJ.BLOCKS_0 + i),
-]);
+// The loose rock and ice that used to be mixed in with the flora at a third
+// of every table.
+const SCATTER = [];
+SCATTER[TUNDRA] = [OBJ.ICE_BLOCK];
+SCATTER[TEMPERATE] = [];
+SCATTER[DESERT] = [OBJ.DESERT_ROCK, OBJ.HOODOO];
+
+// What share of the things standing about is each kind. Shares rather than
+// passes of a list, because the lists are wildly different lengths -- the
+// temperate flora has seven entries and the tundra's has one -- and repeating
+// each of them the same number of times gave tundra four times as many toy
+// castles as temperate ground, which is not a decision anybody made.
+const VEG_SHARE = 0.89;
+const SCATTER_SHARE = 0.06;
+const BUILT_SHARE = 0.05;
+
+// Slots in the table a tile draws from. Only the ratios matter; this sets how
+// finely they can be expressed.
+const SLOTS = 300;
+
+function spawnTable(flora, scatter, built) {
+  const out = [];
+  const add = (list, share) => {
+    if (!list.length) return;
+    const passes = Math.max(1, Math.round((share * SLOTS) / list.length));
+    for (let i = 0; i < passes; i++) out.push(...list);
+  };
+  add(flora, VEG_SHARE);
+  add(scatter, SCATTER_SHARE);
+  add(built, BUILT_SHARE);
+  return out;
+}
+
+const SPAWN_TABLE = FLORA.map((flora, biome) => spawnTable(
+  flora, SCATTER[biome], STRUCTURES.map((_, i) => OBJ.BLOCKS_0 + i)));
 
 // ---------------------------------------------------------------------------
 // Formations
@@ -328,7 +358,7 @@ const SPAWN_TABLE = FLORA.map((flora) => [
 // generation pass, and the same landscape every time.
 const CELL = 5;
 const CLEAR = 2;                  // tiles kept empty around a formation
-const FORMATION_CHANCE = 36;      // in a hundred cells
+const FORMATION_CHANCE = 22;      // in a hundred cells
 
 const FORMATIONS = [OBJ.MESA];
 
