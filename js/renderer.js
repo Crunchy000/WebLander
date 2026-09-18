@@ -1,4 +1,4 @@
-// renderer.js -- a painter's-algorithm triangle batcher on WebGL.
+// renderer.js -- a painter's-algorithm triangle batcher on WebGL 2.
 //
 // Everything the game draws -- landscape tiles, ship, scenery, particles,
 // HUD -- ends up as flat-shaded triangles in 456x256 *pixel* space. The
@@ -31,18 +31,38 @@ const MAX_TRIS = 16384;
 const FLOATS_PER_VERT = 3;   // x, y, packed rgb
 const VERTS_PER_TRI = 3;
 
-const VERT_SRC = `
+// The one line of maths on the GPU: pixel space, origin top-left, to clip
+// space. Written out twice because the two GL versions spell it differently
+// -- `in`/`out` and a named output in GLSL ES 3.00, attribute/varying and
+// gl_FragColor in 1.00 -- and a `#version` line has to be the first thing in
+// the file, which is why these templates start hard against the backtick.
+const BODY = `
+  gl_Position = vec4(aPos.x * uScale.x - 1.0, 1.0 - aPos.y * uScale.y, 0.0, 1.0);
+  vCol = aCol;`;
+
+const VERT_300 = `#version 300 es
+in vec2 aPos;
+in vec4 aCol;
+out vec4 vCol;
+uniform vec2 uScale;
+void main() {${BODY}
+}`;
+
+const FRAG_300 = `#version 300 es
+precision mediump float;
+in vec4 vCol;
+out vec4 oCol;
+void main() { oCol = vCol; }`;
+
+const VERT_100 = `
 attribute vec2 aPos;
 attribute vec4 aCol;
 varying vec4 vCol;
 uniform vec2 uScale;
-void main() {
-  // Pixel space (0,0 top-left) -> clip space.
-  gl_Position = vec4(aPos.x * uScale.x - 1.0, 1.0 - aPos.y * uScale.y, 0.0, 1.0);
-  vCol = aCol;
+void main() {${BODY}
 }`;
 
-const FRAG_SRC = `
+const FRAG_100 = `
 precision mediump float;
 varying vec4 vCol;
 void main() { gl_FragColor = vCol; }`;
@@ -77,13 +97,25 @@ export class Renderer {
     canvas.width = SCREEN_W;
     canvas.height = SCREEN_H;
 
-    const gl = canvas.getContext('webgl', opts) || canvas.getContext('experimental-webgl', opts);
+    // WebGL 2 where there is one, WebGL 1 where there is not. Nothing here
+    // needs 2 -- it is flat triangles and one uniform -- but it is what every
+    // browser that matters has shipped for years, it gives the vertex array
+    // object that holds the attribute layout instead of leaving it on the
+    // global state, and it takes a length on bufferSubData, so the upload no
+    // longer builds a throwaway typed-array view every time it draws. The 1
+    // path stays because it costs four lines and an old phone is exactly the
+    // sort of thing this game is for.
+    const gl = canvas.getContext('webgl2', opts)
+            || canvas.getContext('webgl', opts)
+            || canvas.getContext('experimental-webgl', opts);
     if (!gl) throw new Error('WebGL is not available in this browser.');
     this.gl = gl;
+    this.gl2 = typeof WebGL2RenderingContext !== 'undefined'
+            && gl instanceof WebGL2RenderingContext;
 
     const prog = gl.createProgram();
-    gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, VERT_SRC));
-    gl.attachShader(prog, compile(gl, gl.FRAGMENT_SHADER, FRAG_SRC));
+    gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, this.gl2 ? VERT_300 : VERT_100));
+    gl.attachShader(prog, compile(gl, gl.FRAGMENT_SHADER, this.gl2 ? FRAG_300 : FRAG_100));
     gl.linkProgram(prog);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
       throw new Error('link: ' + gl.getProgramInfoLog(prog));
@@ -102,6 +134,15 @@ export class Renderer {
     this.f32 = new Float32Array(this.buffer);
     this.u8 = new Uint8Array(this.buffer);
     this.count = 0; // vertices written
+
+    // On 2, the attribute layout below is recorded in a vertex array object,
+    // which stays bound for the life of the page. On 1 it lives on the
+    // context's default state, which amounts to the same thing here since
+    // nothing else ever binds a buffer.
+    if (this.gl2) {
+      this.vao = gl.createVertexArray();
+      gl.bindVertexArray(this.vao);
+    }
 
     this.vbo = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
@@ -235,10 +276,13 @@ export class Renderer {
   flush() {
     const gl = this.gl;
     if (this.count === 0) return;
-    // Upload only the slice we actually filled.
-    const view = new Float32Array(this.buffer, 0, this.count * FLOATS_PER_VERT);
+    // Upload only the slice we actually filled. WebGL 2 takes the length as an
+    // argument; WebGL 1 has to be handed a view of the right size, which means
+    // allocating one per draw.
+    const floats = this.count * FLOATS_PER_VERT;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
-    gl.bufferSubData(gl.ARRAY_BUFFER, 0, view);
+    if (this.gl2) gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.f32, 0, floats);
+    else gl.bufferSubData(gl.ARRAY_BUFFER, 0, new Float32Array(this.buffer, 0, floats));
     gl.drawArrays(gl.TRIANGLES, 0, this.count);
     this.drawn = (this.drawn || 0) + this.count;
   }
