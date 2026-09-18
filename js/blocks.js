@@ -239,6 +239,54 @@ function archBlock(r, d, col) {
   return m;
 }
 
+// The arch block: a block with a doorway cut through it.
+//
+// This is the piece the set is remembered for, and the game had no version of
+// it -- only the solid half-round above, which is an arch's top rather than an
+// arch. On its own a half-round laid over a gap reads as a dome, because that
+// is what it is.
+//
+// The opening is swept the same way the rock arch's was: from the curve
+// outward along the radius until it meets the block's own outline, so the
+// stone above the hole is thick at the haunches and thin over the crown
+// without any of it being written down twice.
+function gateBlock(w, h, d, col) {
+  const m = new Model();
+  const hw = w / 2, hh = h / 2, hd = d / 2;
+  const r = Math.min(hw * 0.74, h * 0.66);
+  const SEG = 7;
+
+  const inner = [], outer = [];
+  for (let i = 0; i <= SEG; i++) {
+    const a = (i / SEG) * Math.PI;
+    const dx = -Math.cos(a), dy = -Math.sin(a);       // -y is up
+    inner.push([dx * r, hh + dy * r]);
+    // How far the radius runs before it leaves the block.
+    let t = Infinity;
+    if (dx > 0.0001) t = Math.min(t, hw / dx);
+    if (dx < -0.0001) t = Math.min(t, -hw / dx);
+    if (dy < -0.0001) t = Math.min(t, h / -dy);
+    outer.push([dx * t, hh + dy * t]);
+  }
+
+  const v = (p, z) => m.vert(p[0], p[1], z);
+  for (let i = 0; i < SEG; i++) {
+    const i0 = inner[i], i1 = inner[i + 1], o0 = outer[i], o1 = outer[i + 1];
+    // The two faces of the block, the outside of it, and the soffit.
+    facet(m, [v(i0, -hd), v(i1, -hd), v(o1, -hd), v(o0, -hd)], col);
+    facet(m, [v(i0, hd), v(i1, hd), v(o1, hd), v(o0, hd)], col);
+    facet(m, [v(o0, -hd), v(o1, -hd), v(o1, hd), v(o0, hd)], shade(col, 1.06));
+    facet(m, [v(i0, -hd), v(i1, -hd), v(i1, hd), v(i0, hd)], shade(col, 0.62));
+  }
+  // The feet it stands on.
+  for (const sx of [-1, 1]) {
+    const x0 = sx * r, x1 = sx * hw;
+    facet(m, [m.vert(x0, hh, -hd), m.vert(x1, hh, -hd),
+              m.vert(x1, hh, hd), m.vert(x0, hh, hd)], shade(col, 0.55));
+  }
+  return m;
+}
+
 // --- placing blocks --------------------------------------------------------
 
 // A placed block. `y` is the height of the block's centre above the ground,
@@ -257,73 +305,135 @@ const cube  = (s, col) => boxBlock(s, s, s, col);
 // scenery, and a landscape full of landmarks has none.
 const U = 0.6;
 
+// The recipes.
+//
+// They were built when a structure had to survive being shot at and were sized
+// accordingly: four or five blocks, a metre or two of toy. A real set of these
+// blocks gets stacked until it is taller than the child stacking it, with
+// arches spanning gaps and a cone or a roof on the very top, and that is what
+// these are now -- ten to fourteen blocks, three to four and a half tiles
+// tall, wide enough at the base to be worth flying round.
+//
+// The arch blocks earn their keep here. There was exactly one in the whole
+// world before, buried in the small archway, and a half-round spanning two
+// pillars is the most recognisable thing in a box of wooden blocks.
+
+// A tower: two storeys of pillars, each spanned by an arch, on a plinth, with
+// a roof. The kind of thing that is one nudge from going over, which is the
+// invitation.
 function tower() {
-  const cols = [RED, BLUE, YELLOW, GREEN];
   const out = [];
-  let y = 0;
-  for (let i = 0; i < 4; i++) {
-    const w = i === 2 ? U * 1.9 : U;              // one course laid long
-    const h = U * 0.86;
-    out.push(place(boxBlock(w, h, U, cols[i]), 0, y + h / 2, 0, [w / 2, h / 2, U / 2],
-                   i === 2 ? 0.18 : 0));
-    y += h;
+  const plinth = U * 0.5;
+  out.push(place(boxBlock(U * 2.5, plinth, U * 1.5, GREEN), 0, plinth / 2, 0,
+                 [U * 1.25, plinth / 2, U * 0.75]));
+  let y = plinth;
+
+  // Two storeys, each a pair of pillars with a span across them.
+  for (const [pillarH, cols] of [[U * 1.7, [RED, BLUE]], [U * 1.5, [YELLOW, PURPLE]]]) {
+    const pw = U * 0.5;
+    for (let i = 0; i < 2; i++) {
+      const sx = i ? 1 : -1;
+      out.push(place(boxBlock(pw, pillarH, pw, cols[i]), sx * U * 0.72, y + pillarH / 2, 0,
+                     [pw / 2, pillarH / 2, pw / 2]));
+    }
+    // The span: an arch block bridging the two pillars, and a lintel over it
+    // tying them together.
+    out.push(place(gateBlock(U * 1.94, U * 0.92, U * 0.5, ORANGE),
+                   0, y + pillarH - U * 0.46, 0, [U * 0.97, U * 0.46, U * 0.25]));
+    const lint = U * 0.36;
+    out.push(place(boxBlock(U * 2.1, lint, U * 0.62, WOOD), 0, y + pillarH + lint / 2, 0,
+                   [U * 1.05, lint / 2, U * 0.31]));
+    y += pillarH + lint;
   }
-  out.push(place(roofBlock(U * 1.5, U, U * 1.5, ORANGE), 0, y + U / 2, 0,
-                 [U * 0.75, U / 2, U * 0.75]));
+
+  out.push(place(cube(U * 0.8, RED), 0, y + U * 0.4, 0, [U * 0.4, U * 0.4, U * 0.4], 0.2));
+  y += U * 0.8;
+  out.push(place(roofBlock(U * 1.5, U * 1.1, U * 1.5, BLUE), 0, y + U * 0.55, 0,
+                 [U * 0.75, U * 0.55, U * 0.75]));
   return out;
 }
 
+// A gateway: one big arch on two thick piers, with a stack on top of it.
 function archway() {
   const out = [];
-  const legH = U * 2;
-  for (const sx of [-1, 1]) {
-    out.push(place(boxBlock(U * 0.7, legH, U * 0.7, WOOD), sx * U * 0.72, legH / 2, 0,
-                   [U * 0.35, legH / 2, U * 0.35]));
+  const legH = U * 2.6;
+  const pw = U * 0.78;
+  for (const [sx, col] of [[-1, WOOD], [1, WOOD_D]]) {
+    out.push(place(boxBlock(pw, legH, pw, col), sx * U * 1.02, legH / 2, 0,
+                   [pw / 2, legH / 2, pw / 2]));
   }
-  const lintelH = U * 0.5;
-  out.push(place(boxBlock(U * 2.5, lintelH, U * 0.8, RED),
-                 0, legH + lintelH / 2, 0, [U * 1.25, lintelH / 2, U * 0.4]));
-  out.push(place(archBlock(U * 1.1, U * 0.8, BLUE),
-                 0, legH + lintelH + U * 0.55, 0, [U * 1.1, U * 0.55, U * 0.4]));
-  out.push(place(cube(U * 0.7, YELLOW), 0, legH + lintelH + U * 1.1 + U * 0.35, 0,
-                 [U * 0.35, U * 0.35, U * 0.35]));
+  const lintelH = U * 0.55;
+  out.push(place(boxBlock(U * 2.9, lintelH, U * 0.9, RED),
+                 0, legH + lintelH / 2, 0, [U * 1.45, lintelH / 2, U * 0.45]));
+  let y = legH + lintelH;
+  out.push(place(gateBlock(U * 2.3, U * 1.15, U * 0.9, BLUE), 0, y + U * 0.575, 0,
+                 [U * 1.15, U * 0.575, U * 0.45]));
+  y += U * 1.15;
+  out.push(place(cylBlock(U * 0.42, U * 1.1, YELLOW), 0, y + U * 0.55, 0,
+                 [U * 0.42, U * 0.55, U * 0.42]));
+  y += U * 1.1;
+  out.push(place(pyrBlock(U * 0.95, U * 0.95, U * 0.95, GREEN), 0, y + U * 0.48, 0,
+                 [U * 0.48, U * 0.48, U * 0.48]));
   return out;
 }
 
+// A castle: a long wall with an arched gate through it and a turret at each
+// end, which is what everybody builds first.
 function castle() {
   const out = [];
   const baseH = U * 0.6;
-  out.push(place(boxBlock(U * 3.2, baseH, U * 1.5, GREEN), 0, baseH / 2, 0,
-                 [U * 1.6, baseH / 2, U * 0.75]));
-  // A round turret at each end, with a pointed cap.
-  const turH = U * 2.2;
+  out.push(place(boxBlock(U * 4.4, baseH, U * 1.6, GREEN), 0, baseH / 2, 0,
+                 [U * 2.2, baseH / 2, U * 0.8]));
+
+  // The gate: two short piers, an arch, and a wall over the top of it.
+  const gateH = U * 1.3, gp = U * 0.44;
+  for (const sx of [-1, 1]) {
+    out.push(place(boxBlock(gp, gateH, U * 1.2, WOOD), sx * U * 0.62, baseH + gateH / 2, 0,
+                   [gp / 2, gateH / 2, U * 0.6]));
+  }
+  out.push(place(gateBlock(U * 1.68, U * 1.3, U * 1.2, ORANGE),
+                 0, baseH + gateH / 2, 0, [U * 0.84, gateH / 2, U * 0.6]));
+  out.push(place(boxBlock(U * 1.9, U * 0.5, U * 1.2, PURPLE),
+                 0, baseH + gateH + U * 0.25, 0, [U * 0.95, U * 0.25, U * 0.6]));
+
+  // A round turret at each end, capped.
+  const turH = U * 3.0;
   for (const [sx, col] of [[-1, RED], [1, BLUE]]) {
-    out.push(place(cylBlock(U * 0.52, turH, col), sx * U * 1.2, baseH + turH / 2, 0,
-                   [U * 0.52, turH / 2, U * 0.52]));
-    out.push(place(pyrBlock(U * 1.1, U * 0.9, U * 1.1, YELLOW),
-                   sx * U * 1.2, baseH + turH + U * 0.45, 0,
-                   [U * 0.55, U * 0.45, U * 0.55]));
+    out.push(place(cylBlock(U * 0.56, turH, col), sx * U * 1.72, baseH + turH / 2, 0,
+                   [U * 0.56, turH / 2, U * 0.56]));
+    out.push(place(pyrBlock(U * 1.2, U * 1.0, U * 1.2, YELLOW),
+                   sx * U * 1.72, baseH + turH + U * 0.5, 0,
+                   [U * 0.6, U * 0.5, U * 0.6]));
   }
   // Battlements along the wall between them.
-  for (const sx of [-0.45, 0.45]) {
-    out.push(place(cube(U * 0.62, PURPLE), sx * U, baseH + U * 0.31, 0,
-                   [U * 0.31, U * 0.31, U * 0.31]));
+  for (const sx of [-0.35, 0.35]) {
+    out.push(place(cube(U * 0.6, WOOD_D), sx * U * 2.6, baseH + gateH + U * 0.8, 0,
+                   [U * 0.3, U * 0.3, U * 0.3]));
   }
   return out;
 }
 
+// A bridge: three piers, two arches under it, and a deck laid across the lot.
 function bridge() {
   const out = [];
-  const pierH = U * 1.5;
-  for (const [sx, col] of [[-1, BLUE], [1, RED]]) {
-    out.push(place(boxBlock(U * 0.8, pierH, U * 0.9, col), sx * U * 1.35, pierH / 2, 0,
-                   [U * 0.4, pierH / 2, U * 0.45]));
+  const pierH = U * 1.9;
+  const pw = U * 0.7;
+  [[-2.0, BLUE], [0, WOOD_D], [2.0, RED]].forEach(([sx, col]) => {
+    out.push(place(boxBlock(pw, pierH, U * 1.0, col), sx * U, pierH / 2, 0,
+                   [pw / 2, pierH / 2, U * 0.5]));
+  });
+  for (const sx of [-1, 1]) {
+    out.push(place(gateBlock(U * 1.3, U * 1.2, U * 0.9, ORANGE), sx * U, pierH - U * 0.6, 0,
+                   [U * 0.65, U * 0.6, U * 0.45]));
   }
-  const deckH = U * 0.45;
-  out.push(place(boxBlock(U * 4, deckH, U * 1.1, WOOD), 0, pierH + deckH / 2, 0,
-                 [U * 2, deckH / 2, U * 0.55]));
-  out.push(place(cylBlock(U * 0.4, U * 0.9, YELLOW), 0, pierH + deckH + U * 0.45, 0,
-                 [U * 0.4, U * 0.45, U * 0.4]));
+  const deckH = U * 0.5;
+  out.push(place(boxBlock(U * 5.2, deckH, U * 1.2, WOOD), 0, pierH + deckH / 2, 0,
+                 [U * 2.6, deckH / 2, U * 0.6]));
+  // Something standing on it, because an empty bridge is a plank.
+  out.push(place(cylBlock(U * 0.44, U * 1.2, YELLOW), 0, pierH + deckH + U * 0.6, 0,
+                 [U * 0.44, U * 0.6, U * 0.44]));
+  out.push(place(pyrBlock(U * 0.9, U * 0.8, U * 0.9, GREEN), 0,
+                 pierH + deckH + U * 1.2 + U * 0.4, 0, [U * 0.45, U * 0.4, U * 0.45]));
   return out;
 }
 
@@ -331,33 +441,39 @@ function bridge() {
 // It is the one that looks like it is about to go over on its own, which is
 // exactly the invitation this game wants to extend.
 function wobbly() {
-  const cols = [YELLOW, PURPLE, GREEN, ORANGE, BLUE, RED];
+  const cols = [YELLOW, PURPLE, GREEN, ORANGE, BLUE, RED, WOOD, BLUE];
   const out = [];
   let y = 0, ox = 0, oz = 0;
-  for (let i = 0; i < 6; i++) {
-    const h = U * (i % 2 ? 0.55 : 0.8);
-    const w = U * (i % 3 === 1 ? 1.4 : 0.9);
-    ox += (i % 2 ? 1 : -1) * U * 0.16;
-    oz += (i % 3 === 0 ? 1 : -1) * U * 0.1;
-    out.push(place(boxBlock(w, h, U * 0.9, cols[i]), ox, y + h / 2, oz,
-                   [w / 2, h / 2, U * 0.45], i * 0.31));
+  for (let i = 0; i < 8; i++) {
+    const h = U * (i % 2 ? 0.62 : 0.9);
+    const w = U * (i % 3 === 1 ? 1.7 : 1.1);
+    ox += (i % 2 ? 1 : -1) * U * 0.2;
+    oz += (i % 3 === 0 ? 1 : -1) * U * 0.12;
+    out.push(place(boxBlock(w, h, U * 1.05, cols[i]), ox, y + h / 2, oz,
+                   [w / 2, h / 2, U * 0.525], i * 0.31));
     y += h;
   }
+  out.push(place(cylBlock(U * 0.4, U * 0.9, WOOD_D), ox, y + U * 0.45, oz,
+                 [U * 0.4, U * 0.45, U * 0.4]));
   return out;
 }
 
+// Steps: a ziggurat, with a column and a cone on the top of it.
 function steps() {
   const out = [];
-  const cols = [BLUE, GREEN, RED];
+  const cols = [BLUE, GREEN, RED, PURPLE];
   let y = 0;
-  for (let i = 0; i < 3; i++) {
-    const w = U * (2.6 - i * 0.7);
-    const h = U * 0.55;
+  for (let i = 0; i < 4; i++) {
+    const w = U * (3.4 - i * 0.7);
+    const h = U * 0.6;
     out.push(place(boxBlock(w, h, w, cols[i]), 0, y + h / 2, 0, [w / 2, h / 2, w / 2]));
     y += h;
   }
-  out.push(place(pyrBlock(U * 1.1, U * 1.0, U * 1.1, WOOD_D), 0, y + U * 0.5, 0,
-                 [U * 0.55, U * 0.5, U * 0.55]));
+  out.push(place(cylBlock(U * 0.42, U * 1.2, WOOD), 0, y + U * 0.6, 0,
+                 [U * 0.42, U * 0.6, U * 0.42]));
+  y += U * 1.2;
+  out.push(place(pyrBlock(U * 1.0, U * 1.1, U * 1.0, ORANGE), 0, y + U * 0.55, 0,
+                 [U * 0.5, U * 0.55, U * 0.5]));
   return out;
 }
 
