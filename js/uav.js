@@ -16,29 +16,41 @@ import { sky, beacon } from './daylight.js';
 
 // --- palette ---------------------------------------------------------------
 
-const SHELL_A  = [122,  92, 232];   // canopy shell, violet
-const SHELL_B  = [ 78, 134, 246];   // ... to blue
-const SHELL_C  = [ 46, 196, 232];   // ... to cyan
-const UNDER    = [ 58,  62, 138];   // deep indigo belly
-const ARM_FWD  = [248,  92,  64];   // front arms, hot orange
-const ARM_FWD2 = [252, 148,  52];
-const ARM_AFT  = [ 46, 214, 176];   // rear arms, teal
-const ARM_AFT2 = [ 64, 168, 224];
-const POD      = [250, 206,  62];   // motor pods, yellow
-const POD_B    = [214, 158,  40];
-const HUB      = [236,  72, 168];   // magenta hubs
-const BLADE    = [ 68,  74,  92];
-const BLADE_LIT= [126, 134, 156];
-const BLADE_TIP= [246, 246, 250];
-const DISC_A   = [116, 124, 146];   // swept disc, alternating
-const DISC_B   = [ 92,  99, 120];
-const SKID     = [232, 238, 246];
-const SKID_LEG = [176, 186, 202];
-const LENS     = [ 96, 244, 250];
-const GUNMETAL = [110, 116, 130];
-const BOMB     = [ 64,  70,  84];
-const BOMB_TIP = [252,  80,  56];
-const BOMB_FIN = [250, 206,  62];
+// Violet, hot orange, magenta and yellow: a racing quad, and the right
+// machine for a game about shooting things. It is the wrong one now. With the
+// blocks muted, the rocks sanded down and the foreground going to silhouette,
+// it was the only saturated object left in the world and it took your eye off
+// the landscape it is meant to be flying over.
+//
+// So: bone white. Matte, faceted, near enough one colour that the machine
+// reads as a shape rather than as a paint job -- which is the whole of the
+// style it now has to live in.
+//
+// Two things stop white being a bad idea. The belly is a warm charcoal, so
+// the craft still reads against a pale sky and against snow, which a
+// uniformly white machine would vanish into at exactly the moment you most
+// need to see it. And the arms keep their marking, quietly: warm sand
+// forward, slate aft, at a fraction of the old contrast but still the two
+// ends of the temperature scale, so heading is legible at a glance.
+const SHELL_A  = [242, 240, 232];   // shell, bone white
+const SHELL_B  = [220, 216, 206];   // ... and the facets either side of it
+const SHELL_C  = [198, 194, 184];
+const UNDER    = [ 86,  82,  78];   // warm charcoal belly
+const ARM_FWD  = [206, 176, 130];   // front arms, warm sand
+const ARM_FWD2 = [226, 200, 158];
+const ARM_AFT  = [140, 150, 162];   // rear arms, slate
+const ARM_AFT2 = [168, 176, 186];
+const POD      = [214, 210, 200];   // motor pods, off-white
+const POD_B    = [186, 182, 172];
+const HUB      = [104, 100,  96];
+const BLADE    = [112, 110, 106];
+const BLADE_LIT= [156, 154, 148];
+const BLADE_TIP= [238, 236, 230];
+const DISC_A   = [160, 160, 156];   // swept disc, alternating
+const DISC_B   = [136, 136, 132];
+const SKID     = [228, 226, 218];
+const SKID_LEG = [158, 156, 150];
+const LENS     = [ 92, 112, 116];   // a dark eye rather than a bright one
 
 // --- layout ----------------------------------------------------------------
 
@@ -137,23 +149,14 @@ function buildBody() {
     boxFaces(x - t * 1.2, BELLY - 0.06, -0.34, x + t * 1.2, BELLY, 0.32, SKID);
   }
 
-  // Bomb rack under the belly, with a pair on the hardpoints.
-  const rack = 0.045;
-  boxFaces(-0.13, 0.20, -0.10, 0.13, 0.20 + rack, 0.16, GUNMETAL);
-  for (const sgn of [1, -1]) {
-    const x = sgn * 0.075;
-    const bw = 0.042;
-    // Body of the bomb.
-    boxFaces(x - bw, 0.24, -0.06, x + bw, 0.24 + bw * 2, 0.10, BOMB);
-    // Nose cone and tail fin, so it reads as ordnance rather than a crate.
-    facet(m, [
-      v(x - bw, 0.24, 0.10), v(x + bw, 0.24, 0.10),
-      v(x, 0.24 + bw, 0.18),
-    ], BOMB_TIP);
-    facet(m, [
-      v(x, 0.24, -0.06), v(x, 0.24 + bw * 2, -0.06), v(x, 0.24 + bw, -0.16),
-    ], BOMB_FIN);
-  }
+  // What used to hang here was a bomb rack with a pair on the hardpoints. The
+  // bombs went when the weapons did; the rack outlasted them by several
+  // commits, which is how these things go. In their place, a plain pannier:
+  // something to be carrying, since a machine pottering about a desert at
+  // dusk is presumably carrying something.
+  const pod = 0.05;
+  boxFaces(-0.10, 0.20, -0.08, 0.10, 0.20 + pod * 2, 0.14, SKID_LEG);
+  boxFaces(-0.07, 0.20 + pod * 2, -0.05, 0.07, 0.20 + pod * 2.6, 0.11, POD_B);
 
   return m;
 }
