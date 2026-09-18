@@ -281,12 +281,10 @@ const TREE_LINE = (TILE * 0.8) | 0;
 //
 // Toy blocks turn up in all three. They are what you are here to knock over,
 // and a desert with nothing in it to hit would be a long flight.
-// Growing things are one list, and everything else is another, because they
-// want opposite treatment. Trees are allowed to crowd: a stand of firs is a
-// wood, and a wood is a good thing to fly over. A boulder every third tile is
-// not a landscape, it is gravel, and a toy castle every fourth tile is not a
-// landmark -- it is wallpaper. Weighting them separately is what lets the
-// trees stay thick while the rest thins right out.
+// Growing things are one list and the built things another, because they want
+// opposite treatment. Trees are allowed to crowd: a stand of firs is a wood,
+// and a wood is a good thing to fly over. A toy castle every fourth tile is
+// not a landmark, it is wallpaper.
 const FLORA = [];
 FLORA[TUNDRA] = [OBJ.SNOW_FIR];
 FLORA[TEMPERATE] = [
@@ -295,12 +293,19 @@ FLORA[TEMPERATE] = [
 ];
 FLORA[DESERT] = [OBJ.CACTUS];
 
-// The loose rock and ice that used to be mixed in with the flora at a third
-// of every table.
+// Loose rock, spires and ice shards used to be a third of every table, then a
+// few per cent, and are now none of it. They were the litter of a world you
+// were meant to shoot at -- something on every other tile to give the gun a
+// reason -- and with nothing to shoot they read as gravel scattered over the
+// view. The ground itself is the rock now, and the mesas are the rock you
+// notice.
+//
+// The models stay in the file. They cost nothing that is not spawned, and
+// nothing renumbers if they come back.
 const SCATTER = [];
-SCATTER[TUNDRA] = [OBJ.ICE_BLOCK];
+SCATTER[TUNDRA] = [];
 SCATTER[TEMPERATE] = [];
-SCATTER[DESERT] = [OBJ.DESERT_ROCK, OBJ.HOODOO];
+SCATTER[DESERT] = [];
 
 // What share of the things standing about is each kind. Shares rather than
 // passes of a list, because the lists are wildly different lengths -- the
@@ -460,8 +465,10 @@ export function objectAt(tx, tz) {
   // land area either way.
   if (alt < TREE_LINE) {
     if (type === OBJ.TALL_TREE || type === OBJ.FIR_TREE) return OBJ.SMALL_TREE;
-    if (type === OBJ.SNOW_FIR) return OBJ.ICE_BLOCK;      // bare ice above it
-    if (type === OBJ.CACTUS) return OBJ.DESERT_ROCK;      // bare rock above it
+    // High ground used to swap a snow fir for an ice shard and a cactus for a
+    // boulder. With both gone from the world it is bare up there instead,
+    // which is what "above the treeline" meant in the first place.
+    if (type === OBJ.SNOW_FIR || type === OBJ.CACTUS) return -1;
   }
 
   return type;
