@@ -36,7 +36,7 @@ jobs:
         run: |
           node --input-type=module -e '
             const mods = ["maths", "daylight", "landscape", "model", "objects",
-                          "biome", "weather", "clouds", "sea", "renderer", "particles", "player", "uav", "tanks", "blocks", "sam", "ridges", "style", "music", "ribbon",
+                          "biome", "weather", "clouds", "sea", "renderer", "particles", "player", "uav", "tanks", "blocks", "sam", "ridges", "style", "music", "ribbon", "balloons",
                           "boats", "font", "input", "audio", "game"];
             let failed = false;
             for (const m of mods) {

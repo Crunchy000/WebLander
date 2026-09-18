@@ -24,6 +24,9 @@ import {
 } from './objects.js';
 import { topple, updateBlocks, drawPile, pileAt } from './blocks.js';
 import {
+  updateBalloons, drawBalloon, balloonsInRow, resetBalloons,
+} from './balloons.js';
+import {
   updateParticles, drawParticles, resetParticles, particleData,
   spawnExplosion, spawnSparks, spawnSmoke, particleCount, P_BULLET,
 } from './particles.js';
@@ -89,6 +92,7 @@ export class Game {
     // Objects waiting to be drawn, staggered behind the landscape.
     this.pending = Array.from({ length: TILES_Z + 2 }, () => []);
     this.pendingBoats = Array.from({ length: TILES_Z + 2 }, () => []);
+    this.pendingBalloons = Array.from({ length: TILES_Z + 2 }, () => []);
     this.warnTick = 0;
 
     this.newGame();
@@ -106,6 +110,7 @@ export class Game {
     resetRibbon();
     resetTanks();
     resetBoats();
+    resetBalloons();
     resetWeather();
     this.player.reset();
     this.state = STATE.PLAYING;
@@ -214,6 +219,7 @@ export class Game {
 
     sampleRibbon(this.player);
     updateBoats(this.player, this);
+    updateBalloons(this.player);
     updateBlocks();
     updateParticles(this.gravity, (i, bx, by, bz) => this.bulletHit(i, bx, by, bz));
 
@@ -457,6 +463,7 @@ export class Game {
 
     for (const list of this.pending) list.length = 0;
     for (const list of this.pendingBoats) list.length = 0;
+    for (const list of this.pendingBalloons) list.length = 0;
 
     const pt = { x: 0, y: 0 };
 
@@ -469,6 +476,7 @@ export class Game {
       // hills in front still hide what is behind them.
       if (j > 0) {
         boatsInRow(worldZ, (worldZ + TILE) | 0, this.pendingBoats[j]);
+        balloonsInRow(worldZ, (worldZ + TILE) | 0, this.pendingBalloons[j]);
         // The craft's shadow belongs to whichever row the ground under it
         // is in, so it is drawn with that row and hidden by hills in front.
         if (eyeShadowZ >= worldZ && eyeShadowZ < worldZ + TILE) this.shadowRow = j;
@@ -564,6 +572,14 @@ export class Game {
           sky.lamp * 0.76 * (1 - t) * (1 - t * 0.4),
           eyeX, eyeY, eyeZ, row, haze);
       }
+    }
+
+    // Balloons first: they are the furthest thing in their row, being in the
+    // air above it rather than standing on it.
+    const sky2 = this.pendingBalloons[row];
+    if (sky2 && sky2.length) {
+      for (const e of sky2) drawBalloon(this.rd, e, eyeX, eyeY, eyeZ, haze);
+      sky2.length = 0;
     }
 
     const shipping = this.pendingBoats[row];
