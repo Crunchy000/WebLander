@@ -26,11 +26,19 @@ export const AIRFRAME = 'uav';   // 'lander' | 'uav'
 // --- tuning ----------------------------------------------------------------
 
 export const GRAVITY_START = 0x02800;
-// The eye sits at y = 0, which is also the height of the tallest possible
-// peak: the game is played skimming the landscape, within about five tiles of
-// the ground, not cruising above it. The engines cut out just above that, so
-// climbing is self-limiting and the landscape always stays in frame.
-export const HIGHEST_ALTITUDE = -(TILE * 3);
+// y = 0 is the height of the tallest possible peak. The ceiling is how far
+// above that the engines will still lift, and it used to be three tiles: the
+// game was played skimming the landscape, and three was as high as the craft
+// could go and still be in frame, since the eye was pegged a tile and a half
+// up and anything more than about 1.6 tiles above the eye leaves the top of
+// the screen.
+//
+// Ten now, with the eye following the whole way so the craft stays framed.
+// What you lose going up is the ground: the scan only draws from 10 to 26
+// tiles out, and from ten tiles up that band is below the bottom of the
+// frame. The horizon ranges fill it instead, which is what being high over a
+// hazy plain looks like anyway.
+export const HIGHEST_ALTITUDE = -(TILE * 10);
 
 // Where lift starts fading rather than where it stops. A tile and a bit of
 // warning is enough to feel the air thinning and back off.
@@ -121,7 +129,11 @@ const SCAN = 2;            // tiles either way to test for scenery
 // Sitting on the pad costs nothing now: the five seconds begin the moment you
 // lift.
 export const LAUNCH_GRACE = 250;
-const CAMERA_CEILING = -((TILE * 3) / 2);  // how far the eye may rise above y = 0
+// How far the eye may rise above y = 0. It follows the craft all the way to
+// the ceiling now: the craft is drawn fifteen tiles in front of the eye, so
+// anything much above the eye is off the top of the screen, and a ceiling the
+// camera does not follow is a ceiling you fly out of sight through.
+const CAMERA_CEILING = -(TILE * 10);
 
 // --- the ship model --------------------------------------------------------
 

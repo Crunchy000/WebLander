@@ -15,6 +15,7 @@ import { TILE, rnd, rndSigned } from './maths.js';
 import { Model, facet, shade, drawModel, recolour, silhouetteAmount } from './model.js';
 import { sky, beacon, litColour } from './daylight.js';
 import { SEA_LEVEL, landAltitude } from './landscape.js';
+import { HIGHEST_ALTITUDE } from './player.js';
 import { project, SCREEN_W, SCREEN_H } from './renderer.js';
 import { weather } from './weather.js';
 
@@ -47,17 +48,17 @@ const SPAWN_ARC = 1.25;
 //
 // Measured with the first numbers -- four and a half to ten and a half tiles
 // -- a balloon was on screen in 8% of frames over fifteen hundred frames of
-// ordinary flying. They were up in a part of the sky the camera cannot look
-// at.
-const RIDE_LOW = 2.4, RIDE_HIGH = 5.6;
+// ordinary flying. They were up in a part of the sky the camera could not
+// look at.
+//
+// The camera follows the craft to the ceiling now, so the top of the band has
+// gone back up a little: the low ones are what you meet pottering along, and
+// the high ones are a reason to climb.
+const RIDE_LOW = 2.4, RIDE_HIGH = 7.0;
 
 // ... and they keep this much air under them as they drift, so one crossing
 // a ridge rises over it instead of sinking into it.
 const MIN_CLEAR = 1.9 * TILE;
-
-// How far apart a pair flies, and how far their bunting sags.
-const PAIR_MIN = 5.0 * TILE, PAIR_MAX = 9.0 * TILE;
-const SAG = 0.34;
 
 // --- the envelope ----------------------------------------------------------
 //
@@ -85,6 +86,29 @@ const PROFILE = [
 const SIDES = 7;
 const ENV_H = 1.95;          // envelope height, in units
 const BASKET_DROP = 0.72;    // from the mouth to the top of the basket
+
+// The top of the envelope above the point the balloon is placed at.
+export const ENVELOPE_TOP = ENV_H * S * TILE;
+const ENV_TOP = ENVELOPE_TOP;
+
+// And the highest the top of one may ever be. The craft's ceiling is a line
+// in world y; a balloon whose envelope pokes through it is one you cannot get
+// over, which would make it the only thing in the world that can turn you
+// back. This keeps a tile and a bit of air between the top of the biggest
+// balloon and the bottom of the thin air.
+const CEILING_CLEAR = 1.2 * TILE;
+const HIGHEST_TOP = HIGHEST_ALTITUDE + CEILING_CLEAR + ENV_TOP;
+
+// Not above the ceiling, and not into the ground.
+function keepInBand(b) {
+  if (b.y < HIGHEST_TOP) b.y = HIGHEST_TOP | 0;
+  const floor = (Math.min(landAltitude(b.x, b.z), SEA_LEVEL) - MIN_CLEAR) | 0;
+  if (b.y > floor) b.y = (b.y + (floor - b.y) * 0.08) | 0;
+}
+
+// How far apart a pair flies, and how far their bunting sags.
+const PAIR_MIN = 5.0 * TILE, PAIR_MAX = 9.0 * TILE;
+const SAG = 0.34;
 
 const mouthFaces = [];
 
@@ -222,6 +246,9 @@ function place(p, px, pz) {
   p.b.y = (y + rndSigned() * TILE * 0.6) | 0;
   p.b.z = (z + Math.sin(bearing) * span) | 0;
 
+  keepInBand(p.a);
+  keepInBand(p.b);
+
   p.style = (Math.random() * CANVAS.length) | 0;
   p.phase = rnd() * Math.PI * 2;
   p.burnAt = (rnd() * 200) | 0;
@@ -243,9 +270,7 @@ export function updateBalloons(player) {
       b.x = (b.x + wx) | 0;
       b.z = (b.z + wz) | 0;
       b.y = (b.y + lift) | 0;
-      // Rise over rising ground rather than into it.
-      const floor = (Math.min(landAltitude(b.x, b.z), SEA_LEVEL) - MIN_CLEAR) | 0;
-      if (b.y > floor) b.y = (b.y + (floor - b.y) * 0.08) | 0;
+      keepInBand(b);
     }
 
     const dx = (p.a.x - player.x) / TILE, dz = (p.a.z - player.z) / TILE;
