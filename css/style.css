@@ -92,24 +92,38 @@ html, body {
 
 /* ---- title / pause overlay ---- */
 
+/* Centred by auto margins rather than by place-items.
+   A grid or flex box that centres its child has nowhere to put the overflow
+   when the child is taller than the box: it hangs off both ends and the top
+   of it cannot be scrolled to. On a phone held sideways -- three hundred and
+   something pixels of height, most of it spent before you reach a button --
+   that meant the title was cut off and, in a browser that does not extend the
+   scroll region backwards, unreachable. Auto margins collapse to nothing when
+   there is no room to give away, so the card simply starts at the top and
+   scrolls normally. */
 #overlay {
   position: fixed;
   inset: 0;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
   /* A wash rather than a blackout: the landscape stays faintly visible
      behind the card, which is friendlier than dropping the lights. */
   background: linear-gradient(170deg, rgba(18, 20, 32, .90), rgba(38, 28, 30, .93));
   padding: 24px 16px;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 #overlay[hidden] { display: none; }
 
 #panel {
+  margin: auto;
+  width: 100%;
   max-width: 34em;
   text-align: center;
 }
+
+#actions { margin-top: 1.4em; }
 
 #panel h1 {
   margin: 0 0 .1em;
@@ -124,7 +138,6 @@ html, body {
 .dim { color: var(--dim); font-size: .92em; }
 
 #start {
-  margin-top: 1.4em;
   padding: .8em 2.4em;
   font: 600 16px/1 inherit;
   letter-spacing: .08em;
@@ -140,20 +153,29 @@ html, body {
 
 /* ---- calibration ---- */
 
+/* Same arrangement, and the same reason -- but this one had no scrolling at
+   all, so on a short screen the Continue and Skip buttons underneath the pad
+   were simply not on the page. */
 #calibrate {
   position: fixed;
   inset: 0;
   z-index: 10;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
   background: var(--deep);
   padding: 24px 20px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   text-align: center;
 }
 
 #calibrate[hidden] { display: none; }
 
-#cal-panel { max-width: 22em; }
+#cal-panel {
+  margin: auto;
+  width: 100%;
+  max-width: 22em;
+}
 
 #cal-panel h2 {
   margin: 0 0 .6em;
@@ -273,4 +295,61 @@ html, body {
   font-size: 12px;
   color: var(--dim);
   font-variant-numeric: tabular-nums;
+}
+
+/* ---- short screens ------------------------------------------------------ */
+
+/* A phone in landscape, or a small window. Everything gets tighter, and the
+   parts sized in absolute pixels -- the tilt pad especially -- get smaller,
+   because a hundred and twenty pixel square is a third of the height there. */
+@media (max-height: 560px) {
+  #overlay, #calibrate { padding: 12px 16px; }
+  #panel h1 { font-size: clamp(22px, 5.4vh, 34px); margin-bottom: 0; }
+  #panel p { margin: .3em 0; }
+  #actions { margin-top: .9em; }
+  #start { padding: .7em 2em; }
+  #tiltopts { margin-top: .8em; padding-top: .7em; }
+  .read { margin-top: .5em; }
+  #cal-panel h2 { margin-bottom: .4em; }
+  #cal-panel p { margin: .35em 0; }
+  #cal-track { margin: .7em 0 .4em; }
+  #cal-pad { width: 88px; height: 88px; margin: .7em auto .4em; }
+  #cal-btn { margin-top: .7em; }
+  .linkish { margin-top: .5em; }
+}
+
+/* ... and when it is short *and* wide there is room to put the reading and
+   the pressing side by side, which is what gets the buttons on screen without
+   scrolling at all. */
+@media (orientation: landscape) and (max-height: 560px) {
+  #panel {
+    max-width: 54em;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(8.5em, 13em);
+    column-gap: 28px;
+    align-items: center;
+    text-align: left;
+  }
+  #panel h1 { grid-column: 1; grid-row: 1; }
+  #blurb { grid-column: 1; grid-row: 2; }
+  #controls-desktop, #controls-touch { grid-column: 1; grid-row: 3; }
+  #actions { grid-column: 2; grid-row: 1 / span 3; margin: 0; text-align: center; }
+  #start { width: 100%; padding: .8em .6em; }
+}
+
+/* Shorter still -- a small phone in landscape with the browser's own bars
+   taking their cut, which leaves about three hundred pixels. The tilt pad
+   gives up most of what it loses here; a smaller square you can see beats a
+   bigger one below the fold. */
+@media (max-height: 420px) {
+  #panel p, #cal-panel p { margin: .2em 0; }
+  #panel h1 { font-size: clamp(20px, 5vh, 28px); }
+  #cal-panel h2 { font-size: clamp(17px, 5vh, 23px); margin-bottom: .3em; }
+  #cal-track { margin: .5em 0 .3em; }
+  #cal-pad { width: 68px; height: 68px; margin: .5em auto .3em; }
+  #cal-btn { margin-top: .5em; padding: .65em 1em; }
+  .linkish { margin-top: .3em; }
+  .err { min-height: 0; }
+  .read { margin-top: .35em; }
+  #tiltopts { margin-top: .6em; padding-top: .5em; }
 }

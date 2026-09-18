@@ -31,6 +31,9 @@ function showControlHelp() {
   const touch = input.touchUi;
   document.getElementById('controls-desktop').hidden = touch;
   document.getElementById('controls-touch').hidden = !touch;
+  // The tilt options live outside the help text now, so that the buttons can
+  // be laid out together on a short screen. They still belong to touch.
+  document.getElementById('tiltopts').hidden = !touch;
   // Say which button, when we know there is one. On a television across the
   // room "start flying" is a label, not an instruction; "press A" is the
   // thing to do.

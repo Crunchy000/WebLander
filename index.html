@@ -41,14 +41,19 @@
         <p><b>Tilt</b> your phone to steer.</p>
         <p><b>One finger</b> anywhere fires the engine.</p>
         <p class="dim">Hold the phone comfortably, then tap Start to set the neutral position.</p>
+      </div>
 
-        <div id="tiltopts">
+      <!-- Everything you can press, together. In a tall window it sits under
+           the text as it always did; in a landscape one it becomes the right
+           hand column, so the buttons are on screen without scrolling. -->
+      <div id="actions">
+        <button id="start">start flying</button>
+        <div id="tiltopts" hidden>
           <button id="cal-open" class="toggle">calibrate tilt</button>
           <p id="tiltread" class="read">tilt: waiting for sensor…</p>
         </div>
+        <p id="tiltnote" class="dim" hidden>Motion access is needed for tilt steering.</p>
       </div>
-      <button id="start">start flying</button>
-      <p id="tiltnote" class="dim" hidden>Motion access is needed for tilt steering.</p>
     </div>
   </div>
 </div>
