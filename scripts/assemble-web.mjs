@@ -1,10 +1,10 @@
 // assemble-web.mjs -- stage the playable web build into a directory.
 //
-// One definition of "what the game is", used by both the Pages deploy and the
-// desktop bundler. Without it the two drift: the site is served from the repo
-// root, so anything added alongside it -- a Rust crate, a flatpak manifest,
-// a node_modules -- would be published as part of the game, and the desktop
-// build would have to be told separately which files to swallow.
+// One definition of "what the game is". The site used to be served straight
+// from the repository root, which meant anything added alongside the game --
+// workflows, scripts, a README, at one point a Rust crate and a flatpak
+// manifest -- was published as part of it. This lists what the game actually
+// consists of and copies out that and nothing else.
 
 import { cp, mkdir, rm, readdir } from 'fs/promises';
 import { existsSync } from 'fs';

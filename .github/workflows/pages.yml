@@ -80,12 +80,10 @@ jobs:
         with:
           enablement: true
 
-      # The repository holds more than the game now -- a Rust crate, a flatpak
-      # manifest, workflows -- and none of that belongs on the site. The same
-      # script stages the desktop build, so the two can never disagree about
-      # what the game consists of.
+      # The repository holds more than the game -- workflows, a README, the
+      # scripts themselves -- and none of that belongs on the site.
       - name: Stage the site
-        run: npm run assemble
+        run: node scripts/assemble-web.mjs _site
 
       - name: Upload site
         uses: actions/upload-pages-artifact@v3

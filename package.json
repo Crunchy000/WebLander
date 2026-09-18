@@ -5,13 +5,6 @@
   "description": "Fly a drone over an endless landscape. A tribute to the 1987 Archimedes classic.",
   "type": "module",
   "scripts": {
-    "assemble": "node scripts/assemble-web.mjs _site",
-    "assemble:desktop": "node scripts/assemble-web.mjs src-tauri/dist",
-    "tauri": "tauri",
-    "desktop:dev": "tauri dev",
-    "desktop:build": "tauri build"
-  },
-  "devDependencies": {
-    "@tauri-apps/cli": "^2"
+    "assemble": "node scripts/assemble-web.mjs _site"
   }
 }
