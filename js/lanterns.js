@@ -32,25 +32,70 @@ const SPAWN_MIN = 4 * TILE;
 const SPAWN_MAX = 23 * TILE;
 const RETIRE = 32 * TILE;
 
-// Rice paper, three shades of it, so a drift of them is not one colour
-// repeated fifty times.
+// Dyed rice paper.
+//
+// They were three shades of cream to begin with, which is what a paper
+// lantern is after dark -- the candle is doing all the work and the paper is
+// only carrying it. In daylight it left a drift of fifty identical pale
+// smudges on the water, with nothing to look at until dusk. Real ones are
+// dyed, so these are: a coral, a rose, a saffron, a washed jade and blue, a
+// lilac, and the undyed cream they started as.
+//
+// Muted, though. This is a quiet game and a raft of primaries would be a
+// fairground. Every one of these is a colour with a good deal of paper still
+// left in it.
+//
+// Each has a paler collar -- the lid and the top of the box, where the paper
+// is folded double over the frame and no dye reaches. That is where most of
+// the eye interest is, because the camera looks down: on the water it is
+// mostly lids you can see.
 const PAPER = [
-  [232, 216, 184],
-  [222, 202, 170],
-  [238, 226, 200],
+  [236, 226, 204],   // undyed
+  [226, 150, 116],   // coral
+  [212, 132, 142],   // rose
+  [230, 180,  98],   // saffron
+  [156, 188, 170],   // jade
+  [152, 176, 206],   // washed blue
+  [192, 158, 194],   // lilac
 ];
+
+// The collar: the lid and the fold of paper over the top of the frame, where
+// the dye runs thin. A lighter version of the body rather than a white one --
+// the camera looks down at the water, so a lid that loses the colour is a
+// lantern that loses it.
+function collar(col) {
+  return [
+    Math.round(col[0] + (255 - col[0]) * 0.34),
+    Math.round(col[1] + (255 - col[1]) * 0.34),
+    Math.round(col[2] + (255 - col[2]) * 0.34),
+  ];
+}
+const COLLAR = PAPER.map(collar);
 const RAFT   = [118,  96,  72];
 const RAFT_D = [ 92,  74,  56];
 
 // What the candle does to the paper. Not a lamp hung on the outside: the
 // whole box becomes the light, which is what a paper lantern is.
-const LIT_SIDE = [255, 186,  86];
-const LIT_TOP  = [255, 212, 140];
+//
+// And it comes out the colour of the paper it came through. A rose lantern
+// glows rose, a jade one glows green-gold -- which is the point of dyeing
+// them, and it means the colour you picked out in daylight is still the one
+// you are following after dark.
+const CANDLE     = [255, 186,  86];
+const CANDLE_TOP = [255, 212, 140];
+
+function throughPaper(paper, candle, lift) {
+  return [
+    Math.min(255, Math.round((paper[0] * 0.40 + candle[0] * 0.60) * lift)),
+    Math.min(255, Math.round((paper[1] * 0.40 + candle[1] * 0.60) * lift)),
+    Math.min(255, Math.round((paper[2] * 0.40 + candle[2] * 0.60) * lift)),
+  ];
+}
 
 // Reflections: a streak on the water under each one, drawn in screen space
 // because that is where a reflection on a flat plane ends up anyway, and it
-// costs one quad.
-const REFLECT = [255, 176,  80];
+// costs one quad. It takes the lantern's own lit colour, so a row of them on
+// the water is a row of different colours twice over.
 const REFLECT_LEN = 3.0;        // multiples of the lantern's height on screen
 
 // A lantern is a small thing: a foot or so across, against a tree a tile
@@ -73,7 +118,7 @@ const RISE_GATHER = 0.022;      // how much it quickens each frame
 const BOX = 0.105;              // half width
 const TALL = 0.155;
 
-function buildLantern(paper) {
+function buildLantern(body, lid) {
   const m = new Model();
   const v = (x, y, z) => m.vert(x * S, y * S, z * S);
   const raft = 0.055;
@@ -91,26 +136,33 @@ function buildLantern(paper) {
     v(-BOX, -raft, -BOX), v(BOX, -raft, -BOX), v(BOX, -raft, BOX), v(-BOX, -raft, BOX),
     v(-BOX, t, -BOX), v(BOX, t, -BOX), v(BOX, t, BOX), v(-BOX, t, BOX),
   ];
-  facet(m, [q[0], q[1], q[5], q[4]], paper);
-  facet(m, [q[1], q[2], q[6], q[5]], shade(paper, 0.9));
-  facet(m, [q[2], q[3], q[7], q[6]], paper);
-  facet(m, [q[3], q[0], q[4], q[7]], shade(paper, 0.9));
-  facet(m, [q[4], q[5], q[6], q[7]], shade(paper, 1.1));
+  // Four sides, two of them turned away from the light. The contrast used to
+  // be a tenth, which at ten pixels across reads as one flat chip of colour;
+  // a quarter is what makes it a box in daylight.
+  facet(m, [q[0], q[1], q[5], q[4]], shade(body, 1.04));
+  facet(m, [q[1], q[2], q[6], q[5]], shade(body, 0.78));
+  facet(m, [q[2], q[3], q[7], q[6]], shade(body, 1.04));
+  facet(m, [q[3], q[0], q[4], q[7]], shade(body, 0.78));
+  facet(m, [q[4], q[5], q[6], q[7]], shade(lid, 1.10));
   return m;
 }
 
-const LANTERNS = PAPER.map(buildLantern);
+const LANTERNS = PAPER.map((body, i) => buildLantern(body, COLLAR[i]));
 
 // Lit variants: everything above the raft becomes the candle. Built once,
 // sharing the vertices, and marked emissive so the time of day does not put
 // its tint through a light.
 const LANTERNS_LIT = LANTERNS.map((model) => recolour(model, (col, i) => null, true));
+// ... and what shows through is the paper's colour carrying the flame's.
+const LIT_COLOUR = PAPER.map((body) => throughPaper(body, CANDLE, 1.0));
 for (let k = 0; k < LANTERNS.length; k++) {
   const src = LANTERNS[k];
   const out = LANTERNS_LIT[k];
+  const side = LIT_COLOUR[k];
+  const top = throughPaper(COLLAR[k], CANDLE_TOP, 1.0);
   out.faces = src.faces.map((f, i) => {
     if (i < 2) return f;                       // the raft stays wood
-    const col = i === src.faces.length - 1 ? LIT_TOP : LIT_SIDE;
+    const col = i === src.faces.length - 1 ? top : side;
     return { idx: f.idx, col, glow: true };
   });
 }
@@ -255,9 +307,10 @@ export function drawLantern(rd, l, camX, camY, camZ, fog = 0) {
         const w = Math.max(0.8, h * 0.55);
         const len = h * REFLECT_LEN;
         const a = Math.round(124 * glow * (1 - sil));
-        reflectCol[0] = REFLECT[0]; reflectCol[1] = REFLECT[1]; reflectCol[2] = REFLECT[2];
+        const glowCol = LIT_COLOUR[l.style];
+        reflectCol[0] = glowCol[0]; reflectCol[1] = glowCol[1]; reflectCol[2] = glowCol[2];
         reflectCol[3] = a;
-        const fade = [REFLECT[0], REFLECT[1], REFLECT[2], 0];
+        const fade = [glowCol[0], glowCol[1], glowCol[2], 0];
         rd.quadShaded(
           top.x - w, top.y, reflectCol,
           top.x + w, top.y, reflectCol,
