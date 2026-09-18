@@ -27,6 +27,9 @@ import {
   updateBalloons, drawBalloon, balloonsInRow, resetBalloons,
 } from './balloons.js';
 import {
+  updateLanterns, drawLantern, lanternsInRow, resetLanterns,
+} from './lanterns.js';
+import {
   updateParticles, drawParticles, resetParticles, particleData,
   spawnExplosion, spawnSparks, spawnSmoke, particleCount, P_BULLET,
 } from './particles.js';
@@ -93,6 +96,7 @@ export class Game {
     this.pending = Array.from({ length: TILES_Z + 2 }, () => []);
     this.pendingBoats = Array.from({ length: TILES_Z + 2 }, () => []);
     this.pendingBalloons = Array.from({ length: TILES_Z + 2 }, () => []);
+    this.pendingLanterns = Array.from({ length: TILES_Z + 2 }, () => []);
     this.warnTick = 0;
 
     this.newGame();
@@ -111,6 +115,7 @@ export class Game {
     resetTanks();
     resetBoats();
     resetBalloons();
+    resetLanterns();
     resetWeather();
     this.player.reset();
     this.state = STATE.PLAYING;
@@ -220,6 +225,7 @@ export class Game {
     sampleRibbon(this.player);
     updateBoats(this.player, this);
     updateBalloons(this.player);
+    updateLanterns(this.player);
     updateBlocks();
     updateParticles(this.gravity, (i, bx, by, bz) => this.bulletHit(i, bx, by, bz));
 
@@ -464,6 +470,7 @@ export class Game {
     for (const list of this.pending) list.length = 0;
     for (const list of this.pendingBoats) list.length = 0;
     for (const list of this.pendingBalloons) list.length = 0;
+    for (const list of this.pendingLanterns) list.length = 0;
 
     const pt = { x: 0, y: 0 };
 
@@ -477,6 +484,7 @@ export class Game {
       if (j > 0) {
         boatsInRow(worldZ, (worldZ + TILE) | 0, this.pendingBoats[j]);
         balloonsInRow(worldZ, (worldZ + TILE) | 0, this.pendingBalloons[j]);
+        lanternsInRow(worldZ, (worldZ + TILE) | 0, this.pendingLanterns[j]);
         // The craft's shadow belongs to whichever row the ground under it
         // is in, so it is drawn with that row and hidden by hills in front.
         if (eyeShadowZ >= worldZ && eyeShadowZ < worldZ + TILE) this.shadowRow = j;
@@ -580,6 +588,14 @@ export class Game {
     if (sky2 && sky2.length) {
       for (const e of sky2) drawBalloon(this.rd, e, eyeX, eyeY, eyeZ, haze);
       sky2.length = 0;
+    }
+
+    // Lanterns before the shipping in the same row: a canoe passing a drift
+    // of them should be in front of them, not among them.
+    const drift = this.pendingLanterns[row];
+    if (drift && drift.length) {
+      for (const l of drift) drawLantern(this.rd, l, eyeX, eyeY, eyeZ, haze);
+      drift.length = 0;
     }
 
     const shipping = this.pendingBoats[row];

@@ -1,0 +1,222 @@
+// lanterns.js -- paper lanterns set adrift on the water.
+//
+// The sea had one canoe every few miles and nothing else. This puts a
+// ceremony on it: dozens of small paper boxes on floats, riding the same
+// swell the water is drawn with, lit from inside after dark and reflecting
+// down the surface underneath them.
+//
+// They are the cheapest thing in the world to draw and the most numerous, so
+// the model is as small as it can be and still be a lantern: four paper
+// sides, a lid, and the raft it sits on. Six faces. Fifty of them cost less
+// than one of the toy castles.
+//
+// Nothing about them can be flown into. They are on the water, the water
+// already ends a flight, and a lantern that could end one as well would be
+// the meanest thing in the game.
+
+import { TILE, rnd, rndSigned } from './maths.js';
+import { Model, facet, shade, drawModel, recolour, silhouetteAmount } from './model.js';
+import { sky } from './daylight.js';
+import { landAltitude, SEA_LEVEL } from './landscape.js';
+import { depthAt, waveLift } from './sea.js';
+import { project, SCREEN_W, SCREEN_H } from './renderer.js';
+import { weather } from './weather.js';
+
+export const MAX_LANTERNS = 84;
+
+const S = 1.0;
+// Kept inside the band the landscape is actually drawn in, so a lantern
+// spawned is a lantern seen rather than one waiting its turn out in the dark.
+const SPAWN_MIN = 4 * TILE;
+const SPAWN_MAX = 23 * TILE;
+const RETIRE = 32 * TILE;
+
+// Rice paper, three shades of it, so a drift of them is not one colour
+// repeated fifty times.
+const PAPER = [
+  [232, 216, 184],
+  [222, 202, 170],
+  [238, 226, 200],
+];
+const RAFT   = [118,  96,  72];
+const RAFT_D = [ 92,  74,  56];
+
+// What the candle does to the paper. Not a lamp hung on the outside: the
+// whole box becomes the light, which is what a paper lantern is.
+const LIT_SIDE = [255, 186,  86];
+const LIT_TOP  = [255, 212, 140];
+
+// Reflections: a streak on the water under each one, drawn in screen space
+// because that is where a reflection on a flat plane ends up anyway, and it
+// costs one quad.
+const REFLECT = [255, 176,  80];
+const REFLECT_LEN = 3.0;        // multiples of the lantern's height on screen
+
+// A lantern is a small thing: a foot or so across, against a tree a tile
+// and a half tall. The first pass had them a third of a tree wide, which read
+// as crates rather than as paper.
+const BOX = 0.105;              // half width
+const TALL = 0.155;
+
+function buildLantern(paper) {
+  const m = new Model();
+  const v = (x, y, z) => m.vert(x * S, y * S, z * S);
+  const raft = 0.055;
+
+  // The float: a flat square, just proud of the water.
+  const r = BOX * 1.5;
+  facet(m, [v(-r, -raft, -r), v(r, -raft, -r), v(r, -raft, r), v(-r, -raft, r)],
+        shade(RAFT, 1.06));
+  facet(m, [v(-r, 0, -r), v(r, 0, -r), v(r, 0, r), v(-r, 0, r)], RAFT_D);
+
+  // The box: four sides and a lid. No bottom -- it is sitting on the raft,
+  // and nothing is ever going to see under it.
+  const t = -raft - TALL;
+  const q = [
+    v(-BOX, -raft, -BOX), v(BOX, -raft, -BOX), v(BOX, -raft, BOX), v(-BOX, -raft, BOX),
+    v(-BOX, t, -BOX), v(BOX, t, -BOX), v(BOX, t, BOX), v(-BOX, t, BOX),
+  ];
+  facet(m, [q[0], q[1], q[5], q[4]], paper);
+  facet(m, [q[1], q[2], q[6], q[5]], shade(paper, 0.9));
+  facet(m, [q[2], q[3], q[7], q[6]], paper);
+  facet(m, [q[3], q[0], q[4], q[7]], shade(paper, 0.9));
+  facet(m, [q[4], q[5], q[6], q[7]], shade(paper, 1.1));
+  return m;
+}
+
+const LANTERNS = PAPER.map(buildLantern);
+
+// Lit variants: everything above the raft becomes the candle. Built once,
+// sharing the vertices, and marked emissive so the time of day does not put
+// its tint through a light.
+const LANTERNS_LIT = LANTERNS.map((model) => recolour(model, (col, i) => null, true));
+for (let k = 0; k < LANTERNS.length; k++) {
+  const src = LANTERNS[k];
+  const out = LANTERNS_LIT[k];
+  out.faces = src.faces.map((f, i) => {
+    if (i < 2) return f;                       // the raft stays wood
+    const col = i === src.faces.length - 1 ? LIT_TOP : LIT_SIDE;
+    return { idx: f.idx, col, glow: true };
+  });
+}
+
+// --- state -----------------------------------------------------------------
+
+const lanterns = [];
+for (let i = 0; i < MAX_LANTERNS; i++) {
+  lanterns.push({ live: false, x: 0, z: 0, style: 0, phase: 0, spin: 0, drift: 0 });
+}
+
+export function resetLanterns() {
+  for (const l of lanterns) l.live = false;
+}
+
+export function lanternCount() {
+  return lanterns.reduce((n, l) => n + (l.live ? 1 : 0), 0);
+}
+
+// Open water. One sample rather than the boats' five: a lantern is a foot
+// across and does not care whether it can turn round.
+function afloat(x, z) {
+  return landAltitude(x, z) >= SEA_LEVEL;
+}
+
+// Lanterns are set adrift by people standing together, so they arrive in
+// drifts rather than evenly spread: most of them are put down beside one that
+// is already floating, and only the rest strike out on their own.
+const CLUSTER = 0.65;
+const CLUSTER_SPREAD = 2.2 * TILE;
+
+function place(l, px, pz) {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    let x, z;
+    const near = rnd() < CLUSTER ? lanterns[(Math.random() * lanterns.length) | 0] : null;
+    if (near && near.live) {
+      x = (near.x + rndSigned() * CLUSTER_SPREAD) | 0;
+      z = (near.z + rndSigned() * CLUSTER_SPREAD) | 0;
+    } else {
+      const a = rnd() * Math.PI * 2;
+      const r = SPAWN_MIN + rnd() * (SPAWN_MAX - SPAWN_MIN);
+      x = (px + Math.cos(a) * r) | 0;
+      z = (pz + Math.sin(a) * r) | 0;
+    }
+    if (!afloat(x, z)) continue;
+    // A clustered one still has to be somewhere worth drawing.
+    const away = Math.hypot((x - px) / TILE, (z - pz) / TILE) * TILE;
+    if (away > RETIRE) continue;
+    l.x = x; l.z = z;
+    l.style = (Math.random() * PAPER.length) | 0;
+    l.phase = rnd() * Math.PI * 2;
+    l.spin = rndSigned() * 0.004;
+    l.drift = 0.3 + rnd() * 0.7;
+    l.live = true;
+    return;
+  }
+}
+
+export function updateLanterns(player) {
+  for (const l of lanterns) {
+    if (!l.live) {
+      // They arrive steadily rather than all at once, so a sea fills up as
+      // you fly over it instead of appearing in one go.
+      if (Math.random() < 0.10) place(l, player.x, player.z);
+      continue;
+    }
+    l.x = (l.x + weather.windX * l.drift) | 0;
+    l.z = (l.z + weather.windZ * l.drift) | 0;
+    l.phase += 0.02;
+
+    if (!afloat(l.x, l.z)) { l.live = false; continue; }
+    const dx = (l.x - player.x) / TILE, dz = (l.z - player.z) / TILE;
+    if (Math.hypot(dx, dz) * TILE > RETIRE) l.live = false;
+  }
+}
+
+export function lanternsInRow(zLo, zHi, out) {
+  for (const l of lanterns) {
+    if (!l.live) continue;
+    if (l.z >= zLo && l.z < zHi) out.push(l);
+  }
+  return out;
+}
+
+const pt = { x: 0, y: 0 };
+const reflectCol = [0, 0, 0, 0];
+
+export function drawLantern(rd, l, camX, camY, camZ, fog = 0) {
+  const heave = waveLift(l.x, l.z, depthAt(l.x, l.z));
+  const y = (SEA_LEVEL + heave) | 0;
+  const sil = silhouetteAmount((l.x - camX) / TILE, (l.z - camZ) / TILE);
+
+  // How lit they are is the game's own measure of how dark it is, so they
+  // come on with the boats' lantern and the balloons' burner rather than at
+  // a threshold of their own.
+  const glow = sky.lamp;
+
+  // The reflection, first, so the lantern sits on top of its own light.
+  if (glow > 0.05 && sil < 0.95) {
+    if (project((l.x - camX) | 0, (y - camY) | 0, (l.z - camZ) | 0, pt) &&
+        pt.x > -20 && pt.x < SCREEN_W + 20 && pt.y > -20 && pt.y < SCREEN_H + 20) {
+      // Scale with the lantern: work out how tall it is on screen, and lay a
+      // streak that many times longer down the water.
+      const top = { x: pt.x, y: pt.y };
+      if (project((l.x - camX) | 0, (y - TALL * S * TILE - camY) | 0, (l.z - camZ) | 0, pt)) {
+        const h = Math.max(1, top.y - pt.y);
+        const w = Math.max(0.8, h * 0.55);
+        const len = h * REFLECT_LEN;
+        const a = Math.round(124 * glow * (1 - sil));
+        reflectCol[0] = REFLECT[0]; reflectCol[1] = REFLECT[1]; reflectCol[2] = REFLECT[2];
+        reflectCol[3] = a;
+        const fade = [REFLECT[0], REFLECT[1], REFLECT[2], 0];
+        rd.quadShaded(
+          top.x - w, top.y, reflectCol,
+          top.x + w, top.y, reflectCol,
+          top.x + w * 0.25, top.y + len, fade,
+          top.x - w * 0.25, top.y + len, fade);
+      }
+    }
+  }
+
+  const model = glow > 0.05 ? LANTERNS_LIT[l.style] : LANTERNS[l.style];
+  drawModel(rd, model, null, l.x, y, l.z, camX, camY, camZ, fog, sil);
+}
