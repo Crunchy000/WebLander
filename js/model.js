@@ -306,10 +306,15 @@ const pt = { x: 0, y: 0 };
 // scanned from 26 tiles out down to 10, so the nearest row of ground sits
 // between 9 and 10.3 tiles from the camera once the row's own slide and an
 // object's jitter within its tile are counted. Nothing exists closer than
-// that. So the fade reaches its end at 10.6, which puts every object in that
-// last row at flat black rather than merely nearly there.
+// that. So the fade reaches its end at 11.8, which puts the whole of the two
+// nearest rows at flat black rather than merely nearly there, and it starts
+// far enough back -- seventeen and a half tiles, around five rows -- that
+// something is already on its way down by the time it is a third of the way
+// up the screen. A shorter run than that reads as a switch rather than as
+// depth, which is the thing it is meant to be describing.
 //
-// So the fade runs from thirteen and a half tiles down to ten and a half: by
+// So the fade runs from seventeen and a half tiles down to just under twelve:
+// by
 // anything reaches the edge of what is drawn it is already a flat shape, and
 // a shape leaving the bottom of the frame is a thing passing rather than a
 // thing vanishing. It also puts the dark exactly where the style wants it,
@@ -324,8 +329,8 @@ const pt = { x: 0, y: 0 };
 // where what you want is a shape. Black is also flat by definition, so the
 // facets stop existing and a tree passing the camera is one silhouette rather
 // than nine polygons agreeing with each other.
-const SIL_FAR = 13.5;
-const SIL_NEAR = 10.6;
+const SIL_FAR = 17.5;
+const SIL_NEAR = 11.8;
 
 // Where in that fade the target stops being the dusk dark and becomes black.
 // Below this the near objects match the hills behind them, above it they
