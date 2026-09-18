@@ -14,27 +14,59 @@
 import { TILE, rnd, rndSigned } from './maths.js';
 import { Model, facet, shade, drawModel, recolour, silhouetteAmount } from './model.js';
 import { sky, beacon, litColour } from './daylight.js';
-import { SEA_LEVEL, landAltitude } from './landscape.js';
+import {
+  SEA_LEVEL, landAltitude, fogForRow, FOG_MAX, LANDSCAPE_Z_MID,
+} from './landscape.js';
 import { HIGHEST_ALTITUDE } from './player.js';
-import { project, SCREEN_W, SCREEN_H } from './renderer.js';
+import { project, SCREEN_W, SCREEN_H, CENTRE_X, FOCAL_X } from './renderer.js';
 import { weather } from './weather.js';
 
-export const MAX_PAIRS = 4;
+export const MAX_PAIRS = 5;
 
 // Everything scales from here.
 const S = 1.15;
 
-// Where they appear. The landscape is only drawn from 10 to 26 tiles out, so
-// a balloon spawned at forty is in a part of the world nothing is drawn in,
-// and it has to drift a long way before it is of any use to anybody.
-const SPAWN_MIN = 13 * TILE;
-const SPAWN_MAX = 30 * TILE;
-const RETIRE = 46 * TILE;
+// Where they appear.
+//
+// The landscape is drawn from 10 to 26 tiles out and the balloons used to be
+// bucketed into its rows, so anything past 26 was simply never drawn -- which
+// is why they all had to be put down close. Far balloons have their own pass
+// now (see drawFarBalloons), so the band runs right out to sixty: near ones
+// to fly through, far ones sitting over the ranges the way they do in the
+// picture this is all after.
+const SPAWN_MIN = 12 * TILE;
+const SPAWN_MAX = 58 * TILE;
+const RETIRE = 78 * TILE;
 
-// And they appear ahead rather than all round. The camera never turns, so
-// "ahead" is always +z: a balloon put down behind you is one you will never
-// see, and half a ring of them was exactly half wasted.
-const SPAWN_ARC = 1.25;
+// Past here a balloon is beyond the drawn landscape and belongs to the far
+// pass instead of to a row.
+const FAR_MIN = 26 * TILE;
+// ... and by here it is as hazy as it is going to get.
+const FAR_HAZE = 70 * TILE;
+
+// And they appear inside the camera's cone rather than on a ring around the
+// craft. The camera never turns, so the frame is a fixed wedge of the world:
+// at d tiles of depth it is CENTRE_X / FOCAL_X tiles wide to each side of the
+// axis, which is a shade under half of d. A ring puts most of its balloons
+// outside that wedge, and the further out the ring the worse it gets -- with
+// the band opened out to sixty tiles, a frame with fourteen balloons alive in
+// it had eleven of them off the side of the screen.
+//
+// So the depth is chosen first and the sideways offset second, inside the
+// wedge at that depth. SPREAD reaches a little past the edge of the frame,
+// which is what lets one drift in from the side instead of every one of them
+// being born already in shot.
+const HALF_WEDGE = CENTRE_X / FOCAL_X;
+const SPAWN_SPREAD = 1.2;
+// How far behind the craft the eye sits, in tiles -- the constant itself is
+// fixed point, and everything here is counting tiles.
+const CAM_BACK = LANDSCAPE_Z_MID / TILE;
+
+// ... and they are let go once the wind has taken them well outside it. A
+// plain radius does not do it: a balloon blown sixty tiles out to one side is
+// still well inside seventy-eight, so it sat there off the edge of the frame
+// holding a slot that nobody could see out of.
+const RETIRE_SPREAD = 1.8;
 
 // How high they ride, in tiles above the ground under them.
 //
@@ -247,10 +279,12 @@ export function balloonCount() {
 }
 
 function place(p, px, pz) {
-  const a = rndSigned() * SPAWN_ARC;
   const r = SPAWN_MIN + rnd() * (SPAWN_MAX - SPAWN_MIN);
-  const x = (px + Math.sin(a) * r) | 0;
-  const z = (pz + Math.cos(a) * r) | 0;
+  // The wedge is measured from the camera, which trails the craft, so the
+  // depth that decides how wide it is out here is the one the camera sees.
+  const wedge = (r / TILE + CAM_BACK) * HALF_WEDGE * SPAWN_SPREAD;
+  const x = (px + rndSigned() * wedge * TILE) | 0;
+  const z = (pz + r) | 0;
   const ground = Math.min(landAltitude(x, z), SEA_LEVEL);
   const ride = RIDE_LOW + rnd() * (RIDE_HIGH - RIDE_LOW);
   const y = (ground - TILE * ride) | 0;
@@ -292,7 +326,60 @@ export function updateBalloons(player) {
     }
 
     const dx = (p.a.x - player.x) / TILE, dz = (p.a.z - player.z) / TILE;
-    if (Math.hypot(dx, dz) * TILE > RETIRE) p.live = false;
+    const wedge = (dz + CAM_BACK) * HALF_WEDGE * RETIRE_SPREAD + 6;
+    if (Math.hypot(dx, dz) * TILE > RETIRE ||
+        dz < -CAM_BACK - 4 ||
+        Math.abs(dx) > wedge) p.live = false;
+  }
+}
+
+// Everything beyond the drawn landscape, furthest first.
+//
+// It cannot go in a row, because there are no rows out there -- so it is
+// drawn in one pass straight after the sky and before the horizon ranges.
+// That ordering is the whole of the occlusion it needs: a balloon over the
+// mountains is in the sky above the skyline, and one that dips below the
+// skyline is hidden by the range in front of it, which is what would happen.
+const far = [];
+
+export function drawFarBalloons(rd, camX, camY, camZ) {
+  far.length = 0;
+  for (const p of pairs) {
+    if (!p.live) continue;
+    // Per balloon, not per pair: a pair can straddle the line, and the one
+    // beyond it still has to be drawn by somebody.
+    const aFar = p.a.z - camZ > FAR_MIN;
+    const bFar = p.b.z - camZ > FAR_MIN;
+    if (aFar) far.push(p.a, p, bFar ? 1 : 0);
+    if (bFar) far.push(p.b, p, 0);
+  }
+  if (!far.length) return;
+
+  // Furthest first. There is no depth buffer, so submission order is the
+  // whole of what puts one balloon in front of another.
+  const n = far.length / 3;
+  const order = [];
+  for (let i = 0; i < n; i++) order.push(i);
+  order.sort((i, j) => far[j * 3].z - far[i * 3].z);
+
+  for (const i of order) {
+    const b = far[i * 3], p = far[i * 3 + 1], leads = far[i * 3 + 2];
+    // Haze deepens with distance, starting where the landscape's own far
+    // edge leaves off so a balloon and the ground under it agree about how
+    // far away they are.
+    const dz = (b.z - camZ) / TILE;
+    const t = Math.min(1, Math.max(0, (dz - FAR_MIN / TILE) /
+                                      ((FAR_HAZE - FAR_MIN) / TILE)));
+    const fog = Math.min(0.94, fogForRow(1) + (1 - FOG_MAX) * t * 0.8);
+    // The burner still shows out here. It is a lit face, so the haze does not
+    // touch it, and a warm speck over the ranges after dark is most of the
+    // reason for putting balloons that far away at all.
+    const lit = sky.lamp > 0.05 && beacon(150, 16, p.burnAt);
+    const model = (lit ? BALLOONS_LIT : BALLOONS)[p.style];
+    drawModel(rd, model, null, b.x, b.y, b.z, camX, camY, camZ, fog, 0);
+    // Only when both ends are out here. A pair straddling the line keeps its
+    // bunting in the row pass, with the end of it the camera can reach.
+    if (leads) drawBunting(rd, p, camX, camY, camZ, 0, fog);
   }
 }
 

@@ -24,7 +24,7 @@ import {
 } from './objects.js';
 import { topple, updateBlocks, drawPile, pileAt } from './blocks.js';
 import {
-  updateBalloons, drawBalloon, balloonsInRow, resetBalloons,
+  updateBalloons, drawBalloon, drawFarBalloons, balloonsInRow, resetBalloons,
 } from './balloons.js';
 import {
   updateLanterns, drawLantern, lanternsInRow, resetLanterns,
@@ -387,6 +387,11 @@ export class Game {
     rd.gradientBand(0, SKY_BAND_1, sky.top, sky.mid);
     rd.gradientBand(SKY_BAND_1, SKY_BAND_2, sky.mid, sky.horizon);
     rd.gradientBand(SKY_BAND_2, SCREEN_H, sky.horizon, sky.horizon);
+
+    // Balloons beyond the drawn landscape go in before the ranges, so a range
+    // hides any that have drifted down behind it and the rest float over the
+    // skyline. There are no rows out there to bucket them into.
+    drawFarBalloons(rd, eyeX, eyeY, eyeZ);
 
     // Ranges stand between the sky and everything else, so they go in here --
     // after the sky, before a single tile of landscape.
