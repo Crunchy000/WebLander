@@ -20,6 +20,7 @@ import { sky } from './daylight.js';
 import { landAltitude, SEA_LEVEL } from './landscape.js';
 import { depthAt, waveLift } from './sea.js';
 import { project, SCREEN_W, SCREEN_H } from './renderer.js';
+import { spawn, P_FADE } from './particles.js';
 import { weather } from './weather.js';
 
 export const MAX_LANTERNS = 84;
@@ -55,6 +56,20 @@ const REFLECT_LEN = 3.0;        // multiples of the lantern's height on screen
 // A lantern is a small thing: a foot or so across, against a tree a tile
 // and a half tall. The first pass had them a third of a tree wide, which read
 // as crates rather than as paper.
+// Flying close takes one with you. The craft skims the water at a tile or
+// two, so the catch is generous in both directions -- this is a thing to
+// gather on the way past, not a target to line up on.
+const COLLECT_R = 1.45 * TILE;      // horizontal
+const COLLECT_UP = 3.2 * TILE;      // and how far above one still counts
+
+// Once taken, a floating lantern becomes a sky lantern: it lifts away over
+// three and a half seconds, gathering speed as it goes, and is gone by the
+// time it is six tiles up. Nothing else in this game goes up on its own,
+// which is what makes it read as a release rather than as a pickup.
+const RISE_FRAMES = 180;
+const RISE_SPEED = TILE * 0.008;
+const RISE_GATHER = 0.022;      // how much it quickens each frame
+
 const BOX = 0.105;              // half width
 const TALL = 0.155;
 
@@ -104,7 +119,8 @@ for (let k = 0; k < LANTERNS.length; k++) {
 
 const lanterns = [];
 for (let i = 0; i < MAX_LANTERNS; i++) {
-  lanterns.push({ live: false, x: 0, z: 0, style: 0, phase: 0, spin: 0, drift: 0 });
+  lanterns.push({ live: false, x: 0, z: 0, style: 0, phase: 0, spin: 0, drift: 0,
+                  taken: 0, lift: 0 });
 }
 
 export function resetLanterns() {
@@ -149,12 +165,14 @@ function place(l, px, pz) {
     l.phase = rnd() * Math.PI * 2;
     l.spin = rndSigned() * 0.004;
     l.drift = 0.3 + rnd() * 0.7;
+    l.taken = 0;
+    l.lift = 0;
     l.live = true;
     return;
   }
 }
 
-export function updateLanterns(player) {
+export function updateLanterns(player, game) {
   for (const l of lanterns) {
     if (!l.live) {
       // They arrive steadily rather than all at once, so a sea fills up as
@@ -162,13 +180,45 @@ export function updateLanterns(player) {
       if (Math.random() < 0.10) place(l, player.x, player.z);
       continue;
     }
+
+    // One that has been taken is on its way up and is nobody's business any
+    // more: it does not drift, cannot be taken twice, and lets go at the top.
+    if (l.taken) {
+      l.taken--;
+      l.lift += RISE_SPEED * (1 + (RISE_FRAMES - l.taken) * RISE_GATHER);
+      // It goes where the air goes on the way up, like everything else.
+      l.x = (l.x + weather.windX * 1.4) | 0;
+      l.z = (l.z + weather.windZ * 1.4) | 0;
+      if (!l.taken) l.live = false;
+      continue;
+    }
+
     l.x = (l.x + weather.windX * l.drift) | 0;
     l.z = (l.z + weather.windZ * l.drift) | 0;
     l.phase += 0.02;
 
     if (!afloat(l.x, l.z)) { l.live = false; continue; }
+
     const dx = (l.x - player.x) / TILE, dz = (l.z - player.z) / TILE;
-    if (Math.hypot(dx, dz) * TILE > RETIRE) l.live = false;
+    const away = Math.hypot(dx, dz) * TILE;
+    if (away > RETIRE) { l.live = false; continue; }
+
+    // Close enough to gather. Height is measured from the water rather than
+    // from the craft's own altitude reading, which is height above whatever
+    // is under it and would be wrong over a shoal.
+    if (!player.dead && away < COLLECT_R && (SEA_LEVEL - player.y) < COLLECT_UP) {
+      l.taken = RISE_FRAMES;
+      l.lift = 0;
+      if (game) game.onLanternTaken(l.x, SEA_LEVEL, l.z);
+      const warm = [255, 206, 130];
+      for (let i = 0; i < 7; i++) {
+        spawn(l.x, (SEA_LEVEL - TILE * 0.2) | 0, l.z,
+              ((Math.random() - 0.5) * TILE * 0.02) | 0,
+              (-TILE * (0.01 + Math.random() * 0.02)) | 0,
+              ((Math.random() - 0.5) * TILE * 0.02) | 0,
+              warm, 30 + ((Math.random() * 24) | 0), P_FADE, 1);
+      }
+    }
   }
 }
 
@@ -185,7 +235,7 @@ const reflectCol = [0, 0, 0, 0];
 
 export function drawLantern(rd, l, camX, camY, camZ, fog = 0) {
   const heave = waveLift(l.x, l.z, depthAt(l.x, l.z));
-  const y = (SEA_LEVEL + heave) | 0;
+  const y = (SEA_LEVEL + heave - l.lift) | 0;
   const sil = silhouetteAmount((l.x - camX) / TILE, (l.z - camZ) / TILE);
 
   // How lit they are is the game's own measure of how dark it is, so they
@@ -194,7 +244,7 @@ export function drawLantern(rd, l, camX, camY, camZ, fog = 0) {
   const glow = sky.lamp;
 
   // The reflection, first, so the lantern sits on top of its own light.
-  if (glow > 0.05 && sil < 0.95) {
+  if (glow > 0.05 && sil < 0.95 && !l.taken) {
     if (project((l.x - camX) | 0, (y - camY) | 0, (l.z - camZ) | 0, pt) &&
         pt.x > -20 && pt.x < SCREEN_W + 20 && pt.y > -20 && pt.y < SCREEN_H + 20) {
       // Scale with the lantern: work out how tall it is on screen, and lay a

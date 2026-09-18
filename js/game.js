@@ -59,6 +59,12 @@ const DEATH_MESSAGE = {
 };
 
 
+// What a lantern is worth, and how long a run may pause before it is over.
+// Two seconds is long enough to line up the next one and short enough that
+// the run has to be flown rather than wandered.
+const LANTERN_SCORE = 10;
+const LANTERN_RUN_GAP = 100;
+
 const STARTING_LIVES = 4;
 
 // The game runs on a fixed 50Hz step regardless of how often the display
@@ -154,6 +160,27 @@ export class Game {
     this.audio.secondary();
   }
 
+  // A lantern gathered off the water.
+  //
+  // The run counts. Take one and the note is the bottom of the scale; keep
+  // taking them without a pause and it climbs, so a line of lanterns played
+  // in one pass is a phrase rather than the same ding eight times. Two
+  // seconds without one and it drops back to the bottom.
+  //
+  // Points climb with it too, which is the only scoring in the game that
+  // rewards doing something gracefully rather than doing it at all.
+  onLanternTaken(x, y, z) {
+    if (this.lanternRun === undefined || this.lanternAt === undefined ||
+        sky.tick - this.lanternAt > LANTERN_RUN_GAP) {
+      this.lanternRun = 0;
+    }
+    this.audio.lantern(this.lanternRun);
+    this.addScore(LANTERN_SCORE * (1 + Math.min(this.lanternRun, 7)));
+    this.lanternRun++;
+    this.lanternAt = sky.tick;
+    this.lanternsTaken = (this.lanternsTaken || 0) + 1;
+  }
+
   // A structure has gone over. Points either way, but a stack shoved by the
   // drone clatters; one that a bomb went off under does not get the chance.
   onBlocksKnocked(type, x, y, z, force) {
@@ -225,7 +252,7 @@ export class Game {
     sampleRibbon(this.player);
     updateBoats(this.player, this);
     updateBalloons(this.player);
-    updateLanterns(this.player);
+    updateLanterns(this.player, this);
     updateBlocks();
     updateParticles(this.gravity, (i, bx, by, bz) => this.bulletHit(i, bx, by, bz));
 
