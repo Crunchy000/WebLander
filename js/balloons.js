@@ -18,19 +18,42 @@ import { SEA_LEVEL, landAltitude } from './landscape.js';
 import { project, SCREEN_W, SCREEN_H } from './renderer.js';
 import { weather } from './weather.js';
 
-export const MAX_PAIRS = 3;
+export const MAX_PAIRS = 4;
 
 // Everything scales from here.
 const S = 1.15;
 
-const SPAWN_MIN = 18 * TILE;
-const SPAWN_MAX = 44 * TILE;
-const RETIRE = 62 * TILE;
+// Where they appear. The landscape is only drawn from 10 to 26 tiles out, so
+// a balloon spawned at forty is in a part of the world nothing is drawn in,
+// and it has to drift a long way before it is of any use to anybody.
+const SPAWN_MIN = 13 * TILE;
+const SPAWN_MAX = 30 * TILE;
+const RETIRE = 46 * TILE;
 
-// How high they ride, in tiles above the ground they spawn over. The craft's
-// ceiling is around seven and a half, so the low ones are reachable and the
-// high ones are scenery.
-const RIDE_LOW = 4.5, RIDE_HIGH = 10.5;
+// And they appear ahead rather than all round. The camera never turns, so
+// "ahead" is always +z: a balloon put down behind you is one you will never
+// see, and half a ring of them was exactly half wasted.
+const SPAWN_ARC = 1.25;
+
+// How high they ride, in tiles above the ground under them.
+//
+// This is not a matter of taste, it is a matter of what the camera can see.
+// The eye is only allowed a tile and a half above y = 0 and the screen centre
+// sits high, so there is about sixty pixels of headroom: anything more than
+// d/8 tiles above the eye, at d tiles away, is off the top of the frame. With
+// the scan drawing out to 26 tiles that is three and a quarter tiles above
+// the eye at the very best, and the craft pootles along two or three tiles
+// up.
+//
+// Measured with the first numbers -- four and a half to ten and a half tiles
+// -- a balloon was on screen in 8% of frames over fifteen hundred frames of
+// ordinary flying. They were up in a part of the sky the camera cannot look
+// at.
+const RIDE_LOW = 2.4, RIDE_HIGH = 5.6;
+
+// ... and they keep this much air under them as they drift, so one crossing
+// a ridge rises over it instead of sinking into it.
+const MIN_CLEAR = 1.9 * TILE;
 
 // How far apart a pair flies, and how far their bunting sags.
 const PAIR_MIN = 5.0 * TILE, PAIR_MAX = 9.0 * TILE;
@@ -182,10 +205,10 @@ export function balloonCount() {
 }
 
 function place(p, px, pz) {
-  const a = rnd() * Math.PI * 2;
+  const a = rndSigned() * SPAWN_ARC;
   const r = SPAWN_MIN + rnd() * (SPAWN_MAX - SPAWN_MIN);
-  const x = (px + Math.cos(a) * r) | 0;
-  const z = (pz + Math.sin(a) * r) | 0;
+  const x = (px + Math.sin(a) * r) | 0;
+  const z = (pz + Math.cos(a) * r) | 0;
   const ground = Math.min(landAltitude(x, z), SEA_LEVEL);
   const ride = RIDE_LOW + rnd() * (RIDE_HIGH - RIDE_LOW);
   const y = (ground - TILE * ride) | 0;
@@ -220,6 +243,9 @@ export function updateBalloons(player) {
       b.x = (b.x + wx) | 0;
       b.z = (b.z + wz) | 0;
       b.y = (b.y + lift) | 0;
+      // Rise over rising ground rather than into it.
+      const floor = (Math.min(landAltitude(b.x, b.z), SEA_LEVEL) - MIN_CLEAR) | 0;
+      if (b.y > floor) b.y = (b.y + (floor - b.y) * 0.08) | 0;
     }
 
     const dx = (p.a.x - player.x) / TILE, dz = (p.a.z - player.z) / TILE;
