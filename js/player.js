@@ -349,7 +349,21 @@ export class Player {
     // Bearing of the stick becomes the craft's heading; how hard you push
     // becomes how far its nose drops. Centring the stick leaves the heading
     // where it was, so the craft holds its facing rather than snapping back.
-    const mag = Math.min(1, Math.hypot(stick.x, stick.y));
+    // On the ground the stick is not flying anything.
+    //
+    // It used to be. Sat on the pad with no power asked for at all, a stick
+    // held over wound the craft round and round -- measured, three seconds of
+    // it left the machine at 259 degrees of lean and still looping, on its
+    // skids, before the flight had begun. With tilt steering that is not even
+    // an unusual thing to do: the neutral belongs to the last flight until
+    // this one lifts off, so simply picking the handset up differently is a
+    // buried stick.
+    //
+    // Leaving the ground is what starts the flying, and it is the same
+    // instant the tilt decides what straight ahead means (see onLiftoff), so
+    // the two now agree: square on its skids until it is off them, then
+    // whatever you ask for, from a neutral that was taken as you left.
+    const mag = this.landed ? 0 : Math.min(1, Math.hypot(stick.x, stick.y));
     // Hover asks for a gentle machine, so it gets one: the same stick travel
     // buys half the lean. The setting latches on the last thrust hit rather
     // than lasting only while the trigger is down -- otherwise the craft's
