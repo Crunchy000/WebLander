@@ -103,20 +103,37 @@ const SIGN_MARGIN = 1.4;
 // --- the neutral -----------------------------------------------------------
 
 // Seconds for the neutral to follow the handset, at the middle of the stick
-// and at the edge of it. The slow one is the leak: a lean held dead still
-// washes out over about this long, which is slow enough to fly a turn and
-// quick enough that settling into a different posture comes right by itself.
-const BASE_TAU_NEAR = 3.0;
-const BASE_TAU_FAR = 30.0;
+// and at the edge of it, and straight-line between the two. The far one is
+// the leak: a lean held dead still washes out over about that long.
+//
+// These were three and thirty, and on a real handset that was far too eager.
+// The numbers say why. A five degree nudge -- the sort of thing most of
+// flying is -- was gone in three seconds, and an eight degree lean in five;
+// only a heave right over to twenty-five degrees lasted more than a few
+// seconds, and everything short of that faded under your thumb. Twelve and a
+// hundred and fifty, weighted straight rather than squared so a modest lean
+// gets a long neutral rather than a short one, leaves a nudge at nine tenths
+// after three seconds and a proper lean still flying a minute later.
+const BASE_TAU_NEAR = 12.0;
+const BASE_TAU_FAR = 150.0;
 
 // Stationary capture: degrees per second that counts as not moving, how long
 // it has to stay there, and how far off centre the stick may be and still
-// have its neutral taken away. That last one matters -- without it, holding a
-// perfectly steady turn is exactly the thing that cancels it.
-const STILL_RATE = 6.0;
+// have its neutral taken away.
+//
+// That last one is the whole difficulty, because a lean you are holding and a
+// posture you have drifted into look exactly alike once the movement is over.
+// The only thing that tells them apart is size, so the window is small: six
+// hundredths of a stick is about two and a half degrees of tilt, which is
+// nobody's idea of a turn. Below it the neutral is pulled across in a bit
+// under half a second -- fast enough that settling back into a chair never
+// pushes the stick past that window in the first place, which is what keeps
+// the capture engaged for the whole of a slow shift instead of letting go
+// halfway and leaving the craft banked.
+const STILL_RATE = 10.0;
 const STILL_SECONDS = 0.5;
-const STILL_STICK = 0.12;
-const STILL_TAU = 0.25;
+const STILL_STICK = 0.06;
+const STILL_TAU = 0.45;
 
 // How fast the stick itself is allowed to move, in seconds. This is the last
 // of the smoothing and the only one the player can feel as lag, so it is
@@ -331,10 +348,20 @@ export class TiltSteering {
     // says how far the page is turned from the handset's natural way up, so
     // undoing that rotation puts the handset's reading into the frame the
     // player is actually looking at.
+    //
+    // This went round the wrong way first, and on a real handset held
+    // sideways both axes came out backwards -- which is the signature of it:
+    // a screen angle turned the wrong way is 180 degrees out in landscape
+    // and exactly right in portrait, so it negates both at once.
+    //
+    // The simulation could not catch it. It built the handset's pose from the
+    // same convention it then tested, so it was self-consistent and wrong
+    // together. The one thing it could not know is what a real device means
+    // by an angle of ninety, and that had to come from one.
     const a = ((screenAngleDeg || 0) * Math.PI) / 180;
     const ca = Math.cos(a), sa = Math.sin(a);
-    const sx = this.gx * ca + this.gy * sa;
-    const sy = -this.gx * sa + this.gy * ca;
+    const sx = this.gx * ca - this.gy * sa;
+    const sy = this.gx * sa + this.gy * ca;
 
 
     // Tipping an edge down takes the up vector negative along that edge's
@@ -377,7 +404,7 @@ export class TiltSteering {
     // now: near the middle it is correcting your posture and should be quick,
     // out at the edge it would be taking away the turn you are flying.
     const off = Math.min(1, Math.hypot(this.x, this.y));
-    let tau = BASE_TAU_NEAR + (BASE_TAU_FAR - BASE_TAU_NEAR) * off * off;
+    let tau = BASE_TAU_NEAR + (BASE_TAU_FAR - BASE_TAU_NEAR) * off;
 
     // Stationary capture. A quiet gyroscope and a stick that is not doing
     // much means whatever drift has crept in can go now.

@@ -348,11 +348,19 @@ export class Input {
   }
 
   // How far the picture is turned from the handset's natural orientation.
+  //
+  // The two ways of asking do not agree. screen.orientation.angle is the
+  // standard and is what the projection is written against; window.orientation
+  // is the old iOS one and runs the other way round, so ninety on one is two
+  // hundred and seventy on the other. Reporting either as if it were the
+  // other puts a handset held sideways a hundred and eighty degrees out,
+  // which reverses both steering axes at once.
   screenAngle() {
     if (screen.orientation && typeof screen.orientation.angle === 'number') {
       return screen.orientation.angle;
     }
-    return window.orientation || 0;   // older iOS
+    const legacy = window.orientation || 0;
+    return ((-legacy % 360) + 360) % 360;
   }
 
   _tiltStick() {
