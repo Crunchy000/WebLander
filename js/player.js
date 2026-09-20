@@ -78,7 +78,19 @@ const HOVER_LEAN = Math.PI / 4;
 // The rate only applies at the very rim, so ordinary flying is unchanged:
 // anything short of a buried stick is still a position, and you cannot loop
 // by accident.
+//
+// It takes more to start a loop than to keep one going, and that gap is not a
+// nicety. A mouse pushed to the edge of its range reads exactly 1.00 and sits
+// there; a phone held over at twenty degrees reads about 0.97 with a hand in
+// it, and a single threshold turns that into a switch being flicked several
+// times a second. Measured over seven seconds of a stick held at 0.97 with
+// four hundredths of wobble: the gate flipped forty-one times, the craft
+// completed no turns at all, and it spent ninety per cent of the last two
+// seconds hanging within thirty-five degrees of inverted -- which is the old
+// stuck-at-180 bug arriving by a different road. Once it is round, it stays
+// round until the stick is properly released.
 const LOOP_AT = 0.96;      // stick deflection at which it becomes a rate
+const LOOP_KEEP = 0.80;    // ... and where it goes back to being a position
 const LOOP_RATE = 0.060;   // radians a frame, so a full turn takes about 1.7s
 // How fast a hovering craft settles to a standstill vertically. Applied every
 // frame to whatever vertical speed is left, so arriving at a hover from a
@@ -357,7 +369,8 @@ export class Player {
 
     // Hover is never allowed to loop: it is the setting you use to place the
     // craft, and a hold that could put you on your back is not one.
-    this.looping = this.leanMode !== 1 && mag >= LOOP_AT;
+    this.looping = this.leanMode !== 1
+                && mag >= (this.looping ? LOOP_KEEP : LOOP_AT);
     if (this.looping) {
       this.lean += LOOP_RATE;
     } else {

@@ -57,22 +57,10 @@
 // from wherever you were a moment ago.
 const THROW_DEG = 17;
 
-// ... measured as a direction cosine rather than as an angle.
-//
-// The obvious thing is to take the arcsine of each of the two projections and
-// call them roll and pitch. It works while the screen is flattish and falls
-// apart as it comes up towards vertical: arcsine flattens out near one, so one
-// axis stops answering, and worse, a pure roll shows up as several degrees of
-// pitch because both arcsines are moving. Measured at eighty-five degrees of
-// recline, a fifteen degree roll put 0.58 on the pitch axis.
-//
-// The projections themselves have no such problem -- they are the components
-// of a unit vector, they move smoothly everywhere, and near flat they are the
-// angle anyway. So the throw is a sine as well.
-const THROW = Math.sin((THROW_DEG * Math.PI) / 180);
-// Pitch is measured as an angle rather than as a cosine, so its throw has to
-// be converted back into the same units the roll axis works in.
-const THROW_RAD_PER_SIN = ((THROW_DEG * Math.PI) / 180) / THROW;
+const THROW = (THROW_DEG * Math.PI) / 180;
+// Roll is measured as a direction cosine and pitch as an angle -- see both
+// below -- so the one has to be converted into the other's units.
+const SIN_THROW_PER_RAD = Math.sin(THROW) / THROW;
 
 // How much of the stick is curve and how much is straight. out = k*u^3 +
 // (1-k)*u, which is the expo every RC transmitter has had since the seventies:
@@ -144,7 +132,14 @@ const OUT_TAU = 0.05;
 // integration should start again rather than take one enormous step.
 const MAX_DT = 0.1;
 
+const TWO_PI = Math.PI * 2;
+
 const clamp1 = (v) => (v < -1 ? -1 : v > 1 ? 1 : v);
+
+// The same angle, shifted by whole turns to land as near `ref` as it can.
+function near(ref, a) {
+  return a + TWO_PI * Math.round((ref - a) / TWO_PI);
+}
 
 // Time constant to a per-sample blend factor. Frame rates vary, so every
 // filter here is written in seconds and converted per sample.
@@ -177,6 +172,11 @@ export class TiltSteering {
     this.basePitch = 0;
     this.lastRoll = 0;
     this.lastPitch = 0;
+    // The unwrapped angles, which keep counting through as many turns as the
+    // handset is given rather than folding back at ninety or jumping at a
+    // hundred and eighty.
+    this.contRoll = 0;
+    this.contPitch = 0;
     this.haveBase = false;
 
     this.stillFor = 0;
@@ -202,8 +202,8 @@ export class TiltSteering {
   get debug() {
     return {
       mode: this.gyroSign ? 'fused' : (this.haveGravity ? 'gravity' : 'waiting'),
-      tiltX: Math.round(Math.asin(clamp1(this.lastRoll - this.baseRoll)) * 180 / Math.PI),
-      tiltY: Math.round(Math.asin(clamp1(this.lastPitch - this.basePitch)) * 180 / Math.PI),
+      tiltX: Math.round((this.lastRoll - this.baseRoll) * 180 / Math.PI),
+      tiltY: Math.round((this.lastPitch - this.basePitch) * 180 / Math.PI),
       rate: Math.round(this.rateMag),
       x: +this.x.toFixed(2),
       y: +this.y.toFixed(2),
@@ -367,11 +367,30 @@ export class TiltSteering {
     // Tipping an edge down takes the up vector negative along that edge's
     // axis, so the sign turns over: right edge down is a turn to the right,
     // top edge away is a push forward.
-    // Roll is the projection itself. The screen's left-right axis stays
-    // horizontal however far back the thing is held, so tipping one end of it
-    // down always moves gravity by the sine of the angle it was tipped --
-    // which is why this reads the same at every posture without help.
-    const roll = -clamp1(sx);
+    // Pitch is an arctangent, which is exact at every posture but wraps at
+    // half a turn -- and the neutral it is measured against is an average,
+    // which cannot be averaged across a wrap. Pitched steadily right over,
+    // it flipped sign with a jump of 0.57 in a single sample and the craft
+    // went with it.
+    //
+    // Unwrapping against where it was a sample ago fixes it outright. At
+    // sixty samples a second the handset cannot have turned more than a
+    // couple of degrees, so the nearest candidate is the right one every
+    // time and the angle simply keeps counting.
+    // Roll stays on the near branch of the arcsine, which is to say it stops
+    // counting at ninety degrees and comes back down the other side. That is
+    // a real limit and it is left alone deliberately: gravity cannot tell a
+    // sixty degree roll from a hundred and twenty without tracking which way
+    // the handset went, the tie at the fold itself is exact, and every cheap
+    // way of breaking it costs more than it buys. Choosing the branch by
+    // which side of the screen gravity comes out of, for instance, fixes the
+    // roll and then flips it by half a turn the moment the handset is pitched
+    // past upright instead -- measured, that put -1.00 on the roll axis for a
+    // pitch gesture at eighty-five degrees of recline.
+    //
+    // It costs nothing in play. Full stick is twenty degrees of tilt, so
+    // ninety is four and a half times further than anyone has a reason to go.
+    const roll = -clamp1(sx) / SIN_THROW_PER_RAD;
 
     // Pitch is the angle between gravity and the screen's normal, taken in
     // the plane that contains them both. Three formulations were measured:
@@ -388,7 +407,8 @@ export class TiltSteering {
     // change how much of gravity points out of the screen at all, so the
     // denominator here is blind to it, while a pitch moves both terms
     // together and the arctangent gives the angle straight back.
-    const pitch = -Math.atan2(sy, this.gz) / THROW_RAD_PER_SIN;
+    this.contPitch = near(this.contPitch, Math.atan2(sy, this.gz));
+    const pitch = -this.contPitch;
     this.lastRoll = roll;
     this.lastPitch = pitch;
 
