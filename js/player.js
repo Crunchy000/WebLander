@@ -544,6 +544,9 @@ export class Player {
     const feet = (this.y + UNDERCARRIAGE_Y) | 0;
 
     if (feet < ground) {
+      // Just left the ground. The tilt steering takes this as the moment to
+      // decide what straight ahead means -- see Game.onLiftoff.
+      if (this.landed && game) game.onLiftoff();
       this.landed = false;
       this.charging = false;
       return;

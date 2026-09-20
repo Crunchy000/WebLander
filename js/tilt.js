@@ -255,6 +255,28 @@ export class TiltSteering {
     this.reliability = 1;
   }
 
+  // Take wherever the handset is being held right now as straight ahead.
+  //
+  // The neutral drifts towards where the handset has been sitting, which
+  // handles somebody settling into a chair without their noticing, and it has
+  // to be gentle about it or it eats the lean they are holding on purpose.
+  // Gentle means slow, and slow means a posture changed between one flight
+  // and the next is carried into the next one.
+  //
+  // The game knows something the sensors never can, though: when nobody is
+  // flying. Sitting on the ground is exactly the moment the handset is not
+  // being used to steer, so lifting off is the one instant where a hard
+  // re-zero is free -- and it is the moment the player has just settled into
+  // however they mean to hold the thing.
+  recentre() {
+    if (!this.haveBase) return;
+    this.baseRoll = this.lastRoll;
+    this.basePitch = this.lastPitch;
+    this.x = 0;
+    this.y = 0;
+    this.stillFor = 0;
+  }
+
   // Is there a usable reading? Until there is, the caller should fall back to
   // whatever else it has.
   get ready() {

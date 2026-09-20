@@ -55,6 +55,7 @@ export class Input {
     this.tiltRaw = null;          // last raw reading, for the readout
     this._lastMotionAt = 0;
     this._haveMotion = false;
+    this._listening = false;
 
     // Gamepad. Nothing to bind: the API is polled, not evented, so the whole
     // of it lives in _pollPad below.
@@ -294,6 +295,16 @@ export class Input {
     const motionOk = await ask(DME);
     const orientOk = await ask(DOE);
     if (!motionOk && !orientOk) return false;
+
+    // Once only. This is reached from the start button, and the start button
+    // is also how a flight begins again after the last drone is gone -- so
+    // without this, every restart hung another devicemotion listener on the
+    // window. Two listeners is every sample fed to the filter twice, which
+    // halves every time constant in it; three is a third. Whatever was
+    // already attached is still attached and still working, so the answer is
+    // simply whether a sensor has ever spoken.
+    if (this._listening) return this.tiltEnabled;
+    this._listening = true;
 
     // The constructor existing proves nothing. Edge on a console has
     // DeviceOrientationEvent and no sensor whatsoever, and returning true on

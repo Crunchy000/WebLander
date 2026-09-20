@@ -131,6 +131,16 @@ export class Game {
 
   onShot() { this.audio.shot(); }
 
+  // The craft has left the ground, which is the one moment in a flight when
+  // nobody is steering: whatever way the handset is being held right now is
+  // straight ahead. Nothing else in the game can tell the tilt code that, and
+  // it is the one thing that would let it stop guessing. See recentre().
+  onLiftoff() {
+    if (this.input && this.input.tilt && this.input.tilt.recentre) {
+      this.input.tilt.recentre();
+    }
+  }
+
   onTouchdown(onPad) {
     this.audio.touchdown();
   }
