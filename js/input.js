@@ -322,7 +322,7 @@ export class Input {
             ax: acc.x || 0, ay: acc.y || 0, az: acc.z || 0,
             rate: e.rotationRate || null,
           };
-          this.tilt.motion(acc, e.rotationRate, dt, this.screenAngle());
+          this.tilt.motion(acc, e.rotationRate, dt, this.screenAngle(), e.acceleration);
           this.tiltEnabled = true;
           settle(true);
         });

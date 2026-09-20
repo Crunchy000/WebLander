@@ -83,10 +83,43 @@ const ACCEL_TRUST = 0.05;
 // ... and all of it while we are still deciding which way round the gyro is.
 const ACCEL_TRUST_UNSURE = 0.5;
 
+// How much the accelerometer is doubted when the handset is being carried
+// about, measured in g of disturbance.
+//
+// An accelerometer cannot tell gravity from any other acceleration -- that is
+// not an implementation detail, it is the instrument. So a car braking, a
+// train leaning into a bend or a bus over a bump all arrive as a change in
+// which way down is, and the steering goes with them. Measured with nothing
+// rotating at all: braking at a third of a g put 0.87 on the stick, and a
+// bump of half a g for a quarter of a second put 0.54. Given that a phone is
+// a thing people use on the way somewhere, that is most of a bug.
+//
+// The gyroscope does not have the problem -- it measures turning, and being
+// carried along is not turning -- so the fix is to lean on it when the
+// accelerometer is not to be believed. Two ways to know: the handset may
+// report linear acceleration separately, and failing that, any acceleration
+// at all moves the total away from one g, which is enough to spot it.
+//
+// It is never disbelieved entirely. A long disturbance -- a slip road, a
+// sustained climb -- would otherwise leave the gyroscope integrating with
+// nothing to correct it, so a tenth of the usual trust always gets through
+// and a false horizon comes right over a few seconds rather than never.
+const DISTURB_SOFT = 0.04;
+const DISTURB_HARD = 0.25;
+const TRUST_FLOOR = 0.03;
+
 // Samples of agreement needed before the gyroscope's sign is settled, and how
 // clear the agreement has to be. Two seconds at 60 Hz.
 const SIGN_SAMPLES = 120;
 const SIGN_MARGIN = 1.4;
+
+// ... and how long to wait for them before giving up and taking the
+// specification's word for it. Only samples with some movement in them can
+// say anything about the sign, so a handset lying perfectly still never
+// gathers any, and until the sign is settled the filter leans hard on the
+// accelerometer -- which is exactly the state in which being carried about
+// does the most damage. Five seconds of anything at all is enough.
+const SIGN_PATIENCE = 5;
 
 // --- the neutral -----------------------------------------------------------
 
@@ -166,6 +199,7 @@ export class TiltSteering {
     this.gyroSign = 0;          // 0 = undecided, then +1 or -1
     this.signScore = 0;
     this.signSeen = 0;
+    this.signWaited = 0;
 
     // The neutral, in screen-space radians.
     this.baseRoll = 0;
@@ -185,6 +219,8 @@ export class TiltSteering {
     this.y = 0;
     this.lastAt = 0;
     this.rateMag = 0;
+    this.disturb = 0;
+    this.reliability = 1;
   }
 
   // Is there a usable reading? Until there is, the caller should fall back to
@@ -205,6 +241,7 @@ export class TiltSteering {
       tiltX: Math.round((this.lastRoll - this.baseRoll) * 180 / Math.PI),
       tiltY: Math.round((this.lastPitch - this.basePitch) * 180 / Math.PI),
       rate: Math.round(this.rateMag),
+      shaken: +this.disturb.toFixed(2),
       x: +this.x.toFixed(2),
       y: +this.y.toFixed(2),
     };
@@ -215,7 +252,7 @@ export class TiltSteering {
   // One devicemotion sample. `acc` is accelerationIncludingGravity and `rot`
   // is rotationRate; either may be missing bits, and the whole thing works
   // with only the accelerometer, just less smoothly.
-  motion(acc, rot, dt, screenAngleDeg) {
+  motion(acc, rot, dt, screenAngleDeg, linear) {
     if (!acc) return;
     const ax = acc.x || 0, ay = acc.y || 0, az = acc.z || 0;
     const len = Math.hypot(ax, ay, az);
@@ -230,7 +267,7 @@ export class TiltSteering {
     // and tilting an edge down is that edge's axis going negative.
     const ux = ax / len, uy = ay / len, uz = az / len;
 
-    let trust = ACCEL_TRUST;
+    let unsure = false;
     if (this.haveGravity && rot) {
       // Rotation rates arrive in degrees per second, about the handset's own
       // three axes: beta about x, gamma about y, alpha about z.
@@ -248,30 +285,64 @@ export class TiltSteering {
         const cz = wx * this.gy - wy * this.gx;
 
         if (!this.gyroSign) {
-          trust = ACCEL_TRUST_UNSURE;
-          this._judgeSign(cx, cy, cz, ux, uy, uz, dt);
+          unsure = true;
+          this._judgeSign(cx, cy, cz, ux, uy, uz, step);
         } else {
-          const s = this.gyroSign * dt;
-          this.gx -= cx * s;
-          this.gy -= cy * s;
-          this.gz -= cz * s;
+          const k = this.gyroSign * step;
+          this.gx -= cx * k;
+          this.gy -= cy * k;
+          this.gz -= cz * k;
         }
+      } else if (!this.gyroSign) {
+        unsure = true;
+        this._judgeSign(0, 0, 0, ux, uy, uz, step);
       }
     } else {
       this.rateMag = 0;
+      unsure = !this.gyroSign;
     }
 
-    // Nudge back towards what the accelerometer says, and renormalise -- the
-    // prediction above is a first-order step and does not preserve length.
     if (!this.haveGravity) {
       this.gx = ux; this.gy = uy; this.gz = uz;
       this.haveGravity = true;
+      this.disturb = 0;
+      this.reliability = 1;
     } else {
-      const k = 1 - Math.pow(1 - trust, Math.max(0.2, dt * 60));
+      // How much of what the accelerometer is reporting is not gravity.
+      //
+      // Three readings could say, and they are not equally good. The total
+      // being off one g catches an acceleration along gravity and almost
+      // nothing else -- braking at a third of a g sideways tips where down
+      // seems to be by nearly seventeen degrees and moves the total by four
+      // per cent, which is why that test on its own changed nothing. The
+      // handset's separate linear-acceleration reading is exactly the right
+      // answer where it is offered. And where it is not, the gyroscope has
+      // just said where the up vector ought to have gone, so how far the
+      // accelerometer disagrees with that is the same question asked another
+      // way: if down has moved and the handset has not turned, it was not
+      // down that moved.
+      let disturb = Math.abs(len / 9.81 - 1);
+      if (linear) {
+        const lm = Math.hypot(linear.x || 0, linear.y || 0, linear.z || 0) / 9.81;
+        if (lm > disturb) disturb = lm;
+      } else {
+        const innov = Math.hypot(ux - this.gx, uy - this.gy, uz - this.gz);
+        if (innov > disturb) disturb = innov;
+      }
+      this.disturb = disturb;
+      const t = Math.min(1, Math.max(0,
+        (disturb - DISTURB_SOFT) / (DISTURB_HARD - DISTURB_SOFT)));
+      // Smoothstep, so the accelerometer is not switched on and off.
+      this.reliability = TRUST_FLOOR + (1 - TRUST_FLOOR) * (1 - t * t * (3 - 2 * t));
+
+      const trust = (unsure ? ACCEL_TRUST_UNSURE : ACCEL_TRUST) * this.reliability;
+      const k = 1 - Math.pow(1 - trust, Math.max(0.2, step * 60));
       this.gx += (ux - this.gx) * k;
       this.gy += (uy - this.gy) * k;
       this.gz += (uz - this.gz) * k;
     }
+    // Renormalise -- the prediction above is a first-order step and does not
+    // preserve length.
     const gl = Math.hypot(this.gx, this.gy, this.gz) || 1;
     this.gx /= gl; this.gy /= gl; this.gz /= gl;
 
@@ -283,6 +354,19 @@ export class TiltSteering {
   // both in degrees, and between them they say where up is.
   orientation(beta, gamma, dt, screenAngleDeg) {
     const step = this._step(dt);
+
+    // How much of what the accelerometer is reporting is not gravity. The
+    // separate linear reading when there is one, and how far the total is
+    // from one g either way, which catches it when there is not.
+    let disturb = Math.abs(len / 9.81 - 1);
+    if (linear) {
+      const lm = Math.hypot(linear.x || 0, linear.y || 0, linear.z || 0) / 9.81;
+      if (lm > disturb) disturb = lm;
+    }
+    this.disturb = disturb;
+    const t = Math.min(1, Math.max(0, (disturb - DISTURB_SOFT) / (DISTURB_HARD - DISTURB_SOFT)));
+    // Smoothstep, so the accelerometer is not switched on and off.
+    this.reliability = TRUST_FLOOR + (1 - TRUST_FLOOR) * (1 - t * t * (3 - 2 * t));
     const b = ((beta || 0) * Math.PI) / 180;
     const g = ((gamma || 0) * Math.PI) / 180;
     const ux = -Math.sin(g);
@@ -323,6 +407,8 @@ export class TiltSteering {
   // other way round. Two seconds of hand movement settles it, and until it
   // does the accelerometer is driving on its own.
   _judgeSign(cx, cy, cz, ux, uy, uz, dt) {
+    // Counted whether or not this sample had anything to say, so a handset
+    // held still still runs the clock down. See SIGN_PATIENCE.
     const mx = ux - this.gx, my = uy - this.gy, mz = uz - this.gz;
     // -c * dt is the predicted change for a sign of +1.
     const dot = -(cx * mx + cy * my + cz * mz) * dt;
@@ -331,7 +417,8 @@ export class TiltSteering {
       this.signScore += dot / scale;
       this.signSeen++;
     }
-    if (this.signSeen >= SIGN_SAMPLES) {
+    this.signWaited += dt;
+    if (this.signSeen >= SIGN_SAMPLES || this.signWaited >= SIGN_PATIENCE) {
       if (Math.abs(this.signScore) >= SIGN_MARGIN) {
         this.gyroSign = this.signScore > 0 ? 1 : -1;
       } else {
@@ -428,7 +515,9 @@ export class TiltSteering {
 
     // Stationary capture. A quiet gyroscope and a stick that is not doing
     // much means whatever drift has crept in can go now.
-    if (this.rateMag < STILL_RATE && off < STILL_STICK) {
+    // ... and not while the handset is being thrown about, or the neutral
+    // learns a horizon that was never there.
+    if (this.rateMag < STILL_RATE && off < STILL_STICK && this.disturb < DISTURB_SOFT) {
       this.stillFor += dt;
       if (this.stillFor >= STILL_SECONDS) tau = STILL_TAU;
     } else {
