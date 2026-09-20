@@ -7,6 +7,7 @@
 // it as you fly, which is why the horizon never moves.
 
 import { TILE, sinLookup } from './maths.js';
+import { SCREEN_W } from './renderer.js';
 import { sky, litColour, silhouetteDark } from './daylight.js';
 import { groundBase, tintFor, tintLevel, TINT_STEPS } from './biome.js';
 import { serene } from './style.js';
@@ -29,7 +30,13 @@ export const LAUNCHPAD_Y       = LAUNCHPAD_ALT - UNDERCARRIAGE_Y;
 // 19px of screen either side of centre, and the grid must guarantee half the
 // buffer width at that distance or the horizon stops short of the corners.
 // Widening the screen to 16:9 is what took this from 19 to 26.
-export const TILES_X = 26;   // corners left-to-right (25 tiles)
+//
+// The buffer is cut to the shape of the display now, so this follows it: 26
+// corners at 456 pixels wide, and the same tiles per pixel at any other
+// width. Get it wrong downwards and the ground runs out before the corner of
+// the frame does, which is a wedge of sky where a hillside should be.
+const TILES_X_AT_456 = 26;
+export const TILES_X = 2 + Math.ceil((TILES_X_AT_456 - 2) * SCREEN_W / 456);
 export const TILES_Z = 17;   // corners front-to-back (16 tiles)
 
 export const LANDSCAPE_X = (TILE * (TILES_X - 2)) / 2;          // 5.5 tiles

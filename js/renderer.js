@@ -11,13 +11,51 @@
 // so painter's algorithm survives the port intact -- including the places
 // where it is technically wrong and the original just lived with it.
 
-export const SCREEN_W = 456;
-export const SCREEN_H = 256;
+// The buffer is 256 rows tall, always. Everything placed in pixels -- the
+// horizon line at 64, the parallax ranges, the HUD along the bottom -- is
+// placed in those rows, and the landscape scan reaches from 26 tiles out to
+// about 10, which is what fills them. Making it taller would mean drawing
+// rows nearer than 10 tiles, and the near edge of the scan is what sets how
+// far behind the craft the camera rides, so that is a change to the whole
+// shape of the view rather than a change to the buffer.
+//
+// The width is whatever the display is. A fixed 456 is 16:9, and a phone
+// held sideways is nearer 19.5:9, which left a black bar down each side --
+// so the buffer is cut to the shape of the screen instead. Nothing stretches:
+// the focal length is fixed, so a wider buffer shows more world either side,
+// exactly as widening it to 16:9 did in the first place. The landscape grid
+// widens to match -- see TILES_X.
+const BASE_W = 456;
+const BASE_H = 256;
+
+// ... within reason at both ends. Past about 2.5:1 the extra is all sky and
+// hillside a long way from anything you are doing, and landscape triangles to
+// draw for it. Below about 4:3 the frame is too narrow to hold the wider
+// lines of the HUD, and a portrait phone -- which is not how this is played
+// -- would ask for a slot. Outside the range it letterboxes, as it always
+// did.
+const MAX_ASPECT = 2.5;
+const MIN_ASPECT = 4 / 3;
+
+// The device's shape, not the window's. A phone gives the same number held
+// either way round, so turning it does not want a buffer of a different size
+// -- which is just as well, since the size is settled here, once, and half
+// the game's modules read it as they load.
+function displayAspect() {
+  const w = typeof window !== 'undefined' ? window.innerWidth : 0;
+  const h = typeof window !== 'undefined' ? window.innerHeight : 0;
+  if (!(w > 0 && h > 0)) return BASE_W / BASE_H;
+  return Math.max(w, h) / Math.min(w, h);
+}
+
+export const SCREEN_H = BASE_H;
+export const SCREEN_W = Math.round(
+  BASE_H * Math.min(MAX_ASPECT, Math.max(MIN_ASPECT, displayAspect())) / 2) * 2;
 
 // Screen centre for the projection. The horizontal centre is the middle of
 // the screen, but the vertical centre sits high, at y = 64 -- that is what
 // tips the view down over the landscape without the camera ever rotating.
-export const CENTRE_X = 228;
+export const CENTRE_X = SCREEN_W >> 1;
 export const CENTRE_Y = 64;
 
 // Focal length, in pixels. It is deliberately NOT adjusted for the wider
