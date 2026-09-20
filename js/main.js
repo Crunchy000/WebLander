@@ -5,7 +5,6 @@ import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { startMusic, musicWanted } from './music.js';
 import { Game, STEP_MS } from './game.js';
-import { Calibration } from './calibrate.js';
 
 const canvas = document.getElementById('screen');
 const overlay = document.getElementById('overlay');
@@ -47,21 +46,6 @@ function showControlHelp() {
 showControlHelp();
 input.onPadChange = () => showControlHelp();
 
-const calibration = new Calibration(input, input.tilt);
-
-// Recalibrate on demand from the title card.
-const calOpen = document.getElementById('cal-open');
-if (calOpen) {
-  calOpen.addEventListener('click', async () => {
-    if (!input.tiltEnabled) {
-      const ok = await input.enableTilt();
-      if (!ok) { document.getElementById('tiltnote').hidden = false; return; }
-    }
-    input.tilt.clear();
-    calibration.start(() => {});
-  });
-}
-
 // Live readout, so a misbehaving sensor is diagnosable rather than a mystery.
 const readout = document.getElementById('tiltread');
 setInterval(() => {
@@ -69,8 +53,8 @@ setInterval(() => {
   input.sample();
   const d = input.tiltDebug;
   readout.textContent = d
-    ? `tilt  b ${d.beta}  g ${d.gamma}  ->  x ${d.x}  y ${d.y}  (${d.mode})`
-    : 'tilt: waiting for sensor…';
+    ? `tilt  ${d.tiltX}\u00b0 ${d.tiltY}\u00b0  ->  x ${d.x}  y ${d.y}  (${d.mode})`
+    : 'tilt: waiting for sensor\u2026';
 }, 150);
 
 startBtn.addEventListener('click', async () => {
@@ -97,23 +81,37 @@ startBtn.addEventListener('click', async () => {
       // occupies the screen, so the thrust pad is needed after all.
       document.getElementById('tiltnote').hidden = false;
       touchPad.hidden = false;
+      // ... unless the sensor was only slow. enableTilt waits a third of a
+      // second for the first sample, which is plenty for a handset that is
+      // already running and not always enough for one starting its sensors
+      // from cold. The listener is attached either way, so if a reading turns
+      // up in the next few seconds the furniture is taken away again rather
+      // than left standing over a control that now works.
+      watchForLateTilt();
     } else {
-      input.calibrateTilt();
       // Tilt steers and touching anywhere thrusts, so no buttons are needed.
+      // Nothing to calibrate: however the handset is being held when play
+      // starts is straight ahead, and it keeps deciding that as you go.
       touchPad.hidden = true;
-
-      if (!input.tilt.calibrated) {
-        // First run on this handset: measure the tilt mapping rather than
-        // hand the player controls that may well be wired up backwards.
-        overlay.hidden = true;
-        calibration.start(() => beginPlay());
-        return;
-      }
     }
   }
 
   beginPlay();
 });
+
+// See above: the thrust pad and the note go once tilt starts answering.
+function watchForLateTilt() {
+  const until = performance.now() + 6000;
+  const check = setInterval(() => {
+    if (input.tiltEnabled && input.tilt.ready) {
+      document.getElementById('tiltnote').hidden = true;
+      touchPad.hidden = true;
+      clearInterval(check);
+    } else if (performance.now() > until) {
+      clearInterval(check);
+    }
+  }, 250);
+}
 
 // Fullscreen the whole document rather than the canvas alone, so the stage
 // keeps centring the picture and the overlay still has somewhere to sit. A
@@ -217,4 +215,4 @@ if ('serviceWorker' in navigator) {
 }
 
 // Expose for debugging from the console.
-window.lander = { game, input, audio, renderer, calibration };
+window.lander = { game, input, audio, renderer };

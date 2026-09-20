@@ -151,143 +151,12 @@ html, body {
 
 #start:hover { background: #eed2a6; }
 
-/* ---- calibration ---- */
-
-/* Same arrangement, and the same reason -- but this one had no scrolling at
-   all, so on a short screen the Continue and Skip buttons underneath the pad
-   were simply not on the page. */
-#calibrate {
-  position: fixed;
-  inset: 0;
-  z-index: 10;
-  display: flex;
-  flex-direction: column;
-  background: var(--deep);
-  padding: 24px 20px;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  text-align: center;
-}
-
-#calibrate[hidden] { display: none; }
-
-#cal-panel {
-  margin: auto;
-  width: 100%;
-  max-width: 22em;
-}
-
-#cal-panel h2 {
-  margin: 0 0 .6em;
-  font-size: clamp(20px, 6vw, 28px);
-  font-weight: 300;
-  letter-spacing: .06em;
-  color: var(--ink);
-}
-
-#cal-panel p { margin: .6em 0; }
-#cal-panel b { color: var(--sand); }
-
-/* Progress towards a captured reading. */
-#cal-track {
-  height: 6px;
-  margin: 1.2em 0 .6em;
-  background: var(--soft);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-#cal-bar {
-  height: 100%;
-  width: 0;
-  background: var(--sand);
-  transition: width .08s linear;
-}
-
-/* Live preview of where the stick is pointing. */
-#cal-pad {
-  position: relative;
-  width: 120px;
-  height: 120px;
-  margin: 1.2em auto .6em;
-  border: 1px solid var(--edge);
-  border-radius: 8px;
-  background:
-    linear-gradient(var(--soft), var(--soft)) 50% 0/1px 100% no-repeat,
-    linear-gradient(var(--soft), var(--soft)) 0 50%/100% 1px no-repeat;
-}
-
-#cal-dot {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 14px;
-  height: 14px;
-  margin: -7px 0 0 -7px;
-  border-radius: 50%;
-  background: var(--sand);
-  box-shadow: 0 0 12px rgba(224, 189, 138, .7);
-}
-
-#cal-btn {
-  display: block;
-  width: 100%;
-  margin-top: 1.2em;
-  padding: .8em 1em;
-  font: 600 15px/1 inherit;
-  letter-spacing: .06em;
-  color: #241f1a;
-  background: var(--sand);
-  border: 0;
-  border-radius: 999px;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-
-#cal-btn[hidden] { display: none; }
-
-.linkish {
-  margin-top: 1em;
-  padding: .4em;
-  font: 400 13px/1 inherit;
-  color: var(--dim);
-  background: none;
-  border: 0;
-  text-decoration: underline;
-  cursor: pointer;
-}
-
-.err {
-  min-height: 1.2em;
-  font-size: 13px;
-  color: #e08e78;
-}
-
 /* ---- tilt options on the title card ---- */
 
 #tiltopts {
   margin-top: 1.2em;
   padding-top: 1em;
   border-top: 1px solid var(--edge);
-}
-
-.toggle {
-  display: inline-block;
-  margin: .25em .3em;
-  padding: .6em 1em;
-  font: 500 13px/1 inherit;
-  color: var(--ink);
-  background: var(--soft);
-  border: 1px solid var(--edge);
-  border-radius: 999px;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.toggle[aria-pressed="true"] {
-  color: #241f1a;
-  background: var(--sand);
-  border-color: var(--sand);
 }
 
 .read {
@@ -299,23 +168,15 @@ html, body {
 
 /* ---- short screens ------------------------------------------------------ */
 
-/* A phone in landscape, or a small window. Everything gets tighter, and the
-   parts sized in absolute pixels -- the tilt pad especially -- get smaller,
-   because a hundred and twenty pixel square is a third of the height there. */
+/* A phone in landscape, or a small window: everything gets tighter. */
 @media (max-height: 560px) {
-  #overlay, #calibrate { padding: 12px 16px; }
+  #overlay { padding: 12px 16px; }
   #panel h1 { font-size: clamp(22px, 5.4vh, 34px); margin-bottom: 0; }
   #panel p { margin: .3em 0; }
   #actions { margin-top: .9em; }
   #start { padding: .7em 2em; }
   #tiltopts { margin-top: .8em; padding-top: .7em; }
   .read { margin-top: .5em; }
-  #cal-panel h2 { margin-bottom: .4em; }
-  #cal-panel p { margin: .35em 0; }
-  #cal-track { margin: .7em 0 .4em; }
-  #cal-pad { width: 88px; height: 88px; margin: .7em auto .4em; }
-  #cal-btn { margin-top: .7em; }
-  .linkish { margin-top: .5em; }
 }
 
 /* ... and when it is short *and* wide there is room to put the reading and
@@ -338,18 +199,10 @@ html, body {
 }
 
 /* Shorter still -- a small phone in landscape with the browser's own bars
-   taking their cut, which leaves about three hundred pixels. The tilt pad
-   gives up most of what it loses here; a smaller square you can see beats a
-   bigger one below the fold. */
+   taking their cut, which leaves about three hundred pixels. */
 @media (max-height: 420px) {
-  #panel p, #cal-panel p { margin: .2em 0; }
+  #panel p { margin: .2em 0; }
   #panel h1 { font-size: clamp(20px, 5vh, 28px); }
-  #cal-panel h2 { font-size: clamp(17px, 5vh, 23px); margin-bottom: .3em; }
-  #cal-track { margin: .5em 0 .3em; }
-  #cal-pad { width: 68px; height: 68px; margin: .5em auto .3em; }
-  #cal-btn { margin-top: .5em; padding: .65em 1em; }
-  .linkish { margin-top: .3em; }
-  .err { min-height: 0; }
   .read { margin-top: .35em; }
   #tiltopts { margin-top: .6em; padding-top: .5em; }
 }

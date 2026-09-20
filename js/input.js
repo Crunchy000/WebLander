@@ -7,12 +7,7 @@
 // a compromise here, it is arguably the more natural fit of the two.
 
 import { clamp } from './maths.js';
-import { TiltMapper } from './tilt.js';
-
-// Degrees of tilt for full stick deflection, used only by the rough fallback
-// mapping below. Once the player has calibrated, their own demonstrated throw
-// sets this instead.
-const TILT_RANGE = 22;
+import { TiltSteering } from './tilt.js';
 
 export class Input {
   constructor(canvas) {
@@ -27,11 +22,10 @@ export class Input {
     // "Away" is up the screen, towards the horizon.
     this.stick = { x: 0, y: 0 };
 
-    // Tilt mapping. If the player has calibrated, this holds the basis
-    // measured from the directions they demonstrated; otherwise steering
-    // falls back to a derived guess, which is right on some handsets and
-    // wrong on others -- hence the calibration.
-    this.tilt = new TiltMapper();
+    // Tilt steering. Nothing to calibrate and nothing stored: it reads the
+    // handset as a rate of turn against a neutral that follows the player
+    // about. See tilt.js.
+    this.tilt = new TiltSteering();
     this.thrust = 0;      // 0 none, 1 hover, 2 full
     this.fire = false;
     this.startPressed = false;
@@ -58,8 +52,9 @@ export class Input {
     addEventListener('gamepadconnected', () => this._padChanged(true));
     addEventListener('gamepaddisconnected', () => this._padChanged(this._anyPad()));
     this.tiltEnabled = false;
-    this.tiltZero = null;         // neutral orientation, set on start
-    this.tiltRaw = null;
+    this.tiltRaw = null;          // last raw reading, for the readout
+    this._lastMotionAt = 0;
+    this._haveMotion = false;
 
     // Gamepad. Nothing to bind: the API is polled, not evented, so the whole
     // of it lives in _pollPad below.
@@ -278,54 +273,78 @@ export class Input {
 
   // Must be called from a user gesture on iOS, which gates motion data behind
   // an explicit permission prompt.
+  //
+  // Motion is what is wanted -- it carries the gyroscope as well as the
+  // accelerometer -- and orientation is the fallback for a handset that will
+  // not give it. Both are asked for, because iOS gates them separately and a
+  // device may answer one and not the other.
   async enableTilt() {
+    const DME = window.DeviceMotionEvent;
     const DOE = window.DeviceOrientationEvent;
-    if (!DOE) return false;
+    if (!DME && !DOE) return false;
 
-    if (typeof DOE.requestPermission === 'function') {
+    const ask = async (ctor) => {
+      if (!ctor || typeof ctor.requestPermission !== 'function') return !!ctor;
       try {
-        const res = await DOE.requestPermission();
-        if (res !== 'granted') return false;
+        return (await ctor.requestPermission()) === 'granted';
       } catch {
         return false;
       }
-    }
+    };
+    const motionOk = await ask(DME);
+    const orientOk = await ask(DOE);
+    if (!motionOk && !orientOk) return false;
 
     // The constructor existing proves nothing. Edge on a console has
     // DeviceOrientationEvent and no sensor whatsoever, and returning true on
     // that basis is what put a tilt calibration screen on a television. Only
     // an actual reading counts as a sensor.
     //
-    // The listener stays attached either way: a handset that is slow to
+    // The listeners stay attached either way: a handset that is slow to
     // report still gets tilt once it starts, it just will not have been
     // waited for.
     return await new Promise((resolve) => {
       let settled = false;
       const settle = (ok) => { if (!settled) { settled = true; resolve(ok); } };
 
-      addEventListener('deviceorientation', (e) => {
-        if (e.beta === null && e.gamma === null) return;
-        this.tiltRaw = { beta: e.beta || 0, gamma: e.gamma || 0 };
-        if (!this.tiltZero) this.calibrateTilt();
-        this.tiltEnabled = true;
-        settle(true);
-      });
+      if (motionOk) {
+        addEventListener('devicemotion', (e) => {
+          const acc = e.accelerationIncludingGravity;
+          if (!acc || (acc.x === null && acc.y === null && acc.z === null)) return;
+          const now = performance.now();
+          // Prefer the event's own interval, which is what the sensor is
+          // actually running at; fall back to the clock.
+          let dt = e.interval > 0 ? e.interval / 1000 : 0;
+          if (!dt) dt = this._lastMotionAt ? (now - this._lastMotionAt) / 1000 : 0;
+          this._lastMotionAt = now;
+          this._haveMotion = true;
+          this.tiltRaw = {
+            ax: acc.x || 0, ay: acc.y || 0, az: acc.z || 0,
+            rate: e.rotationRate || null,
+          };
+          this.tilt.motion(acc, e.rotationRate, dt, this.screenAngle());
+          this.tiltEnabled = true;
+          settle(true);
+        });
+      }
+
+      if (orientOk) {
+        addEventListener('deviceorientation', (e) => {
+          if (e.beta === null && e.gamma === null) return;
+          // Motion carries a gyroscope and this does not, so once motion is
+          // arriving this is only in the way.
+          if (this._haveMotion) return;
+          this.tiltRaw = { beta: e.beta || 0, gamma: e.gamma || 0, rate: null };
+          this.tilt.orientation(e.beta, e.gamma, 0, this.screenAngle());
+          this.tiltEnabled = true;
+          settle(true);
+        });
+      }
 
       // Long enough for a real sensor to speak up, short enough not to be a
       // pause on the way into the game.
       setTimeout(() => settle(false), 350);
     });
-  }
-
-  // Take the current orientation as "stick centred", so the game is playable
-  // however the player happens to be holding the phone.
-  // Re-centre on the current hold. Leaves a completed calibration alone: its
-  // neutral was captured as part of the basis and must stay consistent with
-  // it, or the mapping shears.
-  calibrateTilt() {
-    if (!this.tiltRaw) return;
-    this.tiltZero = { ...this.tiltRaw };
-    if (!this.tilt.calibrated) this.tilt.setZero(this.tiltRaw);
   }
 
   // How far the picture is turned from the handset's natural orientation.
@@ -337,46 +356,11 @@ export class Input {
   }
 
   _tiltStick() {
-    if (!this.tiltEnabled || !this.tiltRaw) return null;
-
-    // Calibrated: solve against the basis the player demonstrated. This is
-    // the path that actually works across devices.
-    const mapped = this.tilt.map(this.tiltRaw);
-    if (mapped) {
-      this.tiltDebug = {
-        beta: Math.round(this.tiltRaw.beta), gamma: Math.round(this.tiltRaw.gamma),
-        x: +mapped.x.toFixed(2), y: +mapped.y.toFixed(2), mode: 'calibrated',
-      };
-      return mapped;
-    }
-
-    // Uncalibrated fallback: assume the common convention and rotate by the
-    // screen angle. Good enough to fly with until calibration is done.
-    if (!this.tiltZero) return null;
-
-    const wrap = (d) => (d > 180 ? d - 360 : d < -180 ? d + 360 : d);
-    const dBeta = wrap(this.tiltRaw.beta - this.tiltZero.beta);
-    const dGamma = wrap(this.tiltRaw.gamma - this.tiltZero.gamma);
-
-    const right = dGamma;
-    const away = -dBeta;
-
-    const rad = (this.screenAngle() * Math.PI) / 180;
-    const c = Math.cos(rad), sn = Math.sin(rad);
-    let sx = (right * c + away * sn) / TILT_RANGE;
-    let sy = (-right * sn + away * c) / TILT_RANGE;
-
-    // Clamp the length rather than each axis, so leaning hard keeps its
-    // bearing instead of snapping to the nearest diagonal.
-    const len = Math.hypot(sx, sy);
-    if (len > 1) { sx /= len; sy /= len; }
-
-    this.tiltDebug = {
-      beta: Math.round(dBeta), gamma: Math.round(dGamma),
-      x: +sx.toFixed(2), y: +sy.toFixed(2), mode: 'uncalibrated',
-    };
-
-    return { x: sx, y: sy };
+    if (!this.tiltEnabled) return null;
+    const stick = this.tilt.stick;
+    if (!stick) return null;
+    this.tiltDebug = this.tilt.debug;
+    return stick;
   }
 
   // -- gamepad --------------------------------------------------------------
