@@ -161,6 +161,38 @@ const STILL_TAU = 0.45;
 // small: three frames or so.
 const OUT_TAU = 0.05;
 
+// ... and how much of the handset's turning rate is added on top of its
+// angle, in seconds of lead.
+//
+// Every filter here costs delay, and delay is the thing that makes a control
+// feel like it is somewhere else. Measured from the wrist to the drone
+// actually banking: 33ms of it is this file and another 33ms is the craft
+// easing towards the lean it was asked for, which is 83ms end to end against
+// a mouse's 33ms.
+//
+// A first-order lag of a given time constant is cancelled by adding that
+// much of the input's own rate of change, and here the rate is not something
+// that has to be dug out of a noisy signal by differencing -- the gyroscope
+// measures it directly and cleanly, which is the whole reason it is worth
+// doing at all.
+//
+// Lead is prediction, though, and prediction overshoots. Swept against what
+// it buys, the knee is sharp and it is not at the textbook value:
+//
+//   lead   wrist->stick   wrist->lean   a fast flick   hand shake
+//   0.00      33ms           83ms           +3%           0.02
+//   0.02      17ms           50ms           +3%           0.03
+//   0.03      17ms           50ms           +3%           0.04
+//   0.04       0ms           33ms          +11%           0.11
+//   0.05       0ms           33ms          +22%           0.05
+//
+// Cancelling the smoothing outright does take the handset-to-drone delay
+// down to a mouse's, and it also sails a fifth of the way past a quick flick
+// and eases back, which is a worse thing to feel than the delay was. Three
+// hundredths takes forty per cent of the delay off and leaves the overshoot
+// where it was without any lead at all.
+const LEAD = 0.03;
+
 // A sample older than this means the page was in the background, and the
 // integration should start again rather than take one enormous step.
 const MAX_DT = 0.1;
@@ -496,6 +528,12 @@ export class TiltSteering {
     // together and the arctangent gives the angle straight back.
     this.contPitch = near(this.contPitch, Math.atan2(sy, this.gz));
     const pitch = -this.contPitch;
+    // How fast those two are moving, for the lead below. Taken from the
+    // angles rather than from the gyroscope directly because these are the
+    // screen's axes and the gyroscope's are the handset's -- but they are
+    // gyroscope-driven all the same, which is what keeps them clean.
+    const rollRate = this.haveBase ? (roll - this.lastRoll) / dt : 0;
+    const pitchRate = this.haveBase ? (pitch - this.lastPitch) / dt : 0;
     this.lastRoll = roll;
     this.lastPitch = pitch;
 
@@ -528,9 +566,10 @@ export class TiltSteering {
     this.baseRoll += (roll - this.baseRoll) * k;
     this.basePitch += (pitch - this.basePitch) * k;
 
-    // Delta from the neutral is the whole of the control.
-    let ux = (roll - this.baseRoll) / THROW;
-    let uy = (pitch - this.basePitch) / THROW;
+    // Delta from the neutral is the whole of the control, plus a little of
+    // where it is going (see LEAD).
+    let ux = (roll - this.baseRoll + rollRate * LEAD) / THROW;
+    let uy = (pitch - this.basePitch + pitchRate * LEAD) / THROW;
 
     // Clamp the length rather than each axis: clamping separately confines
     // the stick to a square, so leaning hard in any direction pegs both and
