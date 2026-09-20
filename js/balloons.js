@@ -5,11 +5,12 @@
 // towards, nothing to give the air a scale, and nothing to tell you how fast
 // you were moving except the ground going past underneath.
 //
-// Balloons come in pairs with a line of bunting slung between them, which is
-// the whole point of them: one balloon is an object, two balloons and a line
-// is a place. They drift with the same wind that pushes the craft about, they
-// are lit from inside after dark, and nothing about them can hurt you. You
-// can fly straight through the bunting, and should.
+// Balloons fly in groups of one to four with bunting slung between them,
+// which is most of the point of them: one balloon is an object, two balloons
+// and a line is a place, and a chain of four is an occasion. They drift with
+// the same wind that pushes the craft about, they are lit from inside after
+// dark, and nothing about them can hurt you. You can fly straight through the
+// bunting, and should.
 
 import { TILE, rnd, rndSigned } from './maths.js';
 import { Model, facet, shade, drawModel, recolour, silhouetteAmount } from './model.js';
@@ -21,7 +22,9 @@ import { HIGHEST_ALTITUDE } from './player.js';
 import { project, SCREEN_W, SCREEN_H, CENTRE_X, FOCAL_X } from './renderer.js';
 import { weather } from './weather.js';
 
-export const MAX_PAIRS = 4;
+// Groups, not balloons: see GROUP_SIZES below. They average a shade over two
+// apiece, so three groups is about six balloons where four pairs was eight.
+export const MAX_GROUPS = 3;
 
 // Everything scales from here.
 const S = 1.15;
@@ -145,9 +148,42 @@ function keepInBand(b) {
   if (b.y > floor) b.y = (b.y + (floor - b.y) * 0.08) | 0;
 }
 
-// How far apart a pair flies, and how far their bunting sags.
-const PAIR_MIN = 5.0 * TILE, PAIR_MAX = 9.0 * TILE;
+// How many fly together.
+//
+// Everything used to come in twos, because two balloons and a line between
+// them is the smallest thing that reads as a place rather than as an object.
+// That is true, and it is also the only shape the sky ever had: a pair, a
+// pair, a pair, all the way to the horizon. A lone balloon is a different
+// thing to see -- somebody out on their own -- and a chain of four strung
+// end to end is a different thing again, and the sky is better for having
+// all three in it.
+//
+// Weighted towards the small end, so the long chains stay a find.
+const GROUP_SIZES = [
+  { n: 1, w: 0.32 },
+  { n: 2, w: 0.38 },
+  { n: 3, w: 0.20 },
+  { n: 4, w: 0.10 },
+];
+function pickSize() {
+  let r = rnd();
+  for (const g of GROUP_SIZES) {
+    r -= g.w;
+    if (r <= 0) return g.n;
+  }
+  return 1;
+}
+
+// How far apart along the chain, and how far the bunting between two of them
+// sags. A long chain draws its links in a little, or a four would be twenty
+// odd tiles across -- wider than the frame is at the distance it flies at.
+const LINK_MIN = 5.0 * TILE, LINK_MAX = 9.0 * TILE;
+const LINK_TIGHTEN = 0.72;      // applied from three up
 const SAG = 0.34;
+
+// A chain is not a ruler. Each link turns a little off the last one, so four
+// of them hang in a curve rather than a straight line.
+const LINK_WANDER = 0.42;
 
 const mouthFaces = [];
 
@@ -282,10 +318,10 @@ const GLOW_REST = 0.62;
 // is why a distant window is the last thing you lose in mist.
 const GLOW_HAZE = 0.5;
 
-function drawGlow(rd, p, b, camX, camY, camZ, fog, sil, burning) {
+function drawGlow(rd, b, camX, camY, camZ, fog, sil, burning) {
   const lamp = sky.lamp;
   if (lamp < 0.03) return;
-  const model = (burning ? BALLOONS_FLARE : BALLOONS_GLOW)[p.style];
+  const model = (burning ? BALLOONS_FLARE : BALLOONS_GLOW)[b.style];
   const fade = lamp * (burning ? 1 : GLOW_REST);
   drawModel(rd, model, null, b.x, b.y, b.z, camX, camY, camZ,
             fog * GLOW_HAZE, sil, fade);
@@ -335,72 +371,99 @@ function dayLit(col, fog, sil, out) {
 
 // --- state -----------------------------------------------------------------
 
-const pairs = [];
-for (let i = 0; i < MAX_PAIRS; i++) {
-  pairs.push({ live: false, a: { x: 0, y: 0, z: 0 }, b: { x: 0, y: 0, z: 0 },
-               style: 0, phase: 0, bob: 0, vx: 0, vz: 0, burnAt: 0 });
+// A group is up to four balloons on one line, and the line is the bunting.
+// The slots are allocated once and reused -- `bs` is always four long and
+// `n` says how many of them are flying -- so spawning one allocates nothing.
+const MAX_IN_GROUP = 4;
+const groups = [];
+for (let i = 0; i < MAX_GROUPS; i++) {
+  const bs = [];
+  for (let k = 0; k < MAX_IN_GROUP; k++) {
+    // Style and burner are the balloon's own, not the group's: a chain of
+    // four in one livery reads as bunting with decorations on it, and four
+    // different ones read as four balloons that happen to be tied together.
+    bs.push({ x: 0, y: 0, z: 0, style: 0, burnAt: 0 });
+  }
+  groups.push({ live: false, n: 0, bs, phase: 0, drawnLinks: 0 });
 }
 
 export function resetBalloons() {
-  for (const p of pairs) p.live = false;
+  for (const g of groups) g.live = false;
 }
 
 export function balloonCount() {
-  return pairs.reduce((n, p) => n + (p.live ? 2 : 0), 0);
+  return groups.reduce((n, g) => n + (g.live ? g.n : 0), 0);
 }
 
-function place(p, px, pz) {
+function place(g, px, pz) {
   const r = SPAWN_MIN + rnd() * (SPAWN_MAX - SPAWN_MIN);
   // The wedge is measured from the camera, which trails the craft, so the
   // depth that decides how wide it is out here is the one the camera sees.
   const wedge = (r / TILE + CAM_BACK) * HALF_WEDGE * SPAWN_SPREAD;
-  const x = (px + rndSigned() * wedge * TILE) | 0;
-  const z = (pz + r) | 0;
+  let x = (px + rndSigned() * wedge * TILE) | 0;
+  let z = (pz + r) | 0;
   const ground = Math.min(landAltitude(x, z), SEA_LEVEL);
   const ride = RIDE_LOW + rnd() * (RIDE_HIGH - RIDE_LOW);
-  const y = (ground - TILE * ride) | 0;
+  let y = (ground - TILE * ride) | 0;
 
-  // The pair hangs along a bearing of its own, so bunting is not always
-  // broadside to the camera.
-  const span = PAIR_MIN + rnd() * (PAIR_MAX - PAIR_MIN);
-  const bearing = rnd() * Math.PI * 2;
-  p.a.x = x; p.a.y = y; p.a.z = z;
-  p.b.x = (x + Math.cos(bearing) * span) | 0;
-  p.b.y = (y + rndSigned() * TILE * 0.6) | 0;
-  p.b.z = (z + Math.sin(bearing) * span) | 0;
+  g.n = pickSize();
+  // The chain runs along a bearing of its own, so bunting is not always
+  // broadside to the camera, and each link turns a little off the last.
+  let bearing = rnd() * Math.PI * 2;
+  const tighten = g.n > 2 ? LINK_TIGHTEN : 1;
 
-  keepInBand(p.a);
-  keepInBand(p.b);
+  for (let k = 0; k < g.n; k++) {
+    const b = g.bs[k];
+    if (k > 0) {
+      const span = (LINK_MIN + rnd() * (LINK_MAX - LINK_MIN)) * tighten;
+      bearing += rndSigned() * LINK_WANDER;
+      x = (x + Math.cos(bearing) * span) | 0;
+      z = (z + Math.sin(bearing) * span) | 0;
+      y = (y + rndSigned() * TILE * 0.6) | 0;
+    }
+    b.x = x; b.y = y; b.z = z;
+    b.style = (Math.random() * CANVAS.length) | 0;
+    b.burnAt = (rnd() * 200) | 0;
+    keepInBand(b);
+  }
 
-  p.style = (Math.random() * CANVAS.length) | 0;
-  p.phase = rnd() * Math.PI * 2;
-  p.burnAt = (rnd() * 200) | 0;
-  p.live = true;
+  g.phase = rnd() * Math.PI * 2;
+  g.live = true;
 }
 
 export function updateBalloons(player) {
-  for (const p of pairs) {
-    if (!p.live) {
-      if (Math.random() < 0.02) place(p, player.x, player.z);
+  for (const g of groups) {
+    if (!g.live) {
+      if (Math.random() < 0.02) place(g, player.x, player.z);
       continue;
     }
 
     // They go where the air goes, and a good deal more slowly than it does.
     const wx = weather.windX * 2.2, wz = weather.windZ * 2.2;
-    p.phase += 0.011;
-    const lift = Math.sin(p.phase) * TILE * 0.0016;
-    for (const b of [p.a, p.b]) {
+    g.phase += 0.011;
+    const lift = Math.sin(g.phase) * TILE * 0.0016;
+    for (let k = 0; k < g.n; k++) {
+      const b = g.bs[k];
       b.x = (b.x + wx) | 0;
       b.z = (b.z + wz) | 0;
       b.y = (b.y + lift) | 0;
       keepInBand(b);
     }
 
-    const dx = (p.a.x - player.x) / TILE, dz = (p.a.z - player.z) / TILE;
+    // Judged on the head of the chain, as it always was on the first of the
+    // pair: a whole group goes or stays together, so the bunting never has
+    // one end retired out from under it.
+    const head = g.bs[0];
+    // | 0 before dividing. World coordinates are 8.24 fixed point in an int32
+    // and the map is a torus that wraps at a hundred and twenty-eight tiles,
+    // so the difference of two of them is only right once it has been through
+    // an int32 -- which is exactly the wrap. Without it, a group sitting
+    // across the seam looks four thousand million units away.
+    const dx = ((head.x - player.x) | 0) / TILE, dz = ((head.z - player.z) | 0) / TILE;
     const wedge = (dz + CAM_BACK) * HALF_WEDGE * RETIRE_SPREAD + 6;
     if (Math.hypot(dx, dz) * TILE > RETIRE ||
         dz < -CAM_BACK - 4 ||
-        Math.abs(dx) > wedge) p.live = false;
+        Math.abs(dx) > wedge) g.live = false;
   }
 }
 
@@ -415,14 +478,20 @@ const far = [];
 
 export function drawFarBalloons(rd, camX, camY, camZ) {
   far.length = 0;
-  for (const p of pairs) {
-    if (!p.live) continue;
-    // Per balloon, not per pair: a pair can straddle the line, and the one
-    // beyond it still has to be drawn by somebody.
-    const aFar = p.a.z - camZ > FAR_MIN;
-    const bFar = p.b.z - camZ > FAR_MIN;
-    if (aFar) far.push(p.a, p, bFar ? 1 : 0);
-    if (bFar) far.push(p.b, p, 0);
+  for (const g of groups) {
+    // A new frame's drawing, so no link has been claimed yet. It is cleared
+    // here rather than in the update because the update is on a fixed fifty
+    // hertz step and the drawing is on the display's: a frame that happens to
+    // run no step at all would otherwise inherit the last frame's flags and
+    // draw no bunting.
+    g.drawnLinks = 0;
+    if (!g.live) continue;
+    // Per balloon, not per group: a chain can straddle the line, and the end
+    // of it beyond the line still has to be drawn by somebody.
+    for (let k = 0; k < g.n; k++) {
+      if (((g.bs[k].z - camZ) | 0) <= FAR_MIN) continue;
+      far.push(g.bs[k], g, k);
+    }
   }
   if (!far.length) return;
 
@@ -434,35 +503,42 @@ export function drawFarBalloons(rd, camX, camY, camZ) {
   order.sort((i, j) => far[j * 3].z - far[i * 3].z);
 
   for (const i of order) {
-    const b = far[i * 3], p = far[i * 3 + 1], leads = far[i * 3 + 2];
+    const b = far[i * 3], g = far[i * 3 + 1], k = far[i * 3 + 2];
     // Haze deepens with distance, starting where the landscape's own far
     // edge leaves off so a balloon and the ground under it agree about how
     // far away they are.
-    const dz = (b.z - camZ) / TILE;
+    const dz = ((b.z - camZ) | 0) / TILE;
     const t = Math.min(1, Math.max(0, (dz - FAR_MIN / TILE) /
                                       ((FAR_HAZE - FAR_MIN) / TILE)));
     const fog = Math.min(0.94, fogForRow(1) + (1 - FOG_MAX) * t * 0.8);
     // The burner still shows out here. It is a lit face, so the haze does not
     // touch it, and a warm speck over the ranges after dark is most of the
     // reason for putting balloons that far away at all.
-    const lit = sky.lamp > 0.05 && beacon(150, 16, p.burnAt);
-    const model = (lit ? BALLOONS_LIT : BALLOONS)[p.style];
+    const lit = sky.lamp > 0.05 && beacon(150, 16, b.burnAt);
+    const model = (lit ? BALLOONS_LIT : BALLOONS)[b.style];
     drawModel(rd, model, null, b.x, b.y, b.z, camX, camY, camZ, fog, 0);
-    drawGlow(rd, p, b, camX, camY, camZ, fog, 0, lit);
-    // Only when both ends are out here. A pair straddling the line keeps its
-    // bunting in the row pass, with the end of it the camera can reach.
-    if (leads) drawBunting(rd, p, camX, camY, camZ, 0, fog);
+    drawGlow(rd, b, camX, camY, camZ, fog, 0, lit);
+    // Only links with both ends out here. One that straddles the line is left
+    // to the row pass, where the end of it you can actually see is drawn --
+    // this pass would hang it in the far haze, which is wrong for the near
+    // half of it.
+    if (k + 1 < g.n && ((g.bs[k + 1].z - camZ) | 0) > FAR_MIN) {
+      drawLink(rd, g, k, camX, camY, camZ, 0, fog);
+    }
+    if (k > 0 && ((g.bs[k - 1].z - camZ) | 0) > FAR_MIN) {
+      drawLink(rd, g, k - 1, camX, camY, camZ, 0, fog);
+    }
   }
 }
 
-// Which pairs have a balloon standing in this band of ground, for the row
-// bucketing -- the same arrangement the boats use, so a hill in front hides
-// what is behind it.
+// Which balloons stand in this band of ground, for the row bucketing -- the
+// same arrangement the boats use, so a hill in front hides what is behind it.
 export function balloonsInRow(zLo, zHi, out) {
-  for (const p of pairs) {
-    if (!p.live) continue;
-    if (p.a.z >= zLo && p.a.z < zHi) out.push({ pair: p, which: 0 });
-    if (p.b.z >= zLo && p.b.z < zHi) out.push({ pair: p, which: 1 });
+  for (const g of groups) {
+    if (!g.live) continue;
+    for (let k = 0; k < g.n; k++) {
+      if (g.bs[k].z >= zLo && g.bs[k].z < zHi) out.push({ group: g, which: k });
+    }
   }
   return out;
 }
@@ -472,14 +548,42 @@ const pa = { x: 0, y: 0 };
 const pb = { x: 0, y: 0 };
 const flagCol = [0, 0, 0, 255];
 
-// The bunting: a line sagging between the two baskets, with flags hanging off
-// it. Drawn in screen space once the two ends are projected, which is what
-// keeps a cord one pixel wide at any distance instead of vanishing.
-function drawBunting(rd, p, camX, camY, camZ, sil, fog) {
+// A link is drawn by whichever of the two balloons on its ends gets to it
+// first, and the flag says it has been done.
+//
+// Ownership used to be fixed -- the balloon at the near end of a link drew
+// it -- and that lost a link whenever its owner was somewhere nothing draws
+// from: nearer than the front of the landscape scan, which is where a chain
+// you are flying through ends up, or beyond the far line while its partner is
+// still inside it. Measured over nine hundred frames, 28% of the links in the
+// world were not being drawn at all. Letting both ends try, with a flag to
+// stop the second one, is the whole fix: a link is lost only when neither of
+// its balloons is drawn, which is when there is nothing to hang it from.
+function drawLink(rd, g, k, camX, camY, camZ, sil, fog) {
+  if (k < 0 || k + 1 >= g.n) return;
+  const bit = 1 << k;
+  if (g.drawnLinks & bit) return;
+  g.drawnLinks |= bit;
+  drawBunting(rd, g, k, camX, camY, camZ, sil, fog);
+}
+
+// The bunting: one link of it, sagging between two baskets, with flags
+// hanging off it. Drawn in screen space once the two ends are projected,
+// which is what keeps a cord one pixel wide at any distance instead of
+// vanishing. A chain of four is three of these, each drawn by the balloon at
+// its near end, so the links sort with the balloons rather than all landing
+// at the head of the chain.
+function drawBunting(rd, g, k, camX, camY, camZ, sil, fog) {
   const N = 16;
   const lamp = sky.lamp;
-  const ax = p.a.x, ay = p.a.y, az = p.a.z;
-  const bx = p.b.x, by = p.b.y, bz = p.b.z;
+  // Both ends are taken into camera-relative space *first*, and the line is
+  // walked there. Interpolating between two world coordinates and subtracting
+  // the camera afterwards works right up until a group lies across the seam
+  // where the torus wraps, and then the difference between its two ends is
+  // four thousand million and the bunting is flung across the sky.
+  const a = g.bs[k], c = g.bs[k + 1];
+  const ax = (a.x - camX) | 0, ay = (a.y - camY) | 0, az = (a.z - camZ) | 0;
+  const bx = (c.x - camX) | 0, by = (c.y - camY) | 0, bz = (c.z - camZ) | 0;
   // Bunting is tied to the baskets, which hang below the envelopes.
   const drop = (BASKET_DROP + 0.2) * S * TILE;
 
@@ -492,7 +596,7 @@ function drawBunting(rd, p, camX, camY, camZ, sil, fog) {
     // to tell, and it costs one call instead of three.
     const sag = Math.sin(Math.PI * t) * SAG * TILE;
     const y = (ay + (by - ay) * t + drop + sag) | 0;
-    if (!project((x - camX) | 0, (y - camY) | 0, (z - camZ) | 0, pt)) { prev = null; continue; }
+    if (!project(x, y, z, pt)) { prev = null; continue; }
     if (pt.x < -80 || pt.x > SCREEN_W + 80 || pt.y < -80 || pt.y > SCREEN_H + 80) {
       prev = { x: pt.x, y: pt.y };
       continue;
@@ -513,7 +617,7 @@ function drawBunting(rd, p, camX, camY, camZ, sil, fog) {
       const h = Math.max(1.5, len * 0.9);
       const w = Math.max(1.2, len * 0.42);
       rd.tri(mx - w, my, mx + w, my, mx, my + h,
-             dayLit(FLAGS[i % FLAGS.length], fog, sil, flagCol));
+             dayLit(FLAGS[(i + k * 5) % FLAGS.length], fog, sil, flagCol));
 
       // A bulb at this joint, sized off the same span the flag is, and
       // breathing slightly out of step with its neighbours.
@@ -535,18 +639,20 @@ function drawBunting(rd, p, camX, camY, camZ, sil, fog) {
 }
 
 export function drawBalloon(rd, entry, camX, camY, camZ, fog = 0) {
-  const p = entry.pair;
-  const b = entry.which ? p.b : p.a;
+  const g = entry.group;
+  const k = entry.which;
+  const b = g.bs[k];
 
-  const sil = silhouetteAmount((b.x - camX) / TILE, (b.z - camZ) / TILE);
+  const sil = silhouetteAmount(((b.x - camX) | 0) / TILE, ((b.z - camZ) | 0) / TILE);
 
   // The burner goes every few seconds, and only when it is dark enough for it
   // to show. It is the one light in the sky that is not a star.
-  const lit = sky.lamp > 0.05 && beacon(150, 16, p.burnAt);
-  const model = lit ? BALLOONS_LIT[p.style] : BALLOONS[p.style];
+  const lit = sky.lamp > 0.05 && beacon(150, 16, b.burnAt);
+  const model = lit ? BALLOONS_LIT[b.style] : BALLOONS[b.style];
   drawModel(rd, model, null, b.x, b.y, b.z, camX, camY, camZ, fog, sil);
-  drawGlow(rd, p, b, camX, camY, camZ, fog, sil, lit);
+  drawGlow(rd, b, camX, camY, camZ, fog, sil, lit);
 
-  // The bunting belongs to the pair, so only one of the two draws it.
-  if (entry.which === 0) drawBunting(rd, p, camX, camY, camZ, sil, fog);
+  // ... and both links it is an end of. A single has neither.
+  drawLink(rd, g, k, camX, camY, camZ, sil, fog);
+  drawLink(rd, g, k - 1, camX, camY, camZ, sil, fog);
 }
