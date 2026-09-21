@@ -8,6 +8,8 @@
 
 import { clamp } from './maths.js';
 import { TiltSteering } from './tilt.js';
+import { TouchStick } from './stick.js';
+import { SCREEN_W, SCREEN_H } from './renderer.js';
 
 export class Input {
   constructor(canvas) {
@@ -26,6 +28,12 @@ export class Input {
     // handset as a rate of turn against a neutral that follows the player
     // about. See tilt.js.
     this.tilt = new TiltSteering();
+
+    // ... and the other way of steering a handset: a stick that appears under
+    // whichever thumb arrives. Which of the two is in charge is `steerMode`,
+    // and a device with no motion sensor gets the stick whatever it says.
+    this.touchStick = new TouchStick();
+    this.steerMode = 'tilt';
     this.thrust = 0;      // 0 none, 1 hover, 2 full
     this.fire = false;
     this.startPressed = false;
@@ -236,7 +244,6 @@ export class Input {
     this.touchThrust = false;
     this.touchFire = false;
 
-    this.dragStick = null;
     this.tapThrust = false;
 
     for (const ev of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) {
@@ -244,30 +251,42 @@ export class Input {
     }
   }
 
-  // With tilt steering the screen is free for anything else, so touching it
-  // anywhere fires the engine -- no need to find a button while concentrating
-  // on flying -- and a second finger down works the gun. Without a motion
-  // sensor we fall back to dragging to steer, and the thrust pad earns its
-  // place again.
+  // One finger does both jobs: it puts the engine on and, by how far it has
+  // moved since it landed, says which way to lean. That pairing is not a
+  // convenience -- power on is exactly when the craft is being flown, and it
+  // is what the tilt steering uses to know when to hold its neutral still.
+  // A second finger works the gun.
+  //
+  // The stick is fed whatever the mode, so switching between tilt and touch
+  // mid-flight does not need it warming up first.
   _canvasTouch(e) {
     e.preventDefault();
-    const n = e.touches.length;
+    const r = this.canvas.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    // Client pixels into the buffer the game is drawn in, so the ring can be
+    // drawn where the thumb actually is at any screen size.
+    const toBuffer = (t) => [
+      ((t.clientX - r.left) / r.width) * SCREEN_W,
+      ((t.clientY - r.top) / r.height) * SCREEN_H,
+    ];
 
-    if (this.tiltEnabled) {
-      this.tapThrust = n >= 1;
-      this.touchFire = n >= 2;
-      this.dragStick = null;
-      return;
+    for (const t of e.changedTouches) {
+      const [bx, by] = toBuffer(t);
+      if (e.type === 'touchstart') this.touchStick.down(t.identifier, bx, by);
+      else if (e.type === 'touchmove') this.touchStick.move(t.identifier, bx, by);
+      else this.touchStick.up(t.identifier);
+    }
+    // A finger lifted elsewhere can leave the stick owned by one that is no
+    // longer down, so the owner is checked against the live list as well.
+    if (this.touchStick.active) {
+      let stillDown = false;
+      for (const t of e.touches) if (t.identifier === this.touchStick.id) stillDown = true;
+      if (!stillDown) this.touchStick.up(this.touchStick.id);
     }
 
-    if (n === 0) { this.dragStick = null; return; }
+    const n = e.touches.length;
+    this.tapThrust = n >= 1;
     this.touchFire = n >= 2;
-    const t = e.touches[0];
-    const r = this.canvas.getBoundingClientRect();
-    this.dragStick = {
-      x: clamp(((t.clientX - r.left) / r.width) * 2 - 1, -1, 1),
-      y: clamp(((t.clientY - r.top) / r.height) * 2 - 1, -1, 1),
-    };
   }
 
   // -- tilt -----------------------------------------------------------------
@@ -469,13 +488,17 @@ export class Input {
     this._pollPad();
 
     const tilt = this._tiltStick();
+    // The stick's ring fades in and out whether or not it is steering.
+    this.touchStick.tick(1 / 50);
+    // Touch wins when it has been chosen, or when there is no tilt to be had.
+    const touch = (this.steerMode === 'touch' || !tilt) ? this.touchStick.stick : null;
 
     if (this.padOwns) {
       this.stick = this.padStick;
+    } else if (touch) {
+      this.stick = touch;
     } else if (tilt) {
       this.stick = tilt;
-    } else if (this.dragStick) {
-      this.stick = this.dragStick;
     } else if (keyActive) {
       this.stick = this.keyStick;
     } else {

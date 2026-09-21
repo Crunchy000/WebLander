@@ -46,6 +46,22 @@ function showControlHelp() {
 showControlHelp();
 input.onPadChange = () => showControlHelp();
 
+// Tilt or a thumb stick. Remembered, because it is a preference about hands
+// rather than about the game, and nobody wants to state it twice.
+const STEER_KEY = 'weblander.steer';
+const segTilt = document.getElementById('steer-tilt');
+const segTouch = document.getElementById('steer-touch');
+
+function setSteer(mode, save = true) {
+  input.steerMode = mode === 'touch' ? 'touch' : 'tilt';
+  if (segTilt) segTilt.setAttribute('aria-pressed', String(input.steerMode === 'tilt'));
+  if (segTouch) segTouch.setAttribute('aria-pressed', String(input.steerMode === 'touch'));
+  if (save) { try { localStorage.setItem(STEER_KEY, input.steerMode); } catch { /* private mode */ } }
+}
+try { setSteer(localStorage.getItem(STEER_KEY) || 'tilt', false); } catch { setSteer('tilt', false); }
+if (segTilt) segTilt.addEventListener('click', () => setSteer('tilt'));
+if (segTouch) segTouch.addEventListener('click', () => setSteer('touch'));
+
 // Live readout, so a misbehaving sensor is diagnosable rather than a mystery.
 const readout = document.getElementById('tiltread');
 setInterval(() => {
@@ -75,12 +91,13 @@ startBtn.addEventListener('click', async () => {
   input.refreshPads();
 
   if (input.touchUi) {
-    const ok = await input.enableTilt();
-    if (!ok) {
-      // No motion sensor, or permission refused: drag to steer instead, which
-      // occupies the screen, so the thrust pad is needed after all.
+    // A thumb stick needs no sensor and no permission, so it is not asked for.
+    const ok = input.steerMode === 'touch' ? false : await input.enableTilt();
+    if (!ok && input.steerMode !== 'touch') {
+      // No motion sensor, or permission refused. The thumb stick steers
+      // instead -- it always can -- so say so rather than leaving the player
+      // to find out.
       document.getElementById('tiltnote').hidden = false;
-      touchPad.hidden = false;
       // ... unless the sensor was only slow. enableTilt waits a third of a
       // second for the first sample, which is plenty for a handset that is
       // already running and not always enough for one starting its sensors
@@ -88,12 +105,11 @@ startBtn.addEventListener('click', async () => {
       // up in the next few seconds the furniture is taken away again rather
       // than left standing over a control that now works.
       watchForLateTilt();
-    } else {
-      // Tilt steers and touching anywhere thrusts, so no buttons are needed.
-      // Nothing to calibrate: however the handset is being held when play
-      // starts is straight ahead, and it keeps deciding that as you go.
-      touchPad.hidden = true;
     }
+    // Either way one finger flies it: the engine comes on where it lands and
+    // the stick is how far it has moved since. Nothing to press, so the
+    // thrust pad stays away.
+    touchPad.hidden = true;
   }
 
   beginPlay();
@@ -105,7 +121,6 @@ function watchForLateTilt() {
   const check = setInterval(() => {
     if (input.tiltEnabled && input.tilt.ready) {
       document.getElementById('tiltnote').hidden = true;
-      touchPad.hidden = true;
       clearInterval(check);
     } else if (performance.now() > until) {
       clearInterval(check);

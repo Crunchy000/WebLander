@@ -38,9 +38,9 @@
         <p class="dim"><b>F</b> toggles fullscreen. The pointer is captured while you fly &mdash; <b>Esc</b> releases it, a click takes it back.</p>
       </div>
       <div id="controls-touch" hidden>
-        <p><b>Tilt</b> your phone to steer.</p>
         <p><b>One finger</b> anywhere fires the engine.</p>
-        <p class="dim">Hold it however is comfortable &mdash; wherever you settle is straight ahead, and it keeps up if you shift.</p>
+        <p><b>Tilt</b> the phone to steer &mdash; or put your thumb down and drag, and a stick appears under it.</p>
+        <p class="dim">Either way there is nothing to line up: hold it however is comfortable, and wherever you put your thumb is the middle.</p>
       </div>
 
       <!-- Everything you can press, together. In a tall window it sits under
@@ -49,9 +49,13 @@
       <div id="actions">
         <button id="start">start flying</button>
         <div id="tiltopts" hidden>
+          <div id="steerpick" role="group" aria-label="How to steer">
+            <button id="steer-tilt" class="seg" aria-pressed="true">tilt</button>
+            <button id="steer-touch" class="seg" aria-pressed="false">thumb stick</button>
+          </div>
           <p id="tiltread" class="read">tilt: waiting for sensor…</p>
         </div>
-        <p id="tiltnote" class="dim" hidden>Motion access is needed for tilt steering.</p>
+        <p id="tiltnote" class="dim" hidden>Motion access was refused, so the thumb stick is steering instead.</p>
       </div>
     </div>
   </div>

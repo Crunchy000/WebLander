@@ -151,6 +151,32 @@ html, body {
 
 #start:hover { background: #eed2a6; }
 
+/* ---- steering choice on the title card ---- */
+
+#steerpick {
+  display: inline-flex;
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.seg {
+  padding: .55em 1em;
+  font: 500 13px/1 inherit;
+  color: var(--dim);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.seg + .seg { border-left: 1px solid var(--edge); }
+
+.seg[aria-pressed="true"] {
+  color: #241f1a;
+  background: var(--sand);
+}
+
 /* ---- tilt options on the title card ---- */
 
 #tiltopts {
