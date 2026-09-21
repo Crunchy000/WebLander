@@ -127,16 +127,27 @@ const SIGN_PATIENCE = 5;
 // and at the edge of it, and straight-line between the two. The far one is
 // the leak: a lean held dead still washes out over about that long.
 //
-// These were three and thirty, and on a real handset that was far too eager.
-// The numbers say why. A five degree nudge -- the sort of thing most of
-// flying is -- was gone in three seconds, and an eight degree lean in five;
-// only a heave right over to twenty-five degrees lasted more than a few
-// seconds, and everything short of that faded under your thumb. Twelve and a
-// hundred and fifty, weighted straight rather than squared so a modest lean
-// gets a long neutral rather than a short one, leaves a nudge at nine tenths
-// after three seconds and a proper lean still flying a minute later.
-const BASE_TAU_NEAR = 12.0;
-const BASE_TAU_FAR = 150.0;
+// These were three and thirty, which was far too eager -- a five degree
+// nudge, the sort of thing most of flying is, was gone in three seconds --
+// and then twelve and a hundred and fifty, which was so slow that a grip
+// changed mid-flight took the best part of a minute to be forgiven.
+//
+// Six and sixty is the middle, and it is affordable now in a way it was not
+// before, because lifting off takes a hard zero of its own (see recentre).
+// The drifting neutral is no longer the only thing standing between a
+// changed posture and a banked craft, so it can afford to be brisker.
+//
+//   tau     nudge 3s   nudge 6s   lean 10s   lean 30s   grip forgiven
+//   3/30      0.00       0.00       0.28       0.00        11s
+//   4/40      0.10       0.00       0.39       0.00        16s
+//   6/60      0.12       0.07       0.51       0.13        24s
+//   8/90      0.13       0.10       0.59       0.29        35s
+//   12/150    0.14       0.12       0.67       0.46        57s
+//
+// Weighted straight rather than squared, so a modest lean gets a long
+// neutral rather than a short one.
+const BASE_TAU_NEAR = 6.0;
+const BASE_TAU_FAR = 60.0;
 
 // Stationary capture: degrees per second that counts as not moving, how long
 // it has to stay there, and how far off centre the stick may be and still
@@ -153,8 +164,8 @@ const BASE_TAU_FAR = 150.0;
 // halfway and leaving the craft banked.
 const STILL_RATE = 10.0;
 const STILL_SECONDS = 0.5;
-const STILL_STICK = 0.06;
-const STILL_TAU = 0.45;
+const STILL_STICK = 0.09;
+const STILL_TAU = 0.35;
 
 // How fast the stick itself is allowed to move, in seconds. This is the last
 // of the smoothing and the only one the player can feel as lag, so it is
