@@ -8,7 +8,7 @@
 
 import { clamp } from './maths.js';
 import { TiltSteering } from './tilt.js';
-import { TouchStick, ThrottleStick, throttleCurve } from './stick.js';
+import { TouchStick, ThrottleStick, throttleCurve, throttleTravelFor } from './stick.js';
 import { SCREEN_W, SCREEN_H } from './renderer.js';
 
 export class Input {
@@ -280,10 +280,31 @@ export class Input {
     for (const t of e.changedTouches) {
       const [bx, by] = toBuffer(t);
       if (e.type === 'touchstart') {
-        // First thumb steers. The second one is a throttle -- see below for
-        // why the first one does not stop flying when it arrives.
-        if (!this.touchStick.down(t.identifier, bx, by)) {
-          this.throttleStick.down(t.identifier, bx, by);
+        // The right-hand side belongs to the throttle -- but only once there
+        // is already a thumb steering, or the throttle has been used before.
+        // A lone first finger steers from wherever it lands, which is what
+        // keeps "one finger anywhere flies" true for somebody who has never
+        // gone looking for a throttle.
+        //
+        // Roles by position rather than by arrival order, once there are two
+        // of them. It used to be first-come: whichever thumb touched down
+        // first got the stick and the other got the throttle. Put your right
+        // thumb down first, as you would if you were setting the power before
+        // steering, and the two controls swapped ends of the handset without
+        // saying so -- which is exactly what a throttle that will not respond
+        // feels like.
+        const toThrottle = ThrottleStick.claims(bx)
+          && (this.touchStick.active || this.throttleStick.armed);
+        // What the engines are being given right now, as a thumb position,
+        // so that taking hold of the throttle for the first time changes
+        // nothing until the thumb moves.
+        const seed = throttleTravelFor(this.thrust === 2 ? this.throttle : 0);
+        if (toThrottle) {
+          if (!this.throttleStick.down(t.identifier, bx, by, seed)) {
+            this.touchStick.down(t.identifier, bx, by);
+          }
+        } else if (!this.touchStick.down(t.identifier, bx, by)) {
+          this.throttleStick.down(t.identifier, bx, by, seed);
         }
       } else if (e.type === 'touchmove') {
         this.touchStick.move(t.identifier, bx, by);
@@ -567,10 +588,13 @@ export class Input {
     else if (k.has('KeyX')) thrust = thrust || 1;
     if (this.padThrust) thrust = this.padThrust;
 
-    // A second thumb takes the power over. Until one arrives, one finger on
-    // the glass is still simply "fly", which is what it has always been --
-    // so nobody has to know about the throttle to get off the ground.
-    if (this.throttleStick.active) {
+    // The throttle takes the power over the moment it is used, and keeps it.
+    // Until then, one finger on the glass is still simply "fly", which is
+    // what it has always been -- so nobody has to know about the throttle to
+    // get off the ground.
+    if (this.throttleStick.armed) {
+      // Armed, not held: once the throttle has been used it owns the power
+      // whether or not a thumb is on it, because that is what a throttle is.
       // The power, not the thumb position: half way up the travel is the
       // fifth of full power that holds height. See stick.js.
       throttle = this.throttleStick.power;

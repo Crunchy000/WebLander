@@ -9,7 +9,7 @@ import {
 import {
   sky, sun, moon, STARS, advanceDay, skyColourAt, SKY_BAND_1, SKY_BAND_2, beacon,
 } from './daylight.js';
-import { drawRidges } from './ridges.js';
+import { drawRidges, drawNearGround } from './ridges.js';
 import { sampleRibbon, drawRibbon, resetRibbon } from './ribbon.js';
 import { serene } from './style.js';
 import { depthAt, waveLift, seaShade } from './sea.js';
@@ -125,6 +125,9 @@ export class Game {
     resetLanterns();
     resetWeather();
     this.player.reset();
+    // A fresh flight starts with the power in the pilot's hands rather than
+    // wherever the last one left it.
+    this.input.throttleStick.reset();
     this.state = STATE.PLAYING;
   }
 
@@ -410,6 +413,14 @@ export class Game {
     rd.gradientBand(SKY_BAND_1, SKY_BAND_2, sky.mid, sky.horizon);
     rd.gradientBand(SKY_BAND_2, SCREEN_H, sky.horizon, sky.horizon);
 
+    // ... then the stars and whichever of the sun or moon is up. They belong
+    // here, hard against the sky, because they are the furthest things there
+    // are: the sun is not in front of a mountain range, and a moon rising
+    // behind a balloon does not pass in front of it. They used to be drawn
+    // after both, which is exactly what you saw.
+    this.drawStars();
+    this.drawCelestial();
+
     // Ranges stand between the sky and everything else, so they go in here --
     // after the sky, before a single tile of landscape.
     if (serene()) drawRidges(rd, eyeX, eyeY, eyeZ);
@@ -423,13 +434,15 @@ export class Game {
     // a balloon disappearing behind a ridge read as the balloon being miles
     // further off than it is. In front, where they belong.
     drawFarBalloons(rd, eyeX, eyeY, eyeZ);
-    this.drawStars();
-    this.drawCelestial();
+
     // Clouds go over the sun and under the landscape, which is the only
     // ordering that lets one drift across the other.
     drawClouds(rd);
 
     this.drawLandscape(eyeX, eyeY, eyeZ);
+    // ... and the ground that is too close to have been drawn at all, which
+    // goes in front of it because it is in front of it.
+    if (serene()) drawNearGround(rd, eyeX, eyeY, eyeZ);
     drawRibbon(rd, eyeX, eyeY, eyeZ);
     drawParticles(rd, eyeX, eyeY, eyeZ);
     if (this.state === STATE.PLAYING) p.draw(rd, eyeX, eyeY, eyeZ);

@@ -185,7 +185,23 @@ export class TouchStick {
 // bottom half of sixty-eight pixels is fifty-two pixels of glass for it
 // where there were twenty.
 const THROTTLE_TRAVEL = 68;     // buffer pixels from nothing to everything
-const THROTTLE_DEAD = 0.06;
+
+// Where it lives. A floating stick is a gesture and belongs under whichever
+// thumb turns up; a throttle is a setting and belongs in one place, because
+// the whole point of a setting is that it is still there when you come back
+// to it. Low on the right, where a right thumb rests with the handset held
+// sideways, and clear of the drone count in the corner.
+const THROTTLE_X = 30;          // in from the right edge
+const THROTTLE_Y = 0.80;        // zero, as a fraction of the screen height
+
+// Power back to travel, for the one moment it is needed: the first grab.
+export function throttleTravelFor(p) {
+  if (p <= 0) return 0;
+  if (p >= 1) return 1;
+  return p < HOLD_THROTTLE
+    ? p / (2 * HOLD_THROTTLE)
+    : 0.5 + (p - HOLD_THROTTLE) / (2 * (1 - HOLD_THROTTLE));
+}
 
 // Travel to power. Half of the travel maps onto the fifth of the power that
 // holds height; the other half onto the four fifths above it.
@@ -204,9 +220,10 @@ export class ThrottleStick {
 
   reset() {
     this.id = null;
-    this.ox = 0; this.oy = 0;
-    this.py = 0;
-    this.value = 0;          // how far up the travel the thumb is, 0..1
+    this.value = 0;          // how far up the travel it is set, 0..1
+    this.grabY = 0;          // where the thumb landed ...
+    this.grabValue = 0;      // ... and what it was set to then
+    this.armed = false;      // has it ever been touched this flight
     this.show = 0;
   }
 
@@ -214,62 +231,89 @@ export class ThrottleStick {
     return this.id !== null;
   }
 
-  // ... and what that position asks the engines for. The two are different
-  // numbers on purpose: the knob is drawn at the position, and the craft
-  // flies on the power.
+  // ... and what the setting asks the engines for. The two are different
+  // numbers on purpose: the knob is drawn at the setting, and the craft flies
+  // on the power.
   get power() {
     return throttleCurve(this.value);
   }
 
-  // Where the thumb lands is nothing at all, and the travel is upwards from
-  // there. That way the whole of it is above the thumb, where there is room,
-  // rather than half of it being wasted below.
-  down(id, bx, by) {
+  get x() { return SCREEN_W - THROTTLE_X; }
+  get zeroY() { return Math.round(SCREEN_H * THROTTLE_Y); }
+
+  // Is this where the thumb went? The zone is generous -- the whole of the
+  // right-hand side -- because a control you have to hit is a control you
+  // have to look at.
+  static claims(bx) {
+    return bx >= SCREEN_W * 0.66;
+  }
+
+  // Putting a thumb on it changes nothing by itself. What moves the setting
+  // is how far the thumb travels from where it landed, added to where the
+  // setting already was.
+  //
+  // That is what makes it grabbable. An absolute throttle -- where the thumb
+  // is, is what it is set to -- jumps to wherever you touch, so picking it up
+  // to make a small change slams the engines first. A relative one can be
+  // grabbed anywhere in the zone, which is what lets the zone be the whole
+  // side of the screen rather than a thin strip you have to aim at.
+  //
+  // The very first grab takes over from whatever was already being asked
+  // for, rather than from nothing. Before the throttle is used, a finger on
+  // the glass means full power; if reaching for the throttle dropped it to
+  // zero, the engine would cut at the exact moment the pilot went to set it,
+  // which is the worst possible time. Seeded, the power does not change at
+  // all until the thumb moves.
+  down(id, bx, by, seed = 0) {
     if (this.id !== null) return false;
+    if (!this.armed) this.value = seed < 0 ? 0 : seed > 1 ? 1 : seed;
     this.id = id;
-    this.ox = bx;
-    this.oy = this.py = by;
-    this.value = 0;
+    this.grabY = by;
+    this.grabValue = this.value;
+    this.armed = true;
     return true;
   }
 
   move(id, bx, by) {
     if (id !== this.id) return;
-    this.py = by;
-    // The zero trails downwards, so a thumb that has slid below where it
-    // started does not have to climb back over its own history.
-    if (by > this.oy) this.oy = by;
-    let v = (this.oy - by) / THROTTLE_TRAVEL;
+    let v = this.grabValue + (this.grabY - by) / THROTTLE_TRAVEL;
     if (v < 0) v = 0; else if (v > 1) v = 1;
-    this.value = v <= THROTTLE_DEAD ? 0 : (v - THROTTLE_DEAD) / (1 - THROTTLE_DEAD);
+    this.value = v;
   }
 
+  // Letting go leaves it where it is.
+  //
+  // It used to spring back to nothing, on the reasoning that letting go of a
+  // throttle in a game about setting down gently should mean the engine
+  // easing off. That is a trigger's reasoning, not a throttle's, and it made
+  // the control useless for the thing it exists to do: you cannot set a rate
+  // of climb and then put your thumb on the stick, because the moment you
+  // lift, the power dies. A throttle stays where you leave it. That is the
+  // whole difference between a throttle and a button.
   up(id) {
     if (id !== this.id) return;
-    // Springs back. Letting go of a throttle in a game about setting down
-    // gently should mean the engine easing off, not staying wherever it was.
     this.id = null;
-    this.value = 0;
   }
 
   tick(dt) {
-    const tau = this.active ? FADE_IN : FADE_OUT;
+    // Visible while it is being held, and half visible while it is set,
+    // because a setting you cannot see is a setting you have to remember.
+    const want = this.active ? 1 : (this.armed ? 0.55 : 0);
+    const tau = want > this.show ? FADE_IN : FADE_OUT;
     const k = 1 - Math.exp(-dt / tau);
-    this.show += ((this.active ? 1 : 0) - this.show) * k;
+    this.show += (want - this.show) * k;
     if (this.show < 0.002) this.show = 0;
   }
 
   get furniture() {
     if (this.show <= 0) return null;
-    const top = this.oy - THROTTLE_TRAVEL;
-    let y = this.py;
-    if (y < top) y = top; else if (y > this.oy) y = this.oy;
-    // The mark goes where the thumb has to be for half a command, which is a
-    // little above the middle of the pixels: the deadzone at the bottom is
-    // travel the thumb crosses and the command does not.
-    const holdAt = THROTTLE_DEAD + 0.5 * (1 - THROTTLE_DEAD);
-    return { x: this.ox, y0: this.oy, y1: top, knobY: y, alpha: this.show,
-             value: this.value, hold: this.oy - THROTTLE_TRAVEL * holdAt };
+    const y0 = this.zeroY;
+    const y1 = y0 - THROTTLE_TRAVEL;
+    return {
+      x: this.x, y0, y1, knobY: y0 - THROTTLE_TRAVEL * this.value,
+      hold: y0 - THROTTLE_TRAVEL * 0.5,
+      alpha: this.show, value: this.value,
+    };
   }
 }
 
