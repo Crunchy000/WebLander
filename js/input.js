@@ -476,17 +476,29 @@ export class Input {
     // Right trigger or A for full power, left trigger or X to hover.
     this.padThrust = (btn(7) || btn(0)) ? 2 : (btn(6) || btn(2)) ? 1 : 0;
 
-    // ... and the right-hand stick, pushed up, is a throttle. It is the one
-    // control on the pad that can ask for part of the power rather than all
-    // of it, which is what makes a gentle descent something you fly rather
-    // than something you feather with a trigger. Down is nothing, so resting
-    // a thumb on it does not fly the craft; the buttons still work alongside
-    // and whichever is asking for more wins.
+    // ... and the right-hand stick is the throttle. It is the one control on
+    // the pad that can ask for part of the power rather than all of it, which
+    // is what makes a gentle descent something you fly rather than something
+    // you feather with a trigger. The buttons still work alongside it.
+    //
+    // Pushed down it reverses: the same rotors driven the other way, pushing
+    // along the floor instead of the roof. Fixed props could not, reversible
+    // ones can, and this machine has them.
+    //
+    // It is worth having for the same reason the lean goes past ninety.
+    // Thrust acts along the craft's own axis wherever that axis is pointing,
+    // so reverse is not simply "down": upright it drives you at the ground,
+    // inverted it climbs, and banked over it pulls you back the way you came
+    // without turning the machine round -- which is a brake you can use while
+    // still looking where you were going.
+    //
+    // The deadzone is the same either way, so a thumb resting on the stick
+    // flies nothing at all.
     const THROTTLE_DEAD = 0.12;
-    const up = -axis(3);
-    this.padThrottle = up > THROTTLE_DEAD
-      ? Math.min(1, (up - THROTTLE_DEAD) / (0.95 - THROTTLE_DEAD))
-      : 0;
+    const v = -axis(3);
+    const av = Math.abs(v);
+    const amount = Math.min(1, (av - THROTTLE_DEAD) / (0.95 - THROTTLE_DEAD));
+    this.padThrottle = av > THROTTLE_DEAD ? (v < 0 ? -amount : amount) : 0;
     this.padFire = btn(5) || btn(1) || btn(4);
 
     let any = false;
@@ -498,7 +510,7 @@ export class Input {
     if (startNow && !this._padStartWas) this.startPressed = true;
     this._padStartWas = startNow;
 
-    this.padActive = x !== 0 || y !== 0 || this.padThrust > 0 || any;
+    this.padActive = x !== 0 || y !== 0 || this.padThrust > 0 || this.padThrottle !== 0 || any;
     if (this.padActive) this.padUsed = true;
   }
 
@@ -538,8 +550,9 @@ export class Input {
     // Thrust, from whichever source is active, and how much of it.
     //
     // Most sources only say yes or no, so they ask for all of it. Two say how
-    // much: a second thumb on the screen, and the right-hand stick on a pad.
-    // Whichever of those is in use owns the power while it is.
+    // much: a second thumb on the screen, and the right-hand stick on a pad,
+    // which can also ask for it the other way round. Whichever of those is in
+    // use owns the power while it is.
     let thrust = this.mouseThrust;
     let throttle = 1;
     if (this.touchThrust || this.tapThrust) thrust = 2;
@@ -553,7 +566,10 @@ export class Input {
     if (this.throttleStick.active) {
       throttle = this.throttleStick.value;
       thrust = throttle > 0 ? 2 : 0;
-    } else if (this.padThrottle > 0) {
+    } else if (this.padThrottle !== 0) {
+      // Negative is reverse: still full-power mode, still the rotors, just
+      // turning the other way. The player decides how much and which way;
+      // what that does to the craft depends on where its roof is pointing.
       throttle = this.padThrottle;
       thrust = 2;
     }

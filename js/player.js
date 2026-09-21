@@ -354,16 +354,28 @@ export class Player {
 
   // `stick` is the control input as x/y in [-1, 1]; `thrust` is 0, 1 (hover)
   // or 2 (full); `fire` is a boolean.
-  // `throttle` is how much of the full power is being asked for, 0 to 1. Most
+  // `throttle` is how much of the full power is being asked for, -1 to 1. Most
   // ways of asking only say yes, and say it as 1; a second thumb on the glass
   // and the right-hand stick on a pad can say how much. Hover is not scaled --
   // it is a setting rather than an amount, and a half-strength hold that does
   // not hold is no use to anybody.
+  //
+  // Negative is reverse thrust: the rotors driven the other way, pushing
+  // along the floor rather than the roof. It is the same one force with a
+  // sign on it, so everything downstream of it -- the ceiling, the battery,
+  // the lean -- falls out of that rather than needing a second set of rules.
   update(stick, thrust, fire, gravity, game, throttle = 1) {
     if (this.dead) {
       this.deathTimer--;
       return;
     }
+
+    // Reverse thrust cannot push a machine through the ground it is already
+    // standing on, and letting it try is not harmless: one frame of full
+    // power into the pad arrives as vertical speed, and vertical speed on
+    // contact is what the arrival is judged on. Sat on its skids, pushing
+    // down is simply nothing -- the same answer the stick gets there.
+    if (this.landed && thrust === 2 && throttle < 0) thrust = 0;
 
     // The safe window runs from the first touch of power, not from the
     // moment the craft appears.
@@ -449,9 +461,18 @@ export class Player {
     // Now the lift fades out across the last tile or so. The rotors keep
     // turning and the engine keeps running, so it reads as thin air to push
     // against instead of a failure, and the HUD names it.
+
+    // How much power, and which way the rotors are turning. Hover is a
+    // setting rather than an amount, so it is always all of it, forwards.
+    const t = thrust === 2 ? Math.max(-1, Math.min(1, throttle)) : 1;
+
     let lift = 1;
     this.ceiling = 0;
-    if (thrust && this.y < CEILING_SOFT) {
+    // The fade is on climbing, not on the rotors: it is the air running out
+    // to push against on the way up. Pushing yourself back down out of it is
+    // not the same ask, and being pinned at the ceiling with a weak way down
+    // would be the worst place to put one.
+    if (thrust && t > 0 && this.y < CEILING_SOFT) {
       lift = Math.max(0, (this.y - HIGHEST_ALTITUDE) / (CEILING_SOFT - HIGHEST_ALTITUDE));
       this.ceiling = 1 - lift;
     }
@@ -464,7 +485,6 @@ export class Player {
     const holding = thrust === 1 && !this.landed && this.altitude > HOVER_CLEAR;
 
     if (thrust) {
-      const t = thrust === 2 ? Math.max(0, Math.min(1, throttle)) : 1;
       const power = (thrust === 2 ? THRUST_FULL * t : THRUST_HOVER) * lift;
       // "Up" in ship space is -y, since y points down.
       const up = matApply(this.matrix, 0, -1, 0);
@@ -479,12 +499,15 @@ export class Player {
       // lift should not drain the pack at the full rate.
       // Half the power costs about half the pack, which is the whole reason
       // to have a throttle in a machine that runs out.
-      const draw = thrust === 2 ? DRAW_FULL * (0.25 + 0.75 * t) : DRAW_HOVER;
+      // Reverse costs what forward costs: it is the same rotors doing the
+      // same work, and a free way down would make the throttle a one-way
+      // decision with no price on it.
+      const draw = thrust === 2 ? DRAW_FULL * (0.25 + 0.75 * Math.abs(t)) : DRAW_HOVER;
       this.charge -= draw * (0.35 + 0.65 * lift);
       if (this.charge < 0) this.charge = 0;
 
       if (AIRFRAME === 'uav') this.rotorWash();
-      else this.emitExhaust(up, thrust);
+      else this.emitExhaust(up, thrust, t);
     }
 
     // Gravity, then wind, then damping, then move.
@@ -564,13 +587,16 @@ export class Player {
     );
   }
 
-  emitExhaust(up, thrust) {
+  emitExhaust(up, thrust, t = 1) {
     const n = thrust === 2 ? 3 : 2;
-    // Out of the engine bell, opposite to thrust.
-    const ex = (this.x - up[0] * TILE * 0.32) | 0;
-    const ey = (this.y - up[1] * TILE * 0.32) | 0;
-    const ez = (this.z - up[2] * TILE * 0.32) | 0;
-    const jet = thrust === 2 ? TILE * 0.028 : TILE * 0.018;
+    // Out of the engine bell, opposite to thrust -- so under reverse it comes
+    // out of the other end, which is the only visible sign of which way the
+    // power is going.
+    const dir = t < 0 ? -1 : 1;
+    const ex = (this.x - up[0] * TILE * 0.32 * dir) | 0;
+    const ey = (this.y - up[1] * TILE * 0.32 * dir) | 0;
+    const ez = (this.z - up[2] * TILE * 0.32 * dir) | 0;
+    const jet = (thrust === 2 ? TILE * 0.028 : TILE * 0.018) * dir;
     for (let i = 0; i < n; i++) {
       spawnExhaust(
         ex, ey, ez,
