@@ -59,7 +59,27 @@ const THRUST_FULL  = 0x0C000;   // full-throttle thrust, doubled again
 // stick under full power and the craft drives itself down rather than merely
 // failing to climb. Hover is still capped at forty-five and still holds its
 // height, so there is always a setting that behaves.
-const MAX_LEAN = Math.PI;
+// How far the stick alone may lean the craft.
+//
+// It was a half turn, so that a held stick could put the machine on its back
+// -- but a half turn of range over one stick is a lot of degrees per
+// millimetre, and spreading it unevenly to protect the middle only moved the
+// problem: it bought ten degrees of bank per tenth of stick down at the
+// bottom and forty-three at the top, so pushing past ninety leapt to a
+// hundred and thirty-five instead of settling.
+//
+// Three quarters of a turn, spread evenly, is fourteen degrees per tenth of
+// stick everywhere -- the same answer wherever you are, which is the whole
+// of what "settles" means. Ninety sits at two thirds of stick with room
+// either side of it rather than on a cliff.
+//
+// Nothing acrobatic goes. A hundred and thirty-five is well past vertical,
+// and all the way over is what the loop is for: bury the stick and the lean
+// stops being a position and becomes a rate, which carries it round through
+// inverted and back. That was always the acrobatic route -- holding the
+// stick at exactly the right spot to hang upside down was the bug that
+// started all this.
+const MAX_LEAN = (Math.PI * 3) / 4;
 // How far the craft may lean while hover is held. Thrust acts along the roof,
 // so leaning trades lift for speed, and past a certain angle there is not
 // enough lift left to stand the craft up. Measured: hover holds altitude out
@@ -89,43 +109,11 @@ const HOVER_LEAN = Math.PI / 4;
 // seconds hanging within thirty-five degrees of inverted -- which is the old
 // stuck-at-180 bug arriving by a different road. Once it is round, it stays
 // round until the stick is properly released.
-// How the stick's travel is spread across that range.
-//
-// It was spread evenly, and evenly is the wrong way, because thrust acts
-// along the roof: at ninety degrees of lean none of it is holding the craft
-// up, and past ninety it is pushing the craft down. Spread evenly, that
-// knife edge sits at exactly half stick -- so the single most delicate
-// attitude in the game was the one the stick rested on, and half of all the
-// travel there was went to attitudes that cannot hold their own height.
-// With tilt steering it is worse still, because the whole of the stick is
-// about seventeen degrees of wrist, which put the knife edge nine degrees
-// from neutral and a hand's natural unsteadiness either side of it.
-//
-//   stick   lean, evenly   lift      lean, curved   lift
-//   0.2      36deg          0.81      20deg          0.94
-//   0.35     63deg          0.45      35deg          0.82
-//   0.5      90deg          0.00      52deg          0.62
-//   0.73    131deg         -0.66      90deg          0.00
-//   1.0     180deg         -1.00     180deg         -1.00
-//
-// Curved, the knife edge moves from half stick out to about three quarters,
-// so the whole of ordinary flying happens at attitudes that can carry their
-// own weight -- and the last of the travel still goes all the way over, so
-// nothing acrobatic is lost, it is simply somewhere you have to mean to go.
-//
-// Measured: a hand's unsteadiness of five hundredths of a stick used to move
-// the craft fourteen degrees of bank wherever it was held, and now moves it
-// ten at half stick and eight near the middle. Top speed is unchanged -- it
-// simply arrives at eight tenths of stick instead of at five, and the answer
-// to pushing harder is now more speed all the way up, where before it peaked
-// at the knife edge and got slower past it.
-const LEAN_STRAIGHT = 0.55;   // ... of it is the even part
-const LEAN_POWER = 5;         // ... and the rest steepens like this
-
-function leanCurve(m) {
-  return LEAN_STRAIGHT * m + (1 - LEAN_STRAIGHT) * Math.pow(m, LEAN_POWER);
-}
-
+// The stick's travel is spread evenly across that range. It was curved, to
+// keep the zero-lift knife edge away from the middle of the stick while the
+// range still ran to a half turn; with the range brought in, the knife edge
+// sits at two thirds of its own accord and the curve was only buying unequal
+// gain. Even is what settles.
 const LOOP_AT = 0.96;      // stick deflection at which it becomes a rate
 const LOOP_KEEP = 0.80;    // ... and where it goes back to being a position
 const LOOP_RATE = 0.060;   // radians a frame, so a full turn takes about 1.7s
@@ -409,13 +397,7 @@ export class Player {
     // delivered: a flat battery takes the lift away below, but it should not
     // silently hand back the authority the pilot chose to give up.
     if (thrust) this.leanMode = thrust;
-    // Hover is left even. It only ever reaches forty-five degrees, every bit
-    // of which holds its own height, so there is no knife edge in it to move
-    // out of the way -- and it is the placid setting, which wants all of its
-    // travel usable rather than saved up for something it cannot do.
-    const targetLean = this.leanMode === 1
-      ? mag * HOVER_LEAN
-      : leanCurve(mag) * MAX_LEAN;
+    const targetLean = mag * (this.leanMode === 1 ? HOVER_LEAN : MAX_LEAN);
     const targetDir = (mag > 0.02) ? Math.atan2(stick.x, stick.y) : this.leanDir;
 
     // Interpolate the direction the short way round the circle.
