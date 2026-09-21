@@ -192,16 +192,32 @@ export function drawRidges(rd, camX, camY, camZ) {
   // and at the bottom the exact colour the landscape uses for its own far
   // edge -- arrived at on the row where that edge lands, so the real ground
   // comes up out of the haze rather than against a seam.
-  const far = rowAt(BANDS[0].far);
+  // It starts at the vanishing point, which is where the ground's own horizon
+  // is. That is not a detail: the camera looks level, so CENTRE_Y is eye
+  // level, and every scrap of ground in the world is below the eye and
+  // therefore below that line. Anything drawn under it is underground.
+  //
+  // The bands cannot reach it -- the furthest stops at a hundred and fifty
+  // tiles, whose flat ground lands eighteen rows lower -- so starting the
+  // plain at the top band's foot left a strip of bare sky below the true
+  // horizon. Which would be invisible, except that the sun's arc dips to row
+  // 132, well under eye level, so for about a fifth of the day the sun sat in
+  // that strip: below the horizon, in front of the hills, lit like noon. That
+  // is the sun that would not get behind the mountains. It was never an
+  // ordering fault -- it was drawn first all along -- there was simply
+  // nothing there to hide it.
+  //
+  // At the seam the plain is the sky's own colour, so nothing shows; what
+  // changes is that a body setting into it now sets.
   const meet = Math.min(SCREEN_H, rowAt(DRAWN_TO));
-  hazeY0 = far; hazeY1 = Math.max(far + 1, meet);
-  if (far < SCREEN_H) {
-    const s = skyColourAt(far);
+  hazeY0 = CENTRE_Y; hazeY1 = Math.max(CENTRE_Y + 1, meet);
+  {
+    const s = skyColourAt(CENTRE_Y);
     hazeTop[0] = s[0]; hazeTop[1] = s[1]; hazeTop[2] = s[2];
     const g = tileColour(LAND_MID_HEIGHT, LAND_MID_HEIGHT, 1, camX, camZ);
     hazeFoot[0] = g[0]; hazeFoot[1] = g[1]; hazeFoot[2] = g[2];
-    if (meet > far) rd.gradientBand(far, meet, hazeTop, hazeFoot);
-    if (meet < SCREEN_H) rd.gradientBand(Math.max(far, meet), SCREEN_H, hazeFoot, hazeFoot);
+    if (meet > CENTRE_Y) rd.gradientBand(CENTRE_Y, meet, hazeTop, hazeFoot);
+    if (meet < SCREEN_H) rd.gradientBand(Math.max(CENTRE_Y, meet), SCREEN_H, hazeFoot, hazeFoot);
   }
 
   for (const band of BANDS) {
