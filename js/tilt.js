@@ -257,6 +257,7 @@ export class TiltSteering {
     this.haveBase = false;
 
     this.stillFor = 0;
+    this.drifting = true;
     this.live = false;
     this.x = 0;
     this.y = 0;
@@ -264,6 +265,26 @@ export class TiltSteering {
     this.rateMag = 0;
     this.disturb = 0;
     this.reliability = 1;
+  }
+
+  // Whether the neutral is allowed to drift towards where the handset is
+  // being held. The game turns this off while power is being asked for.
+  //
+  // The drifting neutral exists to forgive a posture you did not mean to
+  // change, and the trouble with it has always been that it cannot tell that
+  // from a lean you did mean -- so whatever it is set to, it is either too
+  // slow to forgive or fast enough to steal. The game can tell, though, and
+  // this is the second thing it knows that the sensors never will: while the
+  // engine is running you are flying it, and every degree away from neutral
+  // is one you asked for. So while there is power on, the zero is frozen and
+  // your lean is exactly your lean. Ease off and it catches up.
+  //
+  // The cost is plain and worth saying: hold power for a long flight and a
+  // grip that shifts within it is not forgiven until you let go. Lifting off
+  // still takes a zero of its own, and letting go is a thing you do often.
+  setDrifting(on) {
+    if (!on) this.stillFor = 0;
+    this.drifting = !!on;
   }
 
   // Take wherever the handset is being held right now as straight ahead.
@@ -582,6 +603,12 @@ export class TiltSteering {
     // now: near the middle it is correcting your posture and should be quick,
     // out at the edge it would be taking away the turn you are flying.
     const off = Math.min(1, Math.hypot(this.x, this.y));
+    if (!this.drifting) {
+      // Power is on, so the neutral stands still. See setDrifting.
+      this.stillFor = 0;
+      this._shape(dt, roll, pitch, rollRate, pitchRate);
+      return;
+    }
     let tau = BASE_TAU_NEAR + (BASE_TAU_FAR - BASE_TAU_NEAR) * off;
 
     // Stationary capture. A quiet gyroscope and a stick that is not doing
@@ -599,6 +626,11 @@ export class TiltSteering {
     this.baseRoll += (roll - this.baseRoll) * k;
     this.basePitch += (pitch - this.basePitch) * k;
 
+    this._shape(dt, roll, pitch, rollRate, pitchRate);
+  }
+
+  // Neutral to stick: the delta, the clamp, the curve and the smoothing.
+  _shape(dt, roll, pitch, rollRate, pitchRate) {
     // Delta from the neutral is the whole of the control, plus a little of
     // where it is going (see LEAD).
     let ux = (roll - this.baseRoll + rollRate * LEAD) / THROW;

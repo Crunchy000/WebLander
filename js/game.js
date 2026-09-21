@@ -227,6 +227,17 @@ export class Game {
 
   step() {
     const inp = this.input.sample();
+
+    // The tilt's neutral is allowed to drift towards where the handset is
+    // being held, but only while no power is being asked for. With the engine
+    // running, every degree away from neutral is one the pilot asked for, and
+    // a zero that wanders under them is a zero taking their lean away. See
+    // setDrifting. It reads the asked-for thrust rather than what the machine
+    // managed, so a flat battery on the way down does not start moving the
+    // zero while it is still being flown.
+    if (this.input.tilt && this.input.tilt.setDrifting) {
+      this.input.tilt.setDrifting(!inp.thrust);
+    }
     advanceDay(STEP_MS);
     updateWeather(this.player.x, this.player.z);
     // The beds run in every state, so the weather is still there behind the
