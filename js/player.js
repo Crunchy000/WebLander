@@ -50,6 +50,21 @@ export const CHARGE_MAX = 0x8000;
 
 const THRUST_HOVER = 0x06600;   // hover thrust, doubled again for a much faster feel
 const THRUST_FULL  = 0x0C000;   // full-throttle thrust, doubled again
+
+// The fraction of full power that exactly cancels gravity -- about a fifth.
+// It is the one landmark the throttle's travel has: everything below it
+// sinks and everything above it climbs, and a throttle that does not put it
+// somewhere you can find it is a throttle with all its useful part squashed
+// into the first few millimetres. The controls lay their travel out around
+// this, so it lives here with the numbers it is made of rather than as a
+// figure copied into them.
+//
+// It is taken at the gravity a flight starts with. Gravity does climb later
+// on, and the landmark climbs with it -- 0.21 of full power at the start,
+// 0.28 and 0.35 at the two heavier settings -- so a throttle laid out around
+// this one has its hold point drift up the travel as the day wears on rather
+// than sitting exactly half way. Half, a little over half, and six tenths.
+export const HOLD_THROTTLE = GRAVITY_START / THRUST_FULL;
 // Radians of tilt at full stick. Pi, so the craft can go all the way over --
 // nose straight down, and every attitude on the way there. Combined with the
 // heading, which already covers the whole circle, that is the full sphere.

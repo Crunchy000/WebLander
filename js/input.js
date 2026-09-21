@@ -8,7 +8,7 @@
 
 import { clamp } from './maths.js';
 import { TiltSteering } from './tilt.js';
-import { TouchStick, ThrottleStick } from './stick.js';
+import { TouchStick, ThrottleStick, throttleCurve } from './stick.js';
 import { SCREEN_W, SCREEN_H } from './renderer.js';
 
 export class Input {
@@ -494,11 +494,18 @@ export class Input {
     //
     // The deadzone is the same either way, so a thumb resting on the stick
     // flies nothing at all.
+    // Up is laid out the same way the thumb throttle is -- half way up holds
+    // your height -- so the two controls mean the same thing and a player who
+    // has learnt one has learnt the other. Down is straight: reverse has no
+    // landmark in it to lay anything out around, and pushing the stick down
+    // is a deliberate act rather than something you trim.
     const THROTTLE_DEAD = 0.12;
     const v = -axis(3);
     const av = Math.abs(v);
-    const amount = Math.min(1, (av - THROTTLE_DEAD) / (0.95 - THROTTLE_DEAD));
-    this.padThrottle = av > THROTTLE_DEAD ? (v < 0 ? -amount : amount) : 0;
+    const amount = av > THROTTLE_DEAD
+      ? Math.min(1, (av - THROTTLE_DEAD) / (0.95 - THROTTLE_DEAD))
+      : 0;
+    this.padThrottle = amount === 0 ? 0 : (v < 0 ? -amount : throttleCurve(amount));
     this.padFire = btn(5) || btn(1) || btn(4);
 
     let any = false;
@@ -564,7 +571,9 @@ export class Input {
     // the glass is still simply "fly", which is what it has always been --
     // so nobody has to know about the throttle to get off the ground.
     if (this.throttleStick.active) {
-      throttle = this.throttleStick.value;
+      // The power, not the thumb position: half way up the travel is the
+      // fifth of full power that holds height. See stick.js.
+      throttle = this.throttleStick.power;
       thrust = throttle > 0 ? 2 : 0;
     } else if (this.padThrottle !== 0) {
       // Negative is reverse: still full-power mode, still the rotors, just

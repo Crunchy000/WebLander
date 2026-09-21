@@ -30,6 +30,7 @@
 //   that never sits level.
 
 import { SCREEN_W, SCREEN_H } from './renderer.js';
+import { HOLD_THROTTLE } from './player.js';
 
 // How far the thumb travels for full deflection, in buffer pixels. The buffer
 // is always 256 tall whatever the handset is, so this is the same fraction of
@@ -159,12 +160,42 @@ export class TouchStick {
 // is exactly the thing a first thumb is bad at: holding a steady amount while
 // the other hand is busy doing something else.
 //
-// Straight, with no curve on it. Steering wants a soft middle because most
-// steering is small corrections around nothing; power is not like that --
-// half power means half power, and a curve there is a throttle that lies
-// about where it is.
-const THROTTLE_TRAVEL = 52;     // buffer pixels from nothing to everything
+// It was straight, with no curve on it, on the argument that half power
+// ought to mean half power and a curve is a throttle that lies about where
+// it is. That argument was about the wrong axis.
+//
+// What a pilot is choosing is not a number of watts, it is a rate of climb,
+// and in this machine those two are nothing like each other: a fifth of full
+// power holds the craft level and everything above it climbs. Measured on a
+// phone held sideways, with the travel at fifty-two buffer pixels: the whole
+// of the descent -- free fall at 1.56 tiles a second, through a gentle sink,
+// to holding height -- lived in the first thirteen of them, twenty pixels of
+// glass, and the remaining fifty-nine were all climb. That is why it read as
+// having no control in it. Nothing was overriding the throttle; there was
+// simply nothing useful spread across most of its length.
+//
+// So the travel is laid out around the one landmark it has. Half way up
+// holds your height, the bottom half is every rate of descent from hovering
+// to letting go, and the top half is every rate of climb. Power is still
+// what comes out of it -- it is where the thumb positions are that has
+// changed -- and that is the honest way round, because the thing being
+// promised is what the craft does, not what the battery is doing.
+//
+// Longer, too. A landing is the part that wants the fine control, and the
+// bottom half of sixty-eight pixels is fifty-two pixels of glass for it
+// where there were twenty.
+const THROTTLE_TRAVEL = 68;     // buffer pixels from nothing to everything
 const THROTTLE_DEAD = 0.06;
+
+// Travel to power. Half of the travel maps onto the fifth of the power that
+// holds height; the other half onto the four fifths above it.
+export function throttleCurve(u) {
+  if (u <= 0) return 0;
+  if (u >= 1) return 1;
+  return u < 0.5
+    ? u * 2 * HOLD_THROTTLE
+    : HOLD_THROTTLE + (u - 0.5) * 2 * (1 - HOLD_THROTTLE);
+}
 
 export class ThrottleStick {
   constructor() {
@@ -175,12 +206,19 @@ export class ThrottleStick {
     this.id = null;
     this.ox = 0; this.oy = 0;
     this.py = 0;
-    this.value = 0;
+    this.value = 0;          // how far up the travel the thumb is, 0..1
     this.show = 0;
   }
 
   get active() {
     return this.id !== null;
+  }
+
+  // ... and what that position asks the engines for. The two are different
+  // numbers on purpose: the knob is drawn at the position, and the craft
+  // flies on the power.
+  get power() {
+    return throttleCurve(this.value);
   }
 
   // Where the thumb lands is nothing at all, and the travel is upwards from
@@ -226,7 +264,12 @@ export class ThrottleStick {
     const top = this.oy - THROTTLE_TRAVEL;
     let y = this.py;
     if (y < top) y = top; else if (y > this.oy) y = this.oy;
-    return { x: this.ox, y0: this.oy, y1: top, knobY: y, alpha: this.show, value: this.value };
+    // The mark goes where the thumb has to be for half a command, which is a
+    // little above the middle of the pixels: the deadzone at the bottom is
+    // travel the thumb crosses and the command does not.
+    const holdAt = THROTTLE_DEAD + 0.5 * (1 - THROTTLE_DEAD);
+    return { x: this.ox, y0: this.oy, y1: top, knobY: y, alpha: this.show,
+             value: this.value, hold: this.oy - THROTTLE_TRAVEL * holdAt };
   }
 }
 
@@ -291,6 +334,13 @@ export function drawThrottle(rd, f) {
   knobCol[3] = Math.round(120 * a);
   const filled = (f.y0 - f.y1) * f.value;
   if (filled > 0) rd.rect(f.x - w, f.y0 - filled, w * 2, filled, knobCol);
+
+  // The one mark on it: half way, where the craft holds the height it has.
+  // A throttle with a landmark is a throttle you can set without watching it,
+  // which is the whole point of the thing being under a thumb rather than on
+  // a dial.
+  ringCol[3] = Math.round(130 * a);
+  rd.rect(f.x - 8, f.hold, 16, 1, ringCol);
 
   knobCol[3] = Math.round(170 * a);
   const kr = 6;
