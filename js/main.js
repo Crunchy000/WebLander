@@ -58,7 +58,9 @@ function setSteer(mode, save = true) {
   if (segTouch) segTouch.setAttribute('aria-pressed', String(input.steerMode === 'touch'));
   if (save) { try { localStorage.setItem(STEER_KEY, input.steerMode); } catch { /* private mode */ } }
 }
-try { setSteer(localStorage.getItem(STEER_KEY) || 'tilt', false); } catch { setSteer('tilt', false); }
+// The thumb stick is the default: it needs no sensor, no permission and no
+// getting used to, and tilt is one tap away for anyone who prefers it.
+try { setSteer(localStorage.getItem(STEER_KEY) || 'touch', false); } catch { setSteer('touch', false); }
 if (segTilt) segTilt.addEventListener('click', () => setSteer('tilt'));
 if (segTouch) segTouch.addEventListener('click', () => setSteer('touch'));
 

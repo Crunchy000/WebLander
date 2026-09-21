@@ -8,7 +8,7 @@
 
 import { clamp } from './maths.js';
 import { TiltSteering } from './tilt.js';
-import { TouchStick } from './stick.js';
+import { TouchStick, ThrottleStick } from './stick.js';
 import { SCREEN_W, SCREEN_H } from './renderer.js';
 
 export class Input {
@@ -33,7 +33,13 @@ export class Input {
     // whichever thumb arrives. Which of the two is in charge is `steerMode`,
     // and a device with no motion sensor gets the stick whatever it says.
     this.touchStick = new TouchStick();
-    this.steerMode = 'tilt';
+    // ... and a second thumb, which does nothing but say how hard.
+    this.throttleStick = new ThrottleStick();
+    // How much power is being asked for, 0 to 1. Whatever is steering, some
+    // sources say only yes or no and some say how much; this is how much, and
+    // it is 1 for the ones that only say yes.
+    this.throttle = 1;
+    this.steerMode = 'touch';
     this.thrust = 0;      // 0 none, 1 hover, 2 full
     this.fire = false;
     this.startPressed = false;
@@ -70,6 +76,7 @@ export class Input {
     this.padStick = { x: 0, y: 0 };
     this.padActive = false;
     this.padThrust = 0;
+    this.padThrottle = 0;
     this.padFire = false;
     this.padAnyButton = false;
     this._padStartWas = false;
@@ -272,21 +279,30 @@ export class Input {
 
     for (const t of e.changedTouches) {
       const [bx, by] = toBuffer(t);
-      if (e.type === 'touchstart') this.touchStick.down(t.identifier, bx, by);
-      else if (e.type === 'touchmove') this.touchStick.move(t.identifier, bx, by);
-      else this.touchStick.up(t.identifier);
+      if (e.type === 'touchstart') {
+        // First thumb steers. The second one is a throttle -- see below for
+        // why the first one does not stop flying when it arrives.
+        if (!this.touchStick.down(t.identifier, bx, by)) {
+          this.throttleStick.down(t.identifier, bx, by);
+        }
+      } else if (e.type === 'touchmove') {
+        this.touchStick.move(t.identifier, bx, by);
+        this.throttleStick.move(t.identifier, bx, by);
+      } else {
+        this.touchStick.up(t.identifier);
+        this.throttleStick.up(t.identifier);
+      }
     }
-    // A finger lifted elsewhere can leave the stick owned by one that is no
-    // longer down, so the owner is checked against the live list as well.
-    if (this.touchStick.active) {
+    // A finger lifted elsewhere can leave a stick owned by one that is no
+    // longer down, so the owners are checked against the live list as well.
+    for (const s of [this.touchStick, this.throttleStick]) {
+      if (!s.active) continue;
       let stillDown = false;
-      for (const t of e.touches) if (t.identifier === this.touchStick.id) stillDown = true;
-      if (!stillDown) this.touchStick.up(this.touchStick.id);
+      for (const t of e.touches) if (t.identifier === s.id) stillDown = true;
+      if (!stillDown) s.up(s.id);
     }
 
-    const n = e.touches.length;
-    this.tapThrust = n >= 1;
-    this.touchFire = n >= 2;
+    this.tapThrust = e.touches.length >= 1;
   }
 
   // -- tilt -----------------------------------------------------------------
@@ -424,6 +440,7 @@ export class Input {
       this.padActive = false;
       this.padAnyButton = false;
       this.padThrust = 0;
+      this.padThrottle = 0;
       this.padFire = false;
       return;
     }
@@ -458,6 +475,18 @@ export class Input {
 
     // Right trigger or A for full power, left trigger or X to hover.
     this.padThrust = (btn(7) || btn(0)) ? 2 : (btn(6) || btn(2)) ? 1 : 0;
+
+    // ... and the right-hand stick, pushed up, is a throttle. It is the one
+    // control on the pad that can ask for part of the power rather than all
+    // of it, which is what makes a gentle descent something you fly rather
+    // than something you feather with a trigger. Down is nothing, so resting
+    // a thumb on it does not fly the craft; the buttons still work alongside
+    // and whichever is asking for more wins.
+    const THROTTLE_DEAD = 0.12;
+    const up = -axis(3);
+    this.padThrottle = up > THROTTLE_DEAD
+      ? Math.min(1, (up - THROTTLE_DEAD) / (0.95 - THROTTLE_DEAD))
+      : 0;
     this.padFire = btn(5) || btn(1) || btn(4);
 
     let any = false;
@@ -488,8 +517,9 @@ export class Input {
     this._pollPad();
 
     const tilt = this._tiltStick();
-    // The stick's ring fades in and out whether or not it is steering.
+    // The rings fade in and out whether or not they are steering.
     this.touchStick.tick(1 / 50);
+    this.throttleStick.tick(1 / 50);
     // Touch wins when it has been chosen, or when there is no tilt to be had.
     const touch = (this.steerMode === 'touch' || !tilt) ? this.touchStick.stick : null;
 
@@ -505,13 +535,30 @@ export class Input {
       this.stick = this.mouseStick;
     }
 
-    // Thrust and fire, from whichever source is active.
+    // Thrust, from whichever source is active, and how much of it.
+    //
+    // Most sources only say yes or no, so they ask for all of it. Two say how
+    // much: a second thumb on the screen, and the right-hand stick on a pad.
+    // Whichever of those is in use owns the power while it is.
     let thrust = this.mouseThrust;
+    let throttle = 1;
     if (this.touchThrust || this.tapThrust) thrust = 2;
     if (k.has('KeyZ') || k.has('Space')) thrust = 2;
     else if (k.has('KeyX')) thrust = thrust || 1;
     if (this.padThrust) thrust = this.padThrust;
+
+    // A second thumb takes the power over. Until one arrives, one finger on
+    // the glass is still simply "fly", which is what it has always been --
+    // so nobody has to know about the throttle to get off the ground.
+    if (this.throttleStick.active) {
+      throttle = this.throttleStick.value;
+      thrust = throttle > 0 ? 2 : 0;
+    } else if (this.padThrottle > 0) {
+      throttle = this.padThrottle;
+      thrust = 2;
+    }
     this.thrust = thrust;
+    this.throttle = throttle;
 
     this.fire = this.mouseFire || this.touchFire || this.padFire
       || k.has('KeyC') || k.has('ShiftLeft');

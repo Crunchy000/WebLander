@@ -354,7 +354,12 @@ export class Player {
 
   // `stick` is the control input as x/y in [-1, 1]; `thrust` is 0, 1 (hover)
   // or 2 (full); `fire` is a boolean.
-  update(stick, thrust, fire, gravity, game) {
+  // `throttle` is how much of the full power is being asked for, 0 to 1. Most
+  // ways of asking only say yes, and say it as 1; a second thumb on the glass
+  // and the right-hand stick on a pad can say how much. Hover is not scaled --
+  // it is a setting rather than an amount, and a half-strength hold that does
+  // not hold is no use to anybody.
+  update(stick, thrust, fire, gravity, game, throttle = 1) {
     if (this.dead) {
       this.deathTimer--;
       return;
@@ -459,7 +464,8 @@ export class Player {
     const holding = thrust === 1 && !this.landed && this.altitude > HOVER_CLEAR;
 
     if (thrust) {
-      const power = (thrust === 2 ? THRUST_FULL : THRUST_HOVER) * lift;
+      const t = thrust === 2 ? Math.max(0, Math.min(1, throttle)) : 1;
+      const power = (thrust === 2 ? THRUST_FULL * t : THRUST_HOVER) * lift;
       // "Up" in ship space is -y, since y points down.
       const up = matApply(this.matrix, 0, -1, 0);
       this.vx = (this.vx + up[0] * power) | 0;
@@ -471,7 +477,9 @@ export class Player {
 
       // Rotors turning still cost something, but pushing at a ceiling for no
       // lift should not drain the pack at the full rate.
-      const draw = thrust === 2 ? DRAW_FULL : DRAW_HOVER;
+      // Half the power costs about half the pack, which is the whole reason
+      // to have a throttle in a machine that runs out.
+      const draw = thrust === 2 ? DRAW_FULL * (0.25 + 0.75 * t) : DRAW_HOVER;
       this.charge -= draw * (0.35 + 0.65 * lift);
       if (this.charge < 0) this.charge = 0;
 

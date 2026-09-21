@@ -16,7 +16,7 @@ import { depthAt, waveLift, seaShade } from './sea.js';
 import { updateWeather, drawWeather, resetWeather, weather, SNOW } from './weather.js';
 import { drawClouds } from './clouds.js';
 import { project, SCREEN_W, SCREEN_H, CENTRE_X } from './renderer.js';
-import { drawTouchStick } from './stick.js';
+import { drawTouchStick, drawThrottle } from './stick.js';
 import { Player, GRAVITY_START, CHARGE_MAX, HULL_HITS } from './player.js';
 import { drawModel, drawShadow, drawLightPool, silhouetteAmount } from './model.js';
 import {
@@ -268,7 +268,7 @@ export class Game {
     }
 
     // Playing.
-    this.player.update(inp.stick, inp.thrust, inp.fire, this.gravity, this);
+    this.player.update(inp.stick, inp.thrust, inp.fire, this.gravity, this, inp.throttle);
     this.audio.engine(this.player.thrusting);
 
     sampleRibbon(this.player);
@@ -440,6 +440,7 @@ export class Game {
     // screen that is not part of the world -- it is the player's own thumb,
     // drawn back at them.
     drawTouchStick(this.rd, this.input.touchStick && this.input.touchStick.furniture);
+    drawThrottle(this.rd, this.input.throttleStick && this.input.throttleStick.furniture);
 
     rd.flush();
   }

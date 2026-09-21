@@ -150,6 +150,86 @@ export class TouchStick {
   }
 }
 
+// --- the throttle ----------------------------------------------------------
+//
+// A second thumb, and all it does is say how hard. Up is more.
+//
+// It is one axis on purpose. A throttle that also steered would be two
+// controls fighting over one thumb, and the thing a second thumb is good for
+// is exactly the thing a first thumb is bad at: holding a steady amount while
+// the other hand is busy doing something else.
+//
+// Straight, with no curve on it. Steering wants a soft middle because most
+// steering is small corrections around nothing; power is not like that --
+// half power means half power, and a curve there is a throttle that lies
+// about where it is.
+const THROTTLE_TRAVEL = 52;     // buffer pixels from nothing to everything
+const THROTTLE_DEAD = 0.06;
+
+export class ThrottleStick {
+  constructor() {
+    this.reset();
+  }
+
+  reset() {
+    this.id = null;
+    this.ox = 0; this.oy = 0;
+    this.py = 0;
+    this.value = 0;
+    this.show = 0;
+  }
+
+  get active() {
+    return this.id !== null;
+  }
+
+  // Where the thumb lands is nothing at all, and the travel is upwards from
+  // there. That way the whole of it is above the thumb, where there is room,
+  // rather than half of it being wasted below.
+  down(id, bx, by) {
+    if (this.id !== null) return false;
+    this.id = id;
+    this.ox = bx;
+    this.oy = this.py = by;
+    this.value = 0;
+    return true;
+  }
+
+  move(id, bx, by) {
+    if (id !== this.id) return;
+    this.py = by;
+    // The zero trails downwards, so a thumb that has slid below where it
+    // started does not have to climb back over its own history.
+    if (by > this.oy) this.oy = by;
+    let v = (this.oy - by) / THROTTLE_TRAVEL;
+    if (v < 0) v = 0; else if (v > 1) v = 1;
+    this.value = v <= THROTTLE_DEAD ? 0 : (v - THROTTLE_DEAD) / (1 - THROTTLE_DEAD);
+  }
+
+  up(id) {
+    if (id !== this.id) return;
+    // Springs back. Letting go of a throttle in a game about setting down
+    // gently should mean the engine easing off, not staying wherever it was.
+    this.id = null;
+    this.value = 0;
+  }
+
+  tick(dt) {
+    const tau = this.active ? FADE_IN : FADE_OUT;
+    const k = 1 - Math.exp(-dt / tau);
+    this.show += ((this.active ? 1 : 0) - this.show) * k;
+    if (this.show < 0.002) this.show = 0;
+  }
+
+  get furniture() {
+    if (this.show <= 0) return null;
+    const top = this.oy - THROTTLE_TRAVEL;
+    let y = this.py;
+    if (y < top) y = top; else if (y > this.oy) y = this.oy;
+    return { x: this.ox, y0: this.oy, y1: top, knobY: y, alpha: this.show, value: this.value };
+  }
+}
+
 // --- drawing ---------------------------------------------------------------
 //
 // A ring where the middle is and a knob where the thumb is. Quiet: this is a
@@ -194,6 +274,27 @@ export function drawTouchStick(rd, f) {
            f.knobX + Math.cos(t1) * kr, f.knobY + Math.sin(t1) * kr,
            knobCol);
   }
+}
+
+// The throttle: a track with a filled part and a knob on it. Narrow, because
+// it lives under a thumb and the thumb is already showing you where it is.
+export function drawThrottle(rd, f) {
+  if (!f) return;
+  const a = f.alpha;
+  const w = 2;
+  ringCol[0] = RING[0]; ringCol[1] = RING[1]; ringCol[2] = RING[2];
+  ringCol[3] = Math.round(55 * a);
+  rd.rect(f.x - w, f.y1, w * 2, f.y0 - f.y1, ringCol);
+
+  // How much of it is in use, filled from the bottom.
+  knobCol[0] = KNOB[0]; knobCol[1] = KNOB[1]; knobCol[2] = KNOB[2];
+  knobCol[3] = Math.round(120 * a);
+  const filled = (f.y0 - f.y1) * f.value;
+  if (filled > 0) rd.rect(f.x - w, f.y0 - filled, w * 2, filled, knobCol);
+
+  knobCol[3] = Math.round(170 * a);
+  const kr = 6;
+  rd.rect(f.x - kr, f.knobY - 2, kr * 2, 4, knobCol);
 }
 
 export { RADIUS as STICK_RADIUS };
