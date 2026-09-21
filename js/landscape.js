@@ -7,7 +7,7 @@
 // it as you fly, which is why the horizon never moves.
 
 import { TILE, sinLookup } from './maths.js';
-import { SCREEN_W } from './renderer.js';
+import { SCREEN_W, FOCAL_X } from './renderer.js';
 import { sky, litColour, silhouetteDark } from './daylight.js';
 import { groundBase, tintFor, tintLevel, TINT_STEPS } from './biome.js';
 import { serene } from './style.js';
@@ -25,23 +25,47 @@ export const LAUNCHPAD_SIZE    = TILE * 8;          // 8 tiles square
 export const UNDERCARRIAGE_Y   = 0x00640000;        // ship centre -> feet
 export const LAUNCHPAD_Y       = LAUNCHPAD_ALT - UNDERCARRIAGE_Y;
 
-// The visible grid. Its width is set by the screen: the farthest row is 26
-// tiles out, so at a focal length of 512 each tile of half-width buys about
-// 19px of screen either side of centre, and the grid must guarantee half the
-// buffer width at that distance or the horizon stops short of the corners.
-// Widening the screen to 16:9 is what took this from 19 to 26.
+// The visible grid: a fixed slab of tiles that stays anchored to the camera
+// while the world slides through it.
 //
-// The buffer is cut to the shape of the display now, so this follows it: 26
-// corners at 456 pixels wide, and the same tiles per pixel at any other
-// width. Get it wrong downwards and the ground runs out before the corner of
-// the frame does, which is a wedge of sky where a hillside should be.
-const TILES_X_AT_456 = 26;
-export const TILES_X = 2 + Math.ceil((TILES_X_AT_456 - 2) * SCREEN_W / 456);
-export const TILES_Z = 17;   // corners front-to-back (16 tiles)
+// Twenty-four tiles deep, which puts the far row thirty-four tiles out. It
+// was sixteen, and twenty-six, and the extra eight are all about the join.
+// Real terrain is drawn out to the far row and a flat silhouette takes over
+// beyond it, and wherever that handover happens there is a line across the
+// picture where lit, textured ground meets a painted band. At twenty-six
+// tiles that line was close enough to see. At thirty-four it is a third
+// smaller on screen, far enough out to be at the end of the haze ramp, and
+// most of it is hidden behind the hills in front of it.
+export const TILES_Z = 25;   // corners front-to-back (24 tiles)
 
-export const LANDSCAPE_X = (TILE * (TILES_X - 2)) / 2;          // 5.5 tiles
-export const LANDSCAPE_Z_DEPTH = TILE * (TILES_Z - 1);          // 10 tiles
-export const LANDSCAPE_Z = LANDSCAPE_Z_DEPTH + 10 * TILE;       // 20 tiles out
+export const LANDSCAPE_Z_DEPTH = TILE * (TILES_Z - 1);          // 24 tiles
+export const LANDSCAPE_Z = LANDSCAPE_Z_DEPTH + 10 * TILE;       // 34 tiles out
+
+// How many tiles either side of centre the grid must reach. It is not a
+// taste: at the far row, one tile of half-width buys FOCAL_X/distance pixels
+// of screen, and the grid has to carry half the buffer's width at that
+// distance or the ground runs out before the corner of the frame does. It
+// used to be written as a count measured at one screen width and scaled; as
+// a formula it also tracks the depth, which matters because pushing the far
+// row further out makes every tile of width buy fewer pixels.
+const HALF_TILES = Math.ceil(((SCREEN_W / 2) * (LANDSCAPE_Z / TILE)) / FOCAL_X);
+export const TILES_X = 2 + 2 * HALF_TILES;
+
+export const LANDSCAPE_X = (TILE * (TILES_X - 2)) / 2;
+
+// Every ramp that shades the ground by distance -- the haze, the brightness
+// lift, the near-and-steep silhouette -- was written against a sixteen-tile
+// grid and indexed by row number. Row number is not distance: deepen the grid
+// and the same row is somewhere else entirely, so all three ramps would
+// stretch and the whole middle distance would change tone.
+//
+// They are anchored to the far edge the game was tuned at instead. A tile
+// eighteen tiles out is shaded exactly as it was before the grid was
+// deepened, and the rows added beyond the old far edge sit at the end of
+// every ramp, which is where you want them: fully hazed, so they dissolve
+// into the horizon rather than arriving as a new band of colour.
+const ROWS_AT_17 = 17;
+const ROW_SHIFT = TILES_Z - ROWS_AT_17;
 
 // The player sits in the middle of the landscape band, which puts the eye
 // LANDSCAPE_Z_MID behind them. CAMERA_PLAYER_Z is the gap between the player
@@ -288,7 +312,7 @@ export function tileColour(prevAlt, alt, row, wx, wz, lift = 0) {
   // it is the single largest source of visual noise here, and noise is the
   // one thing this style has no use for.
   if (serene() && alt !== LAUNCHPAD_ALT) {
-    const bare = (row + (slope >>> 21)) / 15;
+    const bare = (row - ROW_SHIFT + (slope >>> 21)) / 15;
     const lift = Math.min(1, Math.max(0, bare));
     const rgbS = [
       Math.round(Math.min(255, (r * 17) + (252 - r * 17) * lift * 0.62)),
@@ -317,7 +341,7 @@ export function tileColour(prevAlt, alt, row, wx, wz, lift = 0) {
     // ground and the effect would never once have fired. Saturating at 0.35
     // puts the top few per cent of faces at full silhouette, which is what
     // "a hill close ahead" means.
-    const near = (row - 1) / (TILES_Z - 2);
+    const near = Math.max(0, (row - 1 - ROW_SHIFT) / (ROWS_AT_17 - 2));
     const steep = Math.min(1, (slope / TILE) / 0.35);
     const sil = near * near * steep;
     if (sil > 0.01) {
@@ -341,7 +365,7 @@ export function tileColour(prevAlt, alt, row, wx, wz, lift = 0) {
     return litColour(rgbS, fogForRow(row));
   }
 
-  let bright = (row + (slope >>> 22)) | 0;
+  let bright = (row - ROW_SHIFT + (slope >>> 22)) | 0;
 
   // The distance ramp brightens all three channels by the same amount, and
   // used to be free to push them past the top of the range, where they
@@ -411,7 +435,7 @@ export function tileColour(prevAlt, alt, row, wx, wz, lift = 0) {
 // pushes the far rows towards solid and brings the near ones in as well, which
 // is what shrinks the world in bad visibility.
 export function fogForRow(row) {
-  const t = 1 - (row - 1) / (TILES_Z - 2);
+  const t = Math.min(1, 1 - (row - 1 - ROW_SHIFT) / (ROWS_AT_17 - 2));
   const reach = FOG_MAX + (1 - FOG_MAX) * sky.murk * 0.85;
   return Math.max(0, Math.min(1, reach * t * (t + sky.murk * (1 - t))));
 }

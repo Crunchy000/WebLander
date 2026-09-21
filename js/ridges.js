@@ -63,9 +63,9 @@ const PLAIN = LAND_MID_HEIGHT / TILE;
 // fifty-six tiles, because past half of that you are looking at the ground
 // behind you coming round the other way.
 const BANDS = [
-  { near: 90, far: 150, step: 7, dark: 0.15 },
-  { near: 50, far: 90, step: 4, dark: 0.31 },
-  { near: DRAWN_TO, far: 50, step: 2, dark: 0.50 },
+  { near: 100, far: 170, step: 8, dark: 0.14 },
+  { near: 60, far: 100, step: 5, dark: 0.26 },
+  { near: DRAWN_TO, far: 60, step: 2.5, dark: 0.40 },
 ];
 
 // The ground too close to have been drawn: from just in front of the camera
