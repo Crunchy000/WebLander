@@ -38,6 +38,7 @@ import { TILE } from './maths.js';
 import { sky, skyColourAt } from './daylight.js';
 import {
   landAltitude, tileColour, LAND_MID_HEIGHT, LANDSCAPE_Z, LANDSCAPE_Z_DEPTH, TILES_Z,
+  SEA_LEVEL,
 } from './landscape.js';
 import { SCREEN_W, SCREEN_H, CENTRE_X, CENTRE_Y, FOCAL_X, FOCAL_Y } from './renderer.js';
 
@@ -45,9 +46,27 @@ import { SCREEN_W, SCREEN_H, CENTRE_X, CENTRE_Y, FOCAL_X, FOCAL_Y } from './rend
 // starts. Everything nearer than this is already on the screen as tiles.
 const DRAWN_TO = LANDSCAPE_Z / TILE;
 
+// The lowest the ground ever gets, in tiles of world y: sea level. This is
+// what a band's foot is set from -- the row where the nearer edge of its
+// slice would be if the ground there were as low as ground can be.
+//
+// Mean height is the tempting figure and it is wrong, because a foot is not a
+// description, it is a guarantee. A band fills from its skyline down to its
+// foot and no further, so if the next band along has nothing in it that
+// reaches as high as that foot, the two do not overlap and there is a strip
+// of bare plain between them. Which was invisible while the plain was drawn
+// in front of the sun, and became a strip of sky with the sun sitting in it
+// the moment the sun moved forward: measured, a moon at row 103 with the
+// true skyline at 82, showing through a gap two bands wide.
+//
+// Taken at sea level the guarantee holds by construction: a band's foot is
+// at or below every possible ground row at that distance, and the next
+// band's skyline includes that distance, so it can never start lower.
+const FLOOR = SEA_LEVEL / TILE;
+
 // Mean ground level, in tiles of world y. Used for the rows that stand in for
-// ground rather than being sampled from it: where a band's near edge sits,
-// and where the haze meets the drawn landscape.
+// ground rather than being sampled from it: where the haze meets the drawn
+// landscape.
 const PLAIN = LAND_MID_HEIGHT / TILE;
 
 // The horizon in bands, near edge to far edge in tiles.
@@ -62,10 +81,25 @@ const PLAIN = LAND_MID_HEIGHT / TILE;
 // The far band stops well short of the world's period of two hundred and
 // fifty-six tiles, because past half of that you are looking at the ground
 // behind you coming round the other way.
+// The step along each bearing is finer for the near band and coarser for the
+// far one, because a step is a chance to walk over the top of a peak and a
+// peak missed near to hand costs more rows than one missed far off.
+//
+// Measured against a quarter-tile reference sweep over forty places and the
+// width of the screen, worst case and mean, in rows of error:
+//
+//   34-60 tiles   step 2.5 -> 4.8 / 1.01      step 1   -> 0.2 / 0.01
+//   60-100        step 5   -> 3.2 / 0.24      step 2.5 -> 0.8 / 0.07
+//   100-170       step 8   -> 8.0 / 1.05      step 5   -> 1.7 / 0.17
+//
+// None of that was the sun's problem -- that was the feet, below -- and at a
+// row or two of mean error the old steps were not visibly wrong either. They
+// are finer because a skyline that is within a fifth of a row of the truth
+// costs 0.05ms and removes a whole class of "why does that not line up".
 const BANDS = [
-  { near: 100, far: 170, step: 8, dark: 0.14 },
-  { near: 60, far: 100, step: 5, dark: 0.26 },
-  { near: DRAWN_TO, far: 60, step: 2.5, dark: 0.40 },
+  { near: 100, far: 170, step: 5, dark: 0.14 },
+  { near: 60, far: 100, step: 2.5, dark: 0.26 },
+  { near: DRAWN_TO, far: 60, step: 1, dark: 0.40 },
 ];
 
 // The ground too close to have been drawn: from just in front of the camera
@@ -119,7 +153,7 @@ function tint(dark, y, out) {
 // hard line across the picture where its skirt ends, and three of those read
 // as stripes rather than as distance. Ending each one in exactly the haze it
 // stands in leaves only the skyline, which is all a far range shows.
-let hazeY0 = 0, hazeY1 = 1;
+let hazeY0 = 0, hazeY1 = 1, hazeReady = false;
 function hazeAt(y, out) {
   let t = (y - hazeY0) / (hazeY1 - hazeY0);
   if (t < 0) t = 0; else if (t > 1) t = 1;
@@ -173,43 +207,43 @@ function fillUnder(rd, rows, footY, top, bottom) {
 // Drawn after the sky and before the landscape, which is all the ordering
 // they need: there is no depth buffer, so the order things are emitted in is
 // the order they stack.
-export function drawRidges(rd, camX, camY, camZ) {
-  const eye = camY / TILE;
-  // Where flat ground at mean height lands, at a given distance. The
-  // vanishing point is CENTRE_Y and everything below the eye falls away from
-  // it at FOCAL/z per tile -- the same projection the tiles go through.
-  const rowAt = (z) => CENTRE_Y + ((PLAIN - eye) * FOCAL_Y) / z;
+// Where flat ground at mean height lands, at a given distance. The vanishing
+// point is CENTRE_Y and everything below the eye falls away from it at
+// FOCAL/z per tile -- the same projection the tiles go through.
+function rowAt(z, camY, height = PLAIN) {
+  return CENTRE_Y + ((height - camY / TILE) * FOCAL_Y) / z;
+}
 
-  // The country between the drawn landscape and the horizon.
-  //
-  // From any height at all this is most of the picture: the drawn band stops
-  // at twenty-six tiles, so from the ceiling everything below the skyline is
-  // ground that is not there. Filling it with the bands' own skirts is what
-  // made the lower half of a high frame a flat wall.
-  //
-  // What it actually is, is a plain going away from you. Sky at the top,
-  // because ground far enough off is the colour of the sky it stands under,
-  // and at the bottom the exact colour the landscape uses for its own far
-  // edge -- arrived at on the row where that edge lands, so the real ground
-  // comes up out of the haze rather than against a seam.
-  // It starts at the vanishing point, which is where the ground's own horizon
-  // is. That is not a detail: the camera looks level, so CENTRE_Y is eye
-  // level, and every scrap of ground in the world is below the eye and
-  // therefore below that line. Anything drawn under it is underground.
-  //
-  // The bands cannot reach it -- the furthest stops at a hundred and fifty
-  // tiles, whose flat ground lands eighteen rows lower -- so starting the
-  // plain at the top band's foot left a strip of bare sky below the true
-  // horizon. Which would be invisible, except that the sun's arc dips to row
-  // 132, well under eye level, so for about a fifth of the day the sun sat in
-  // that strip: below the horizon, in front of the hills, lit like noon. That
-  // is the sun that would not get behind the mountains. It was never an
-  // ordering fault -- it was drawn first all along -- there was simply
-  // nothing there to hide it.
-  //
-  // At the seam the plain is the sky's own colour, so nothing shows; what
-  // changes is that a body setting into it now sets.
-  const meet = Math.min(SCREEN_H, rowAt(DRAWN_TO));
+// The far country, in two passes with the sky's own furniture between them.
+//
+// The plain goes down first, then the sun and the moon are drawn onto it,
+// then the terrain bands go over the top. That order is the whole of it: a
+// body is hidden by hills, which are things, and not by haze, which is only
+// the colour of distance. Drawn in one pass, with the plain in front of the
+// sun, a setting sun vanished at the vanishing point -- forty rows above the
+// skyline, in the middle of an apparently empty sky, with nothing there to
+// explain it.
+//
+// This pass is the country between the drawn landscape and the horizon. From
+// any height at all it is most of the picture: the tiles stop at thirty-four
+// tiles out, so from the ceiling everything below the skyline is ground that
+// is not there. Filling it with the bands' own skirts is what once made the
+// lower half of a high frame a flat wall.
+//
+// What it is, is a plain going away from you. Sky at the top, because ground
+// far enough off is the colour of the sky it stands under, and at the bottom
+// the exact colour the landscape uses for its own far edge -- arrived at on
+// the row where that edge lands, so the real ground comes up out of the haze
+// rather than against a seam.
+//
+// It starts at the vanishing point, because that is where the ground's own
+// horizon is: the camera looks level, so CENTRE_Y is eye level, and every
+// scrap of ground in this world is below the eye and therefore below that
+// line. The bands cannot reach it -- the furthest stops at a hundred and
+// seventy tiles, whose flat ground lands sixteen rows lower -- so without the
+// plain there is a strip of bare sky under the true horizon.
+export function drawHorizonHaze(rd, camX, camY, camZ) {
+  const meet = Math.min(SCREEN_H, rowAt(DRAWN_TO, camY));
   hazeY0 = CENTRE_Y; hazeY1 = Math.max(CENTRE_Y + 1, meet);
   {
     const s = skyColourAt(CENTRE_Y);
@@ -219,9 +253,29 @@ export function drawRidges(rd, camX, camY, camZ) {
     if (meet > CENTRE_Y) rd.gradientBand(CENTRE_Y, meet, hazeTop, hazeFoot);
     if (meet < SCREEN_H) rd.gradientBand(Math.max(CENTRE_Y, meet), SCREEN_H, hazeFoot, hazeFoot);
   }
+  hazeReady = true;
+}
 
+// What is behind a given row, for anything drawn onto it: sky above the
+// horizon, and the haze of the plain below it.
+//
+// The sun and the moon need this. Their coronas are opaque squares stepped
+// towards the colour behind them, so "the colour behind them" has to be the
+// truth or the corona reads as a pale box rather than as glow -- and below
+// the horizon the truth is ground, not sky.
+export function backdropAt(y, out) {
+  if (y <= CENTRE_Y || !hazeReady) {
+    const s = skyColourAt(y);
+    out[0] = s[0]; out[1] = s[1]; out[2] = s[2];
+    return out;
+  }
+  return hazeAt(y, out);
+}
+
+// ... and then the hills, which are what actually hides anything.
+export function drawRidges(rd, camX, camY, camZ) {
   for (const band of BANDS) {
-    const footY = rowAt(band.near);
+    const footY = rowAt(band.near, camY, FLOOR);
     if (footY <= 0) continue;
     skylineBetween(band.near, band.far, band.step, camX, camY, camZ, skyline);
     let top = Infinity;

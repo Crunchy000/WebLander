@@ -9,7 +9,7 @@ import {
 import {
   sky, sun, moon, STARS, advanceDay, skyColourAt, SKY_BAND_1, SKY_BAND_2, beacon,
 } from './daylight.js';
-import { drawRidges, drawNearGround } from './ridges.js';
+import { drawRidges, drawNearGround, drawHorizonHaze, backdropAt } from './ridges.js';
 import { sampleRibbon, drawRibbon, resetRibbon } from './ribbon.js';
 import { serene } from './style.js';
 import { depthAt, waveLift, seaShade } from './sea.js';
@@ -79,6 +79,24 @@ export const STEP_MS = 20;
 const LOW_CHARGE = 0.22;
 const WARN_SLOW = 60;    // frames between beeps as it first turns red
 const WARN_FAST = 15;    // ... and with the last of it
+
+// Somewhere to put the colour behind whichever body is up.
+const backTop = [0, 0, 0], backBottom = [0, 0, 0];
+
+// One step of a corona: a square stepped from whatever is behind it towards
+// the body's own colour.
+//
+// Shaded top to bottom rather than filled flat, because what is behind it is
+// not one colour. Low in the frame a body straddles the horizon, with sky
+// above the line and the haze of the far plain below it, and a square mixed
+// against a single sample of that reads as a pale box sitting on the sky
+// instead of as glow.
+function corona(rd, cx, cy, w, col, mix) {
+  const x0 = Math.round(cx - w / 2), y0 = Math.round(cy - w / 2), y1 = y0 + w;
+  const a = mixCol(backdropAt(y0, backTop), col, mix);
+  const b = mixCol(backdropAt(y1, backBottom), col, mix);
+  rd.quadShaded(x0, y0, a, x0 + w, y0, a, x0 + w, y1, b, x0, y1, b);
+}
 
 export class Game {
   constructor(renderer, input, audio) {
@@ -413,16 +431,20 @@ export class Game {
     rd.gradientBand(SKY_BAND_1, SKY_BAND_2, sky.mid, sky.horizon);
     rd.gradientBand(SKY_BAND_2, SCREEN_H, sky.horizon, sky.horizon);
 
-    // ... then the stars and whichever of the sun or moon is up. They belong
-    // here, hard against the sky, because they are the furthest things there
-    // are: the sun is not in front of a mountain range, and a moon rising
-    // behind a balloon does not pass in front of it. They used to be drawn
-    // after both, which is exactly what you saw.
+    // Stars next, because a star below the horizon has set: the haze of the
+    // far plain goes in after them and takes them with it.
     this.drawStars();
-    this.drawCelestial();
 
-    // Ranges stand between the sky and everything else, so they go in here --
-    // after the sky, before a single tile of landscape.
+    // The plain beyond the drawn landscape, and then the sun or the moon
+    // standing on it, and only then the hills.
+    //
+    // The two halves of the horizon are deliberately either side of the sky's
+    // furniture. A body should be hidden by hills, which are things, and not
+    // by haze, which is only the colour of distance -- and with the haze in
+    // front of it a setting sun disappeared forty rows above the skyline in
+    // the middle of an empty sky.
+    if (serene()) drawHorizonHaze(rd, eyeX, eyeY, eyeZ);
+    this.drawCelestial();
     if (serene()) drawRidges(rd, eyeX, eyeY, eyeZ);
 
     // Balloons beyond the drawn landscape have no row to be bucketed into, so
@@ -492,15 +514,13 @@ export class Game {
     const rd = this.rd;
 
     if (sun.up) {
-      // Three squares, each a step closer to the sun's colour from the sky
-      // behind it, so the corona steps outwards in bands rather than ending
-      // at a hard edge. Drawn outside-in, painter's algorithm doing the rest.
-      const back = skyColourAt(sun.y);
+      // Three squares, each a step closer to the sun's colour from whatever
+      // is behind it, so the corona steps outwards in bands rather than
+      // ending at a hard edge. Drawn outside-in, painter's algorithm doing
+      // the rest.
       const s = sun.size;
       for (const [scale, mix] of [[2.6, 0.20], [1.8, 0.42], [1.3, 0.68]]) {
-        const w = Math.round(s * scale);
-        rd.rect(Math.round(sun.x - w / 2), Math.round(sun.y - w / 2), w, w,
-                mixCol(back, sun.col, mix));
+        corona(rd, sun.x, sun.y, Math.round(s * scale), sun.col, mix);
       }
       rd.rect(Math.round(sun.x - s / 2), Math.round(sun.y - s / 2), s, s, sun.col);
     }
@@ -510,13 +530,10 @@ export class Game {
       // wide square of pale grey against a black sky does not read as glow --
       // it reads as a grey square, which is what the first attempt looked
       // like.
-      const back = skyColourAt(moon.y);
       const s = moon.size;
       const face = [236, 242, 255];
       for (const [scale, mix] of [[2.0, 0.07], [1.45, 0.17]]) {
-        const w = Math.round(s * scale);
-        rd.rect(Math.round(moon.x - w / 2), Math.round(moon.y - w / 2), w, w,
-                mixCol(back, face, mix));
+        corona(rd, moon.x, moon.y, Math.round(s * scale), face, mix);
       }
       const mx = Math.round(moon.x - s / 2), my = Math.round(moon.y - s / 2);
       rd.rect(mx, my, s, s, face);
