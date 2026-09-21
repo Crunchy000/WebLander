@@ -412,7 +412,7 @@ export class Game {
 
     // Ranges stand between the sky and everything else, so they go in here --
     // after the sky, before a single tile of landscape.
-    if (serene()) drawRidges(rd, eyeX, eyeZ);
+    if (serene()) drawRidges(rd, eyeX, eyeY, eyeZ);
 
     // Balloons beyond the drawn landscape have no row to be bucketed into, so
     // they get a pass of their own -- here, after the ranges. They went in
