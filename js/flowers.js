@@ -127,10 +127,13 @@ function flower(petals, radius, bud, height, col, edge, spent = false) {
   // in the middle is a diamond, and a tulip is a long taper into a short
   // crown.
   const bx = cx + tipX * 0.6, by = top - len * 0.63;
+  // Every other belly vertex is lifted, which costs nothing and turns the
+  // top of the bud into a crown of uneven points rather than a cone: it is
+  // the difference between a tulip and a cut gem, and it is one term.
   const rim = [];
   for (let i = 0; i < petals; i++) {
     const t = (i / petals) * Math.PI * 2 + 0.4;
-    rim.push(v(bx + Math.cos(t) * rr, by, Math.sin(t) * rr));
+    rim.push(v(bx + Math.cos(t) * rr, by - (i & 1 ? len * 0.13 : 0), Math.sin(t) * rr));
   }
   for (let i = 0; i < petals; i++) {
     const j = (i + 1) % petals;
@@ -142,22 +145,27 @@ function flower(petals, radius, bud, height, col, edge, spent = false) {
 }
 
 // Built once per paper colour per biome: three sizes and petal counts, which
-// is enough variety at a third of a tile across. Any more and the extra is
-// invisible and the table is four times the size.
+// is enough variety at half a tile tall. Any more and the extra is invisible
+// and the table is four times the size.
 // Four or five sides to the bud, and never six. Every triangle is charged for
 // at full price by the rasteriser whether it covers four pixels or four
 // hundred, so a sixth fold is a twenty per cent tax on the whole layer for an
 // edge nobody can see.
 //
-// A third of a tree tall. They were a tenth of that, which was the right size
-// for something to notice and the wrong size for something to visit: the
-// hummingbird takes nectar off them now, and you cannot aim at a speck. The
-// small trees stand 1.17 tiles and the tall ones 1.80, so these run from 0.33
-// to 0.56 -- knee-high next to a tree, and about the size of the bird itself.
+// Half a tree tall. They were a tenth of that, which was the right size for
+// something to notice and the wrong size for something to visit: the
+// hummingbird takes nectar off them now, and you cannot aim at a speck. Stem
+// and bud together they run 0.50 to 0.80 tiles against a small tree's 1.17
+// and a tall one's 1.80.
+//
+// The bud is two fifths of that, and longer than it is wide -- a head sized
+// to be aimed at rather than looked for. The stems were cut back by the same
+// amount the bud grew, so the plant stands where it stood and the flower on
+// top of it is what got bigger.
 const SHAPES = [
-  { petals: 5, radius: 0.084, bud: 0.200, height: 0.560 },
-  { petals: 4, radius: 0.072, bud: 0.165, height: 0.420 },
-  { petals: 5, radius: 0.060, bud: 0.135, height: 0.330 },
+  { petals: 5, radius: 0.105, bud: 0.330, height: 0.470 },
+  { petals: 4, radius: 0.090, bud: 0.275, height: 0.355 },
+  { petals: 5, radius: 0.076, bud: 0.225, height: 0.275 },
 ];
 
 const KINDS = PAPERS.map((papers) => {
