@@ -10,7 +10,7 @@ import {
   sky, sun, moon, STARS, advanceDay, skyColourAt, SKY_BAND_1, SKY_BAND_2, beacon,
 } from './daylight.js';
 import { drawRidges, drawNearGround, drawHorizonHaze, backdropAt } from './ridges.js';
-import { flowersInRow } from './flowers.js';
+import { flowersInRow, nearestFlower, takeFlower, resetFlowers } from './flowers.js';
 import { sampleRibbon, drawRibbon, resetRibbon } from './ribbon.js';
 import { serene } from './style.js';
 import { depthAt, waveLift, seaShade } from './sea.js';
@@ -65,6 +65,18 @@ const DEATH_MESSAGE = {
 // Two seconds is long enough to line up the next one and short enough that
 // the run has to be flown rather than wandered.
 const LANTERN_SCORE = 10;
+
+// Nectar. Half a second of holding station buys a fourteenth of the pack,
+// which is about ten seconds of hovering -- so a meadow pays for the time
+// spent crossing it and a little over, and a long flight between two of them
+// still has to be planned.
+const NECTAR_SCORE = 12;
+const NECTAR = CHARGE_MAX / 14;
+const SIP_REACH = 0.62;            // tiles, horizontally
+const SIP_ABOVE = 1.15;            // ... and how far above the bloom
+const SIP_SPEED = 0x01000000 * 0.03;
+const SIP_FRAMES = 26;             // just over half a second
+const NECTAR_RUN_GAP = 6 * 50;     // and six seconds between flowers keeps a run
 const LANTERN_RUN_GAP = 100;
 
 const STARTING_LIVES = 4;
@@ -144,6 +156,7 @@ export class Game {
     resetBalloons();
     resetLanterns();
     resetWeather();
+    resetFlowers();
     this.player.reset();
     // A fresh flight starts with the power in the pilot's hands rather than
     // wherever the last one left it.
@@ -192,6 +205,68 @@ export class Game {
 
   onSecondaryBlast() {
     this.audio.secondary();
+  }
+
+  // Nectar.
+  //
+  // The bird holds station at a flower and drinks, and what it gets is
+  // charge -- which makes a meadow a fuel stop and turns the battery from a
+  // countdown into a route. Nothing else in the game gives you charge except
+  // sitting on the ground, and sitting on the ground is the one thing a
+  // hummingbird is bad at.
+  //
+  // Hovering is the whole of the skill. It is not a pickup you fly through:
+  // you have to be over the bloom, near its height, and nearly stopped, and
+  // hold it there for half a second. That is exactly the manoeuvre this
+  // airframe is for, and the one the throttle and the stick were tuned
+  // around -- so the reward and the control scheme are asking for the same
+  // thing, which is the only kind of objective worth adding.
+  sipNectar(p) {
+    const near = p.landed || p.dead ? null
+               : nearestFlower(p.x, p.z, sky.tick, SIP_REACH);
+    let sipping = false;
+    if (near) {
+      // Above the bloom, within reach of it, and slow.
+      const over = (near.bloom - p.y) / TILE;
+      sipping = over > -0.35 && over < SIP_ABOVE && p.speed < SIP_SPEED;
+    }
+
+    if (!sipping) {
+      this.sipFor = Math.max(0, (this.sipFor || 0) - 3);
+      if (!this.sipFor) this.sipAt = 0;
+      return;
+    }
+    if (this.sipAt !== near.id) { this.sipAt = near.id; this.sipFor = 0; }
+    this.sipFor++;
+
+    // A few grains of pollen while it is going on, so the hold has something
+    // to show for itself before it pays.
+    if (this.sipFor % 4 === 0) spawnSparks(near.x, near.bloom, near.z, 1);
+
+    if (this.sipFor < SIP_FRAMES) return;
+    this.sipFor = 0;
+    this.sipAt = 0;
+    takeFlower(near.id, sky.tick);
+
+    p.charge = Math.min(CHARGE_MAX, p.charge + NECTAR);
+    spawnSparks(near.x, near.bloom, near.z, 8);
+
+    // The same run the lanterns keep: a line of flowers taken without a
+    // pause is a phrase rather than the same note eight times. It is a slower
+    // phrase, though, and it gets a longer window to stay in: a lantern is
+    // taken by flying through it, while a flower has to be crept up on and
+    // held at walking pace for half a second, so the two seconds the lanterns
+    // allow would end a run that was never actually broken.
+    if (this.nectarRun === undefined || this.nectarAt === undefined ||
+        sky.tick - this.nectarAt > NECTAR_RUN_GAP) {
+      this.nectarRun = 0;
+    }
+    this.audio.lantern(this.nectarRun);
+    const pts = NECTAR_SCORE * (1 + Math.min(this.nectarRun, 7));
+    this.addScore(pts);
+    this.nectarRun++;
+    this.nectarAt = sky.tick;
+    this.setMessage('nectar  +' + pts, 50);
   }
 
   // A lantern gathered off the water.
@@ -292,6 +367,9 @@ export class Game {
 
     // Playing.
     this.player.update(inp.stick, inp.thrust, inp.fire, this.gravity, this, inp.throttle);
+    // Gated on the style for the same reason the drawing is: a flower you
+    // can drink from and cannot see would be worse than no flower at all.
+    if (serene() && this.state === STATE.PLAYING) this.sipNectar(this.player);
     this.audio.engine(this.player.thrusting);
 
     sampleRibbon(this.player);
@@ -705,7 +783,7 @@ export class Game {
     // Flowers stand on the ground this row has just drawn, and under
     // anything else standing on it.
     if (serene()) {
-      flowersInRow(this.rd, this.rowWorldZ[row], row, eyeX, eyeY, eyeZ, haze);
+      flowersInRow(this.rd, this.rowWorldZ[row], row, eyeX, eyeY, eyeZ, haze, sky.tick);
     }
 
     const list = this.pending[row];

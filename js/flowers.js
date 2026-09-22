@@ -13,9 +13,12 @@
 //
 // Two rules keep it cheap.
 //
-// They only exist near you. A flower is about a fifth of a tile across, which
-// at the far edge of the drawn landscape is a third of a pixel -- so the far
-// two thirds of the rows are skipped outright rather than drawn and lost.
+// They only exist near you: the nearest nine rows of the landscape, which is
+// the ground from about eighteen tiles in. Drawn from every row instead, the
+// layer is three times the size -- 197 flowers in a view against 67, 2600
+// triangles against 880 -- and costs about a sixth of the frame's drawing
+// time (2.5 to 3.1ms against 2.2 to 2.4 at the same spot), all of it spent on
+// ground that is behind the haze and mostly behind the trees as well.
 //
 // They come in patches. A second, much coarser hash decides whether a stretch
 // of ground is a meadow at all, so most of the world has none and the places
@@ -59,68 +62,132 @@ PAPERS[DESERT] = [
   [[248, 214, 110], [216, 180, 76]],    // sand yellow
   [[196, 120, 200], [162, 92, 166]],    // desert mallow
 ];
-const STEM = [86, 128, 74];
+// The green is paper green, not leaf green: the folded flowers this is after
+// are cut from a bright card that no plant is actually that colour.
+const STEM = [122, 196, 70];
+const LEAF = [142, 214, 78];
 
-// --- the shapes ------------------------------------------------------------
+// --- the fold --------------------------------------------------------------
 //
-// Three folds, and all of them small. Petals radiate from the top of a short
-// stem and cup upwards, which is what makes them catch the light from above
-// and read as a flower rather than as a coloured speck: the underside of a
-// petal is in shadow and the top is not, and at this size that difference is
-// the whole of the shape.
+// A tulip, folded: a pointed bud that swells at the belly and closes again at
+// the tip, on a straight stem with a long leaf on each side. It was a daisy
+// before -- petals laid flat and open around a centre -- which is the shape a
+// flower has when you draw it from above, and these are almost never seen
+// from above. From the air at a bird's height you see the side of it, and a
+// flat daisy from the side is a line.
+//
+// The bud is a spindle rather than a cup, so it is closed: no hole at the top
+// to see the ground through, and no inside faces to sort. Every face points
+// away from the middle of the bud, which is what lets facet() light them from
+// their own normals and get the fold lines for nothing.
 //
 // The stem is a quad rather than a pair of triangles standing at right
 // angles, because it is one pixel wide and nobody is going to see round it.
-const STEM_W = 0.012;
+const STEM_W = 0.024;
 
-function flower(petals, radius, cup, height, col, edge) {
+function flower(petals, radius, bud, height, col, edge, spent = false) {
   const m = new Model();
   const v = (x, y, z) => m.vert(x, y, z);
 
   // Stem: a thin upright, leaning a little so a patch of them is not a
   // parade ground.
-  const lean = ((petals * 37) % 7 - 3) * 0.006;
+  const lean = ((petals * 37) % 7 - 3) * 0.018;
   const a = v(-STEM_W, 0, 0), b = v(STEM_W, 0, 0);
   const c = v(STEM_W + lean, -height, 0), d = v(-STEM_W + lean, -height, 0);
   m.face([a, b, c, d], shade(STEM, 0.92));
 
-  // The bloom: one triangle per petal, from a centre raised by the cup.
-  const cx = lean, cy = -height;
-  const centre = v(cx, cy - cup * 0.35, 0);
+  // A leaf each side, at different heights and lengths so the two sides are
+  // not a mirror. One triangle apiece: root at the stem, tip swept up and
+  // out, and a third point hung below the line between them, which is what
+  // gives a straight-edged triangle the belly of a long leaf. Flat in the
+  // screen plane and lit by hand rather than by facet(), because a flat leaf
+  // has one normal and would otherwise come out the same grey whichever way
+  // it pointed.
+  for (const side of [-1, 1]) {
+    const up = side < 0 ? 0.32 : 0.48;
+    const len = height * (side < 0 ? 0.46 : 0.54);
+    const y0 = -height * up;
+    const x0 = lean * up + side * STEM_W;
+    const root = v(x0, y0, 0);
+    const belly = v(x0 + side * len * 0.55, y0 - len * 0.26, 0);
+    const tip = v(x0 + side * len, y0 - len * 0.82, 0);
+    m.face([root, belly, tip], shade(LEAF, side < 0 ? 0.88 : 1));
+  }
+
+  // The bud. Spent, the head tips over and shrinks: a flower a hummingbird
+  // has just emptied has to read as empty from the air, or you will keep
+  // going back to it.
+  const cx = lean, top = -height;
+  const rr = spent ? radius * 0.56 : radius;
+  const len = spent ? bud * 0.52 : bud;
+  const tipX = spent ? rr * 1.6 : 0;          // how far the head hangs over
+  const base = v(cx, top + len * 0.06, 0);
+  const apex = v(cx + tipX, top - len, 0);
+  // The belly sits two thirds of the way up, not half: a bud that is widest
+  // in the middle is a diamond, and a tulip is a long taper into a short
+  // crown.
+  const bx = cx + tipX * 0.6, by = top - len * 0.63;
   const rim = [];
   for (let i = 0; i < petals; i++) {
-    const t = (i / petals) * Math.PI * 2;
-    rim.push(v(cx + Math.cos(t) * radius, cy - cup, Math.sin(t) * radius));
+    const t = (i / petals) * Math.PI * 2 + 0.4;
+    rim.push(v(bx + Math.cos(t) * rr, by, Math.sin(t) * rr));
   }
   for (let i = 0; i < petals; i++) {
     const j = (i + 1) % petals;
     // Alternating tone, so the folds read even when the light does not.
-    facet(m, [centre, rim[i], rim[j]], i % 2 ? col : edge);
+    facet(m, [base, rim[i], rim[j]], i % 2 ? col : edge);
+    facet(m, [rim[i], rim[j], apex], i % 2 ? edge : col);
   }
   return m;
 }
 
 // Built once per paper colour per biome: three sizes and petal counts, which
-// is enough variety at a tenth of a tile across. Any more and the extra is
+// is enough variety at a third of a tile across. Any more and the extra is
 // invisible and the table is four times the size.
-// Four or five petals, and never six. Every one of these is a handful of
-// pixels and every triangle in it is charged for at full price by the
-// rasteriser whether it covers four pixels or four hundred -- so a sixth
-// petal is a twenty per cent tax on the whole layer for a fold nobody can
-// see. The heart in the middle went the same way, for the same reason.
+// Four or five sides to the bud, and never six. Every triangle is charged for
+// at full price by the rasteriser whether it covers four pixels or four
+// hundred, so a sixth fold is a twenty per cent tax on the whole layer for an
+// edge nobody can see.
+//
+// A third of a tree tall. They were a tenth of that, which was the right size
+// for something to notice and the wrong size for something to visit: the
+// hummingbird takes nectar off them now, and you cannot aim at a speck. The
+// small trees stand 1.17 tiles and the tall ones 1.80, so these run from 0.33
+// to 0.56 -- knee-high next to a tree, and about the size of the bird itself.
 const SHAPES = [
-  { petals: 5, radius: 0.098, cup: 0.040, height: 0.140 },
-  { petals: 4, radius: 0.070, cup: 0.030, height: 0.102 },
-  { petals: 5, radius: 0.056, cup: 0.042, height: 0.078 },
+  { petals: 5, radius: 0.084, bud: 0.200, height: 0.560 },
+  { petals: 4, radius: 0.072, bud: 0.165, height: 0.420 },
+  { petals: 5, radius: 0.060, bud: 0.135, height: 0.330 },
 ];
 
 const KINDS = PAPERS.map((papers) => {
   const out = [];
   for (const [col, edge] of papers) {
-    for (const s of SHAPES) out.push(flower(s.petals, s.radius, s.cup, s.height, col, edge));
+    for (const s of SHAPES) out.push(flower(s.petals, s.radius, s.bud, s.height, col, edge));
   }
   return out;
 });
+
+// The same flowers, emptied: shut, and most of the colour gone out of them.
+const drained = (c) => [
+  Math.round(c[0] * 0.52 + 96 * 0.48),
+  Math.round(c[1] * 0.58 + 104 * 0.42),
+  Math.round(c[2] * 0.52 + 92 * 0.48),
+];
+const SPENT = PAPERS.map((papers) => {
+  const out = [];
+  for (const [col, edge] of papers) {
+    for (const s of SHAPES) {
+      out.push(flower(s.petals, s.radius, s.bud, s.height,
+                      drained(col), drained(edge), true));
+    }
+  }
+  return out;
+});
+
+// How tall each kind's bloom stands, in fixed point, so the bird knows what
+// height to hover at without asking the model.
+const BLOOM_Y = SHAPES.map((s) => ((s.height + s.bud * 0.5) * TILE) | 0);
 
 // --- where they are --------------------------------------------------------
 
@@ -134,40 +201,92 @@ const PATCH = 2;                  // tiles per patch, as a shift
 const PATCH_IN = 40;              // ... and how many patches in a hundred have anything
 const MAX_PER_TILE = 2;
 
-export function flowersInRow(rd, worldZ, row, camX, camY, camZ, haze) {
+// Every flower on one tile, handed to a callback. One function, used by both
+// the drawing and the bird, because a bird sipping at a flower that is not
+// drawn -- or drawn where it is not -- is the kind of fault that takes an
+// afternoon to find and one line to prevent.
+function eachInTile(tx, tz, fn) {
+  const patch = hash2(tx >> PATCH, tz >> PATCH);
+  if (patch % 100 >= PATCH_IN) return;
+
+  const h = hash2(tx, tz);
+  // How many, and it is thicker in the middle of a patch than at its edge.
+  const n = ((h >>> 3) % (MAX_PER_TILE + 1)) * ((patch >>> 9) % 100 < 35 ? 1 : 0)
+          + ((h >>> 11) & 1);
+  if (n <= 0) return;
+
+  const tileX = (tx * TILE) | 0, tileZ = (tz * TILE) | 0;
+  for (let k = 0; k < n; k++) {
+    const id = hash2(tx * 3 + k, tz * 7 - k);
+    const wx = (tileX + (id % TILE)) | 0;
+    const wz = (tileZ + ((id >>> 8) % TILE)) | 0;
+    if (isOnLaunchpad(wx, wz)) continue;
+    const base = landAltitude(wx, wz);
+    if (base >= SEA_LEVEL) continue;
+    const biome = floraBiome(wx, wz, id);
+    const kind = (id >>> 16) % KINDS[biome].length;
+    fn(id, wx, base, wz, biome, kind);
+  }
+}
+
+// --- what has been drunk ---------------------------------------------------
+//
+// A flower that has been emptied stays empty for a minute and then opens
+// again, which is the only reason this can be a Map at all: without the
+// regrowth it would be a list of every flower the player had ever passed,
+// growing for as long as they flew.
+const REGROW = 60 * 50;           // a minute, at fifty steps a second
+const taken = new Map();          // id -> the tick it was emptied
+
+export function isOpen(id, now) {
+  const t = taken.get(id);
+  return t === undefined || now - t > REGROW;
+}
+
+export function takeFlower(id, now) {
+  taken.set(id, now);
+  if (taken.size > 512) {
+    for (const [k, t] of taken) if (now - t > REGROW) taken.delete(k);
+  }
+}
+
+export function resetFlowers() {
+  taken.clear();
+}
+
+// The nearest open flower to a point, within a radius in tiles. Used by the
+// bird, which is the only thing that cares.
+export function nearestFlower(px, pz, now, maxR) {
+  const tx0 = px >> 24, tz0 = pz >> 24;
+  let best = null;
+  for (let dz = -1; dz <= 1; dz++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      eachInTile((tx0 + dx) | 0, (tz0 + dz) | 0, (id, wx, base, wz, biome, kind) => {
+        if (!isOpen(id, now)) return;
+        // Through | 0 so the world's wrap is the arithmetic's wrap.
+        const ox = ((wx - px) | 0) / TILE, oz = ((wz - pz) | 0) / TILE;
+        const d = Math.hypot(ox, oz);
+        if (d > maxR || (best && d >= best.d)) return;
+        best = { id, x: wx, z: wz, d, bloom: (base - BLOOM_Y[kind % SHAPES.length]) | 0 };
+      });
+    }
+  }
+  return best;
+}
+
+export function flowersInRow(rd, worldZ, row, camX, camY, camZ, haze, now) {
   if (row < NEAR_ROW) return 0;
   const tz = worldZ >> 24;
   const x0 = ((camX & ~(TILE - 1)) - LANDSCAPE_X) | 0;
   let drawn = 0;
 
   for (let i = 0; i < TILES_X; i++) {
-    const tileX = (x0 + i * TILE) | 0;
-    const tx = tileX >> 24;
-
-    // Is this a meadow at all?
-    const patch = hash2(tx >> PATCH, tz >> PATCH);
-    if (patch % 100 >= PATCH_IN) continue;
-
-    const h = hash2(tx, tz);
-    // How many, and it is thicker in the middle of a patch than at its edge.
-    const n = ((h >>> 3) % (MAX_PER_TILE + 1)) * ((patch >>> 9) % 100 < 35 ? 1 : 0)
-            + ((h >>> 11) & 1);
-    if (n <= 0) continue;
-
-    for (let k = 0; k < n; k++) {
-      const hk = hash2(tx * 3 + k, tz * 7 - k);
-      const wx = (tileX + (hk % TILE)) | 0;
-      const wz = (worldZ + ((hk >>> 8) % TILE)) | 0;
-      if (isOnLaunchpad(wx, wz)) continue;
-      const base = landAltitude(wx, wz);
-      if (base >= SEA_LEVEL) continue;
-
-      const biome = floraBiome(wx, wz, hk);
-      const kinds = KINDS[biome];
-      drawModel(rd, kinds[(hk >>> 16) % kinds.length], null,
-                wx, base, wz, camX, camY, camZ, haze, 0);
+    const tx = ((x0 + i * TILE) | 0) >> 24;
+    eachInTile(tx, tz, (id, wx, base, wz, biome, kind) => {
+      const set = isOpen(id, now) ? KINDS : SPENT;
+      drawModel(rd, set[biome][kind], null, wx, base, wz, camX, camY, camZ, haze, 0);
       drawn++;
-    }
+    });
   }
   return drawn;
 }
