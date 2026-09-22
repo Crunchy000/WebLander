@@ -31,20 +31,27 @@ jobs:
       # check is that every module still parses and evaluates. Each one is
       # imported for real, which catches syntax errors, bad import paths and
       # anything that throws at module scope before it reaches the site.
+      #
+      # The list is read off the directory rather than written out here. It
+      # used to be written out here, and it went stale the first time a file
+      # was renamed: it still named lanterns.js after that became lilies.js,
+      # which failed the build, and it had never named flowers.js, bird.js or
+      # either origami file at all -- so four modules were shipping unchecked.
       # main.js is skipped: it touches the DOM as soon as it loads.
       - name: Import every module
         run: |
           node --input-type=module -e '
-            const mods = ["maths", "daylight", "landscape", "model", "objects",
-                          "biome", "weather", "clouds", "sea", "renderer", "particles", "player", "uav", "tanks", "blocks", "sam", "ridges", "style", "music", "ribbon", "balloons", "lanterns",
-                          "boats", "font", "input", "audio", "game", "tilt", "stick"];
+            import { readdir } from "fs/promises";
+            const mods = (await readdir("./js"))
+              .filter((f) => f.endsWith(".js") && f !== "main.js")
+              .sort();
             let failed = false;
             for (const m of mods) {
               try {
-                await import("./js/" + m + ".js");
-                console.log("  ok   js/" + m + ".js");
+                await import("./js/" + m);
+                console.log("  ok   js/" + m);
               } catch (err) {
-                console.error("  FAIL js/" + m + ".js -- " + err.message);
+                console.error("  FAIL js/" + m + " -- " + err.message);
                 failed = true;
               }
             }
