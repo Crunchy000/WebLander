@@ -230,7 +230,7 @@ export function mergeAt(dst, src, dx, dy, dz) {
 
 // Light from above, a little to the left and ahead. +y is down, so "above"
 // is negative.
-const LIGHT = (() => {
+export const LIGHT = (() => {
   const v = [-0.34, -1, 0.26];
   const len = Math.hypot(v[0], v[1], v[2]);
   return [v[0] / len, v[1] / len, v[2] / len];

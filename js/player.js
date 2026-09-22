@@ -18,10 +18,13 @@ import { weather } from './weather.js';
 import { project } from './renderer.js';
 import { spawnExhaust, spawnExplosion, spawnSparks, spawnSmoke, spawnDust } from './particles.js';
 import { drawUav } from './uav.js';
+import { drawBird } from './bird.js';
+import { drawOrigami } from './origami.js';
 
-// Which airframe to fly. The faceted lander and the tilt-rotor UAV share the
-// same flight model, so this is a straight swap.
-export const AIRFRAME = 'uav';   // 'lander' | 'uav'
+// Which airframe to fly. The faceted lander, the quadrotor and the hoverbird
+// all fly on the same model -- tilt the body, push along its own up axis --
+// so this is a straight swap and nothing below it knows the difference.
+export const AIRFRAME = 'origami';   // 'lander' | 'uav' | 'bird' | 'origami'
 
 // --- tuning ----------------------------------------------------------------
 
@@ -521,8 +524,9 @@ export class Player {
       this.charge -= draw * (0.35 + 0.65 * lift);
       if (this.charge < 0) this.charge = 0;
 
-      if (AIRFRAME === 'uav') this.rotorWash();
-      else this.emitExhaust(up, thrust, t);
+      // Rotors and wings both beat the air down; an engine bell does not.
+      if (AIRFRAME === 'lander') this.emitExhaust(up, thrust, t);
+      else this.rotorWash();
     }
 
     // Gravity, then wind, then damping, then move.
@@ -793,7 +797,11 @@ export class Player {
   draw(rd, camX, camY, camZ) {
     if (this.dead) return;
 
-    if (AIRFRAME === 'uav') {
+    if (AIRFRAME === 'origami') {
+      drawOrigami(rd, this, camX, camY, camZ);
+    } else if (AIRFRAME === 'bird') {
+      drawBird(rd, this, camX, camY, camZ);
+    } else if (AIRFRAME === 'uav') {
       drawUav(rd, this, camX, camY, camZ);
     } else {
       drawModel(rd, SHIP_MODEL, this.matrix, this.x, this.y, this.z, camX, camY, camZ);
@@ -802,7 +810,7 @@ export class Player {
     // A flame licking out of the engine while the motor is lit. The UAV lifts
     // on rotors, so it carries no visible thrust at all -- the spinning props
     // are the only cue that the motors are running.
-    if (this.thrusting && AIRFRAME !== 'uav') {
+    if (this.thrusting && AIRFRAME === 'lander') {
       const up = matApply(this.matrix, 0, -1, 0);
       const len = (this.thrusting === 2 ? 0.75 : 0.4) * (0.7 + rnd() * 0.6);
       drawFlame(rd, this, up, len, camX, camY, camZ);

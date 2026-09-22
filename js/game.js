@@ -791,8 +791,8 @@ export class Game {
       }
     }
 
-    // Lives, as a row of pips.
-    const lifeText = 'drones ' + Math.max(0, this.lives - 1);
+    // How many more are left. Not drones in a hangar any more.
+    const lifeText = 'birds ' + Math.max(0, this.lives - 1);
     drawText(rd, lifeText, SCREEN_W - 4 - textWidth(lifeText), by, DIM);
 
     // Altitude, which matters most when you are trying to put down.
@@ -832,9 +832,9 @@ export class Game {
       drawTextCentred(rd, 'weblander', CENTRE_X, 78, [238, 232, 216], 3);
       drawTextCentred(rd, 'press start to fly', CENTRE_X, 122, WHITE);
     } else if (this.state === STATE.GAMEOVER) {
-      // Not GAME OVER. Nothing has been failed here -- the drones are simply
+      // Not GAME OVER. Nothing has been failed here -- the birds are simply
       // used up, and the next line is an invitation rather than a verdict.
-      drawTextCentred(rd, 'out of drones', CENTRE_X, 92, [226, 172, 148], 2);
+      drawTextCentred(rd, 'out of birds', CENTRE_X, 92, [226, 172, 148], 2);
       drawTextCentred(rd, 'you scored ' + this.score, CENTRE_X, 118, WHITE);
       drawTextCentred(rd, 'press start to fly again', CENTRE_X, 136, DIM);
     }
