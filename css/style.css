@@ -40,17 +40,16 @@ html, body {
   touch-action: none;
 }
 
-/* The canvas is a true 456x256 buffer scaled up with hard pixel edges, so the
-   game looks exactly like it did on a 1987 monitor rather than a blurry
-   interpolation of it. */
+/* The canvas is drawn at the size it is shown at -- see Renderer.resize().
+   The game is still written in a 586x256 space, but that is a coordinate
+   system now rather than a number of pixels, so the edges come out as edges
+   rather than as staircases. */
 #screen {
   display: block;
   width: 100%;
   height: auto;
   max-width: calc(100vh * var(--screen-aspect, 1.781));
   max-height: 100vh;
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
   background: var(--deep);
   cursor: none;
   touch-action: none;

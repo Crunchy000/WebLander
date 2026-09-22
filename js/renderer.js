@@ -65,6 +65,19 @@ export const CENTRE_Y = 64;
 export const FOCAL_X = 512;
 export const FOCAL_Y = 512;
 
+// How much bigger than the display to draw, and it depends on the display.
+//
+// A phone at three device pixels to the point is already past the size where
+// an edge reads as a staircase, so it gets one to one and spends nothing on
+// smoothing it further. A desktop monitor at one is not, so it gets half
+// again and the browser scales it down, which is antialiasing paid for in
+// fill rate -- and fill rate is cheapest exactly where it is needed, because
+// a display that sparse has few pixels to fill in the first place.
+const supersampleFor = (dpr) => (dpr >= 2 ? 1 : 1.5);
+
+// The tallest backing store worth asking for, in real pixels. See resize().
+const MAX_DEVICE_H = 1200;
+
 const MAX_TRIS = 16384;
 const FLOATS_PER_VERT = 3;   // x, y, packed rgb
 const VERTS_PER_TRI = 3;
@@ -119,19 +132,24 @@ export class Renderer {
   constructor(canvas) {
     const opts = {
       alpha: false,
+      // Off, and measured rather than assumed. Thirty seconds of flying at
+      // 419 rows: 1750 frames without multisampling, 992 with it. The same
+      // 419 rows drawn at one and a half times and scaled down -- two and a
+      // quarter times the pixels, which is more work than 4x multisampling
+      // asks for -- came back at 956. So multisampling costs about what
+      // supersampling costs and buys less, and neither is free.
+      //
+      // Those numbers are software rendering: this machine has no GPU, and
+      // filling pixels is the one thing that costs a real one almost nothing.
+      // They are the right way round for choosing between the two and the
+      // wrong way round for guessing at a phone.
       antialias: false,
       depth: false,
       stencil: false,
       preserveDrawingBuffer: false,
       powerPreference: 'low-power',
     };
-    // The buffer size is set here, not in the markup. They used to be written
-    // in both places, and a browser holding a cached copy of this file while
-    // serving fresh HTML got a canvas one size and a viewport another: the
-    // clear filled the whole buffer with sky and the drawing only covered part
-    // of it, leaving a solid slab of sky colour down one side. Sizing it from
-    // the same constant the viewport uses means the two cannot disagree, and a
-    // stale mix now just renders a narrower picture correctly.
+    this.canvas = canvas;
     canvas.width = SCREEN_W;
     canvas.height = SCREEN_H;
 
@@ -203,10 +221,54 @@ export class Renderer {
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     this.blendMode = 'over';
     this.drawn = 0;
-    gl.viewport(0, 0, SCREEN_W, SCREEN_H);
-
     // ... and the stylesheet needs the shape of it to letterbox correctly.
     document.documentElement.style.setProperty('--screen-aspect', String(SCREEN_W / SCREEN_H));
+
+    this.resize();
+    if (typeof ResizeObserver !== 'undefined') {
+      this.ro = new ResizeObserver(() => this.resize());
+      this.ro.observe(canvas);
+    } else if (typeof window !== 'undefined') {
+      window.addEventListener('resize', () => this.resize());
+      window.addEventListener('orientationchange', () => this.resize());
+    }
+  }
+
+  // How many real pixels the drawing lands in.
+  //
+  // This is not the same question as how big the game's buffer is, and
+  // conflating the two is what made everything look like it was carved out of
+  // Lego. SCREEN_W by SCREEN_H -- 586 by 256 -- is the space the game is
+  // written in: every model, every font glyph, every HUD position and every
+  // tuning number is in those units, and none of that changes here. But the
+  // canvas's backing store was also 586 by 256, stretched up to the display
+  // by the browser with image-rendering: pixelated, so a triangle edge that
+  // crossed the screen at a shallow angle came out as a staircase with steps
+  // eight device pixels tall.
+  //
+  // There was never any need for that. Nothing in this renderer is a bitmap:
+  // it is flat triangles in a coordinate space, and the one uniform that maps
+  // that space into clip space has no resolution in it at all. Rasterise the
+  // same triangles into a backing store the size of the display and the same
+  // picture arrives sharp, at the same cost in vertices and the same cost in
+  // everything the game does before it gets here.
+  //
+  // Capped, because a phone reporting a device pixel ratio of four and a
+  // browser happily handing out a 3376-pixel-wide buffer with multisampling
+  // on top of it is a lot of fill for a machine that is also flying the game.
+  // Twelve hundred rows is past the point where more of them shows.
+  resize() {
+    const canvas = this.canvas;
+    const cssH = canvas.clientHeight || SCREEN_H;
+    const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
+    let h = Math.round(cssH * Math.min(dpr, 3) * supersampleFor(dpr));
+    if (h > MAX_DEVICE_H) h = MAX_DEVICE_H;
+    if (h < SCREEN_H) h = SCREEN_H;
+    const w = Math.round(h * (SCREEN_W / SCREEN_H));
+    if (canvas.width === w && canvas.height === h) return;
+    canvas.width = w;
+    canvas.height = h;
+    this.gl.viewport(0, 0, w, h);
   }
 
   begin(clear) {

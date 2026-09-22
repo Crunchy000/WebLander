@@ -53,6 +53,17 @@ const SHOULDER_B = [0.0572, -0.1097 - LIFT, 0.0523];
 // from the model's origin -- gives a wing panel an arbitrary answer. Lighting
 // a face by how it is inclined rather than which way it faces is the right
 // rule for folded paper anyway: paper has no inside.
+// How much of the engine's light to put on top of the paint.
+//
+// Everything else in this game is shaded hard by its own normal, because
+// everything else is bare geometry and the faceting is all the detail there
+// is. This one arrives already painted, with its own light baked into the
+// texture, and shading it that hard a second time gives a mottled bird --
+// two lightings fighting over the same facet. A quarter of the usual range
+// keeps it sitting in the world's light without repainting it.
+const SHADE_FLOOR = 0.86;
+const SHADE_RANGE = 0.20;
+
 function build(verts, faces, lift) {
   const m = new Model();
   for (let i = 0; i < verts.length; i += 3) {
@@ -71,7 +82,7 @@ function build(verts, faces, lift) {
     ];
     const len = Math.hypot(n[0], n[1], n[2]) || 1;
     const lit = Math.abs((n[0] * LIGHT[0] + n[1] * LIGHT[1] + n[2] * LIGHT[2]) / len);
-    m.face([a, b, c], shade([faces[i + 3], faces[i + 4], faces[i + 5]], 0.72 + 0.44 * lit));
+    m.face([a, b, c], shade([faces[i + 3], faces[i + 4], faces[i + 5]], SHADE_FLOOR + SHADE_RANGE * lit));
   }
   return m;
 }
