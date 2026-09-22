@@ -503,17 +503,27 @@ export class Game {
 
     const p = this.player;
     const eyeX = p.camX, eyeY = p.camY, eyeZ = p.camZ;
+    // Every layer can be switched off from the console, which is how the
+    // frame's contents get attributed: tools/attrib.mjs counts the triangles
+    // with each one missing, and the difference is what that layer costs.
+    // Counting rather than timing, because the numbers add up and the
+    // milliseconds do not -- the GL queue drains between draws, so a timing
+    // run picks up whatever the queue was already carrying.
+    const __L = (typeof window !== 'undefined' && window.__layers) || {};
+    const on = (k) => __L[k] !== false;
 
     // Sky first, in two bands so the falloff has a bend in it rather than
     // being a straight ramp from top to bottom, then the stars and whichever
     // of the sun or moon is up -- all of it behind the landscape.
+    if (on('sky')) {
     rd.gradientBand(0, SKY_BAND_1, sky.top, sky.mid);
     rd.gradientBand(SKY_BAND_1, SKY_BAND_2, sky.mid, sky.horizon);
     rd.gradientBand(SKY_BAND_2, SCREEN_H, sky.horizon, sky.horizon);
+    }
 
     // Stars next, because a star below the horizon has set: the haze of the
     // far plain goes in after them and takes them with it.
-    this.drawStars();
+    if (on('stars')) this.drawStars();
 
     // The plain beyond the drawn landscape, and then the sun or the moon
     // standing on it, and only then the hills.
@@ -523,9 +533,9 @@ export class Game {
     // by haze, which is only the colour of distance -- and with the haze in
     // front of it a setting sun disappeared forty rows above the skyline in
     // the middle of an empty sky.
-    if (serene()) drawHorizonHaze(rd, eyeX, eyeY, eyeZ);
-    this.drawCelestial();
-    if (serene()) drawRidges(rd, eyeX, eyeY, eyeZ);
+    if (serene() && on('haze')) drawHorizonHaze(rd, eyeX, eyeY, eyeZ);
+    if (on('celestial')) this.drawCelestial();
+    if (serene() && on('ridges')) drawRidges(rd, eyeX, eyeY, eyeZ);
 
     // Balloons beyond the drawn landscape have no row to be bucketed into, so
     // they get a pass of their own -- here, after the ranges. They went in
@@ -535,21 +545,21 @@ export class Game {
     // world, and the furthest balloon is nearer than the nearest of them, so
     // a balloon disappearing behind a ridge read as the balloon being miles
     // further off than it is. In front, where they belong.
-    drawFarBalloons(rd, eyeX, eyeY, eyeZ);
+    if (on('farBalloons')) drawFarBalloons(rd, eyeX, eyeY, eyeZ);
 
     // Clouds go over the sun and under the landscape, which is the only
     // ordering that lets one drift across the other.
-    drawClouds(rd);
+    if (on('clouds')) drawClouds(rd);
 
-    this.drawLandscape(eyeX, eyeY, eyeZ);
+    if (on('landscape')) this.drawLandscape(eyeX, eyeY, eyeZ);
     // ... and the ground that is too close to have been drawn at all, which
     // goes in front of it because it is in front of it.
-    if (serene()) drawNearGround(rd, eyeX, eyeY, eyeZ);
-    drawRibbon(rd, eyeX, eyeY, eyeZ);
-    drawParticles(rd, eyeX, eyeY, eyeZ);
-    if (this.state === STATE.PLAYING) p.draw(rd, eyeX, eyeY, eyeZ);
-    drawWeather(rd, eyeX, eyeY, eyeZ);
-    this.drawHud();
+    if (serene() && on('nearGround')) drawNearGround(rd, eyeX, eyeY, eyeZ);
+    if (on('ribbon')) drawRibbon(rd, eyeX, eyeY, eyeZ);
+    if (on('particles')) drawParticles(rd, eyeX, eyeY, eyeZ);
+    if (this.state === STATE.PLAYING && on('player')) p.draw(rd, eyeX, eyeY, eyeZ);
+    if (on('weather')) drawWeather(rd, eyeX, eyeY, eyeZ);
+    if (on('hud')) this.drawHud();
 
     // The touch stick goes over everything, because it is the one thing on
     // screen that is not part of the world -- it is the player's own thumb,
@@ -770,7 +780,8 @@ export class Game {
     // of them should be in front of them, not among them.
     const drift = this.pendingLilies[row];
     if (drift && drift.length) {
-      for (const l of drift) drawLily(this.rd, l, eyeX, eyeY, eyeZ, haze);
+      const __lilies = !window.__layers || window.__layers.lilies !== false;
+      if (__lilies) for (const l of drift) drawLily(this.rd, l, eyeX, eyeY, eyeZ, haze);
       drift.length = 0;
     }
 
@@ -782,12 +793,13 @@ export class Game {
 
     // Flowers stand on the ground this row has just drawn, and under
     // anything else standing on it.
-    if (serene()) {
+    if (serene() && (!window.__layers || window.__layers.flowers !== false)) {
       flowersInRow(this.rd, this.rowWorldZ[row], row, eyeX, eyeY, eyeZ, haze, sky.tick);
     }
 
     const list = this.pending[row];
     if (!list || list.length === 0) return;
+    if (window.__layers && window.__layers.objects === false) { list.length = 0; return; }
 
     for (let k = 0; k < list.length; k += 3) {
       const tx = list[k], tz = list[k + 1], type = list[k + 2];

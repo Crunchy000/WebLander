@@ -63,3 +63,24 @@ Between them they set the tulip's bud proportions and the lily's bloom and
 cup in `js/flowers.js` and `js/lilies.js`, and the scarlet in the tulip
 palette is `paint.mjs`'s answer for the bud, lifted into this palette's
 range. The numbers are quoted in the comments where they are used.
+
+## Where the frame goes
+
+Two scripts, because there are two budgets and they behave nothing alike.
+
+    node attrib.mjs                     # triangles by layer, at one spot
+    SCENE=water PHASE=0.88 node attrib.mjs
+    ROWS=256 node fill.mjs              # frames per second at a given size
+
+`attrib.mjs` switches layers off one at a time through `window.__layers`,
+which `Game.draw` consults, and counts the triangles that go missing. It
+counts rather than times: the counts add up to the whole frame and repeat
+exactly, while the milliseconds do not -- the GL queue drains between draws,
+so a timing run picks up whatever the queue was already carrying, and the
+parts come out summing to three times the whole.
+
+`fill.mjs` flies the same thirty seconds at a given backing-store height.
+On a machine without a GPU this is the measurement that matters, and it is
+also the one that says least about a phone: SwiftShader rasterises in
+software, so frames per second here tracks pixel count almost exactly, while
+the thing a phone GPU is good at is precisely filling pixels.
