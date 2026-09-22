@@ -51,6 +51,12 @@ PAPERS[TUNDRA] = [
 PAPERS[TEMPERATE] = [
   [[246, 206, 92], [214, 168, 58]],     // buttercup
   [[238, 122, 118], [204, 88, 86]],     // poppy
+  // The paper tulip's own red, read off its texture: the lit tenth of its
+  // bud faces average [140, 53, 26] and the median is [152, 20, 14]. Both
+  // are darker and harder than anything else here, so this is the median
+  // lifted until it sits in the same range as its neighbours -- the model's
+  // colour, in this palette's voice.
+  [[196, 74, 62], [162, 48, 40]],       // scarlet
   [[224, 232, 244], [190, 200, 218]],   // white
   [[168, 176, 232], [134, 142, 206]],   // cornflower
   [[240, 168, 208], [206, 132, 176]],   // pink

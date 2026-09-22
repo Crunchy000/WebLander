@@ -32,3 +32,34 @@ where each triangle sits, and writes each wing relative to its own shoulder.
 The three-view renderer used to work out which way round the model was
 (`look.mjs`) and the segmentation preview (`split.mjs`) are not here: they
 answered their question once and the answer is in `js/origami.js`.
+
+## Reading a model you are not going to draw
+
+`art/hummingbird.glb` could be drawn: 546 triangles, once a frame.
+`art/tulip.glb` and `art/waterlily.glb` could not. Both arrived at about 14,700
+triangles, and the game draws 67 flowers and 84 lilies in a view -- so
+whatever geometry comes out of them has to cost about a dozen triangles, not
+fourteen thousand.
+
+The second set of scripts is for that case: take the measurements off the
+scan, and build the small model to match.
+
+    node peek.mjs                       # three flat-shaded views -- what is it?
+    GEOM=x.json node split2.mjs         # one flower out of a bouquet of two
+    TARGET=60 node cluster.mjs          # decimate, to see whether it survives
+    node measure.mjs                    # bounds, and cross-section by height
+    CUT=0.62 node paint.mjs             # the texture's own colours, by part
+
+`cluster.mjs` is the decimator, and its answer for these two models was no.
+Vertex clustering keeps a shape only while every feature is bigger than a
+cell, and a tulip is a 0.3-wide bud on a 0.02-thick stem: at 219 triangles --
+already seventeen times this game's budget for a flower -- the stem is gone,
+the leaf has merged into it and the bud is a lump. A quadric edge-collapse
+decimator would do better, and would still be spending 200 triangles on
+something 20 pixels tall.
+
+So `measure.mjs` and `paint.mjs` are what these models are actually for.
+Between them they set the tulip's bud proportions and the lily's bloom and
+cup in `js/flowers.js` and `js/lilies.js`, and the scarlet in the tulip
+palette is `paint.mjs`'s answer for the bud, lifted into this palette's
+range. The numbers are quoted in the comments where they are used.
