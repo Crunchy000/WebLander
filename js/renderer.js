@@ -220,6 +220,13 @@ export class Renderer {
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     this.blendMode = 'over';
+    // Whether anything in the batch being built is actually see-through.
+    // Blending is a per-pixel read of what is already there, and for a batch
+    // of opaque triangles that read is thrown away -- so the batch is drawn
+    // with it switched off. Nothing about the picture changes, because
+    // blending an opaque colour over anything gives the opaque colour.
+    this.batchAlpha = false;
+    this.blendOn = true;
     this.drawn = 0;
     // ... and the stylesheet needs the shape of it to letterbox correctly.
     document.documentElement.style.setProperty('--screen-aspect', String(SCREEN_W / SCREEN_H));
@@ -313,7 +320,9 @@ export class Renderer {
     this.u8[bi] = r;
     this.u8[bi + 1] = g;
     this.u8[bi + 2] = b;
-    this.u8[bi + 3] = a === undefined ? 255 : a;
+    const alpha = a === undefined ? 255 : a;
+    this.u8[bi + 3] = alpha;
+    if (alpha < 255) this.batchAlpha = true;
     this.count = i + 1;
   }
 
@@ -378,6 +387,13 @@ export class Renderer {
     // Upload only the slice we actually filled. WebGL 2 takes the length as an
     // argument; WebGL 1 has to be handed a view of the right size, which means
     // allocating one per draw.
+    // An additive batch is blending by definition; an 'over' batch only
+    // needs it if something in it carries alpha.
+    const wantBlend = this.blendMode === 'add' || this.batchAlpha;
+    if (wantBlend !== this.blendOn) {
+      if (wantBlend) gl.enable(gl.BLEND); else gl.disable(gl.BLEND);
+      this.blendOn = wantBlend;
+    }
     const floats = this.count * FLOATS_PER_VERT;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
     if (this.gl2) gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.f32, 0, floats);
@@ -390,6 +406,7 @@ export class Renderer {
     // after a frame was drawn came out that much too high.
     this.drawn = (this.drawn || 0) + this.count;
     this.count = 0;
+    this.batchAlpha = false;
   }
 
   // Triangles in the frame, counting the ones already sent. A mid-frame blend

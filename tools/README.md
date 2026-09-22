@@ -84,3 +84,15 @@ On a machine without a GPU this is the measurement that matters, and it is
 also the one that says least about a phone: SwiftShader rasterises in
 software, so frames per second here tracks pixel count almost exactly, while
 the thing a phone GPU is good at is precisely filling pixels.
+
+## Checking a renderer change
+
+    node culltest.mjs                   # same frame with and without culling
+    node perfshot.mjs                   # the readout, and the console line
+
+`culltest.mjs` renders the busiest stand of trees it can find twice, counts
+the triangles each way and writes both frames out; the diff between them is
+what says whether dropping the far side of a closed model is safe. It is how
+the winding sign in `model.js` was chosen: one sign leaves 43,000 pixels
+different, the other 618 out of 378,000, and only the second one is the
+picture the game had before.

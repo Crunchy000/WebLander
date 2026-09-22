@@ -193,7 +193,11 @@ export const OBJ = {
   REMAINS_R: 10 + STRUCTURES.length,
 };
 
-export const MODELS = [
+// Everything in here is a closed shell built out of boxes and cones, so the
+// renderer may drop the faces pointing away from the camera: see `solid` in
+// drawModel. It is marked on the way out rather than in each builder, so
+// there is one place to look and one place to take it off again.
+export const MODELS = solidify([
   smallLeafyTree(),
   tallLeafyTree(),
   firTree(),
@@ -206,10 +210,15 @@ export const MODELS = [
   ...STRUCTURES.map((st) => st.model),
   remains(-1),
   remains(1),
-];
+]);
 
 // Score for shooting each type. Knocking over a structure pays the same as
 // blowing it up did -- the bigger the stack, the better.
+function solidify(list) {
+  for (const m of list) m.seal();
+  return list;
+}
+
 export const OBJ_SCORE = [
   10, 15, 15,        // temperate trees
   12, 8, 15, 10,     // cactus, rock, snow fir, ice

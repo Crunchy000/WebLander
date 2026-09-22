@@ -5,6 +5,7 @@ import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { startMusic, musicWanted } from './music.js';
 import { Game, STEP_MS } from './game.js';
+import { perf, perfInit, perfFrame, perfDescribe } from './perf.js';
 
 const canvas = document.getElementById('screen');
 const overlay = document.getElementById('overlay');
@@ -203,17 +204,26 @@ function frame(now) {
   if (dt > 250) dt = STEP_MS;
   acc += dt;
 
+  const t0 = performance.now();
   let steps = 0;
   while (acc >= STEP_MS && steps < 5) {
     game.step();
     acc -= STEP_MS;
     steps++;
   }
-  if (steps === 5) acc = 0;
-
+  const t1 = performance.now();
   game.draw();
+  const t2 = performance.now();
+
+  // What the frame cost, kept and reported. The interval between callbacks is
+  // measured inside perfFrame, so it takes in everything the browser does
+  // with the frame after this function returns -- which is where the time
+  // goes on a machine that is compositing in software.
+  perfFrame(t1 - t0, t2 - t1, renderer.triangleCount, canvas, renderer.gl);
 }
 
+perfInit();
+perfDescribe(canvas, renderer.gl);
 requestAnimationFrame(frame);
 
 // The game used to install a service worker. Anyone who ran it then still
@@ -232,4 +242,4 @@ if ('serviceWorker' in navigator) {
 }
 
 // Expose for debugging from the console.
-window.lander = { game, input, audio, renderer };
+window.lander = { game, input, audio, renderer, perf };

@@ -35,6 +35,33 @@ export class Model {
     return this;
   }
 
+  // Turn every face the same way round: outward, away from the middle of the
+  // model. The faces here were written in whatever order read best when they
+  // were authored -- painter's order never cared which way a face was wound
+  // -- and back-face rejection does care, so a shell that wants it says so
+  // once, here, rather than having every builder remember.
+  //
+  // It only means anything for a closed shape whose faces all point away
+  // from its own centre, which is what `solid` is a claim about anyway.
+  seal() {
+    const v = this.verts;
+    const n = v.length / 3;
+    let cx = 0, cy = 0, cz = 0;
+    for (let i = 0; i < n; i++) { cx += v[i * 3]; cy += v[i * 3 + 1]; cz += v[i * 3 + 2]; }
+    cx /= n; cy /= n; cz /= n;
+    for (const f of this.faces) {
+      const i0 = f.idx[0] * 3, i1 = f.idx[1] * 3, i2 = f.idx[2] * 3;
+      const ax = v[i1] - v[i0], ay = v[i1 + 1] - v[i0 + 1], az = v[i1 + 2] - v[i0 + 2];
+      const bx = v[i2] - v[i0], by = v[i2 + 1] - v[i0 + 1], bz = v[i2 + 2] - v[i0 + 2];
+      const nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+      // Out from the middle of the model towards this face.
+      const ox = v[i0] - cx, oy = v[i0 + 1] - cy, oz = v[i0 + 2] - cz;
+      if (nx * ox + ny * oy + nz * oz < 0) f.idx.reverse();
+    }
+    this.solid = true;
+    return this;
+  }
+
   // A box standing on the ground, centred on the origin in x and z.
   box(w, hBottom, hTop, d, colTop, colSide) {
     const x0 = -w / 2, x1 = w / 2, z0 = -d / 2, z1 = d / 2;
@@ -348,6 +375,21 @@ const silDark = [0, 0, 0];
 const silCol = [0, 0, 0];
 const fadeCol = [0, 0, 0, 255];
 
+// Scratch for the depth sort, kept between calls. It used to build one small
+// array per face per model per frame -- with a hundred models in a frame and
+// a dozen faces each that is a couple of thousand throwaway arrays a frame,
+// which is work for the collector rather than for the picture.
+// Which way round a front-facing triangle comes out once projected. The
+// screen's y runs down the page, which flips the sign of the usual
+// convention; this is the sign that made the trees solid rather than hollow,
+// checked by rendering both ways (tools/culltest.mjs).
+const FRONT_FACE = -1;
+
+let faceOrder = [];             // face indices, sorted far to near
+let faceDepth = new Float64Array(64);
+const matOut = [0, 0, 0];       // ... and one output for matApply, not one a vertex
+const byDepth = (a, b) => faceDepth[b] - faceDepth[a];
+
 // `fade` draws the model translucent, which is only ever used for one thing:
 // laying a second, glowing copy of something over the plain one so it can
 // light up gradually instead of switching on. Face colours are baked at build
@@ -365,7 +407,7 @@ export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ,
   for (let i = 0; i < n; i++) {
     let px = verts[i * 3], py = verts[i * 3 + 1], pz = verts[i * 3 + 2];
     if (matrix) {
-      const r = matApply(matrix, px, py, pz);
+      const r = matApply(matrix, px, py, pz, matOut);
       px = r[0]; py = r[1]; pz = r[2];
     }
     const vx = (wx + px - camX) | 0;
@@ -382,10 +424,25 @@ export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ,
   }
   if (!anyVisible) return;
 
-  // Depth-sort the faces by their mean distance.
+  // Depth-sort the faces by their mean distance, and drop the ones facing
+  // away.
+  //
+  // There is no depth buffer here and no face culling in the GL state, so a
+  // closed shape draws its far side and then paints over it -- half the
+  // triangles in a tree, a hull or a lily bloom, projected, sorted, written
+  // into the buffer and rasterised, to be covered by the near side. A model
+  // that is a closed shell says so with `solid`, and then the far side is
+  // found by the sign of the projected triangle's area and skipped.
+  //
+  // Only closed shells may claim it. Anything single-sided -- a leaf, a
+  // petal laid flat, the folded paper bird whose winding is not consistent
+  // -- is seen from behind on purpose and stays as it is.
   const faces = model.faces;
-  const order = [];
-  for (let f = 0; f < faces.length; f++) {
+  const nf = faces.length;
+  if (faceDepth.length < nf) faceDepth = new Float64Array(nf * 2);
+  faceOrder.length = 0;
+  const solid = model.solid === true;
+  for (let f = 0; f < nf; f++) {
     const idx = faces[f].idx;
     let depth = 0, ok = true;
     for (let k = 0; k < idx.length; k++) {
@@ -394,9 +451,16 @@ export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ,
       depth += d;
     }
     if (!ok) continue;
-    order.push([depth / idx.length, f]);
+    if (solid) {
+      const a = idx[0] * 3, b = idx[1] * 3, c = idx[2] * 3;
+      const area = (scratch[b] - scratch[a]) * (scratch[c + 1] - scratch[a + 1])
+                 - (scratch[c] - scratch[a]) * (scratch[b + 1] - scratch[a + 1]);
+      if (area * FRONT_FACE <= 0) continue;
+    }
+    faceDepth[f] = depth / idx.length;
+    faceOrder.push(f);
   }
-  order.sort((a, b) => b[0] - a[0]);
+  faceOrder.sort(byDepth);
 
   if (sil > 0.01) {
     silhouetteDark(silDark);
@@ -409,7 +473,8 @@ export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ,
     silDark[2] *= 1 - toBlack;
   }
 
-  for (const [, f] of order) {
+  for (let oi = 0; oi < faceOrder.length; oi++) {
+    const f = faceOrder[oi];
     const face = faces[f];
     const { idx } = face;
     let col = face.glow ? emissive(face.col, fog) : litColour(face.col, fog);
