@@ -112,10 +112,19 @@ const OPEN_FRAMES = 200;        // four seconds, all told
 const OPENING = 16;             // ... of which this much is the unfolding
 const FADE_FRAMES = 50;         // ... and this much is the going
 
-// A lily is a small thing: a foot or so across, against a tree a tile and a
-// half tall.
-const PAD_R = 0.260;            // the leaf
-const BLOOM_R = 0.155;          // and the flower sitting on it
+// Sized against the tulips on the ground, because they are the same
+// ceremony in two places and one of them was half the other. A tulip's head
+// is 0.29 tiles long and 0.31 across; this bloom is now 0.29 tall and 0.58
+// across, so the two flowers are the same size in the dimension you see
+// from the air -- the lily is the wider one because a lily is, and the
+// paper model it came off is twice as wide as it is tall.
+//
+// BLOOM_R is the bloom's radius and its height at once, which is not a
+// coincidence: in that model the bloom's height and its widest radius are
+// both 0.35, so a petal running from the middle of the base to the rim goes
+// out as far as it goes up.
+const PAD_R = 0.380;            // the leaf
+const BLOOM_R = 0.290;          // and the flower sitting on it
 const PETALS = 6;
 // --- the fold --------------------------------------------------------------
 //
@@ -144,7 +153,12 @@ function buildLily(paper, inner, openness) {
   // Six petals, each one triangle, sharing a ring of bases around the heart.
   // Alternating dye, so the fold reads even when the light does not.
   const padY = -0.012;
-  const rb = BLOOM_R * 0.45;
+  // The ring the petals stand on is nearly as wide as the rim they reach,
+  // which is what the model measured too -- its cross-section runs 0.30 at
+  // the base to 0.355 at the widest, so the bloom is a cup rather than a
+  // cone. Narrow the base and the six petals stop touching and read as a
+  // starburst of spikes instead of as a flower.
+  const rb = BLOOM_R * 0.80;
   const base = [];
   for (let i = 0; i < PETALS; i++) {
     const a = (i / PETALS) * Math.PI * 2;
@@ -164,8 +178,8 @@ function buildLily(paper, inner, openness) {
     const j = (i + 1) % PETALS;
     const a = ((i + 0.5) / PETALS) * Math.PI * 2;
     const outer = (i & 1) === 0;
-    const tipR = BLOOM_R * (outer ? 0.58 + 0.72 * openness : 0.52 + 0.20 * openness);
-    const tipY = padY - BLOOM_R * (outer ? 1.00 - 0.94 * openness : 1.00 - 0.34 * openness);
+    const tipR = BLOOM_R * (outer ? 1.00 + 0.50 * openness : 0.90 - 0.20 * openness);
+    const tipY = padY - BLOOM_R * (outer ? 1.00 - 0.92 * openness : 1.00 - 0.25 * openness);
     const tip = v(Math.cos(a) * tipR, tipY, Math.sin(a) * tipR);
     facet(m, [base[i], base[j], tip], outer ? paper : inner);
   }
