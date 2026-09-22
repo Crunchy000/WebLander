@@ -548,7 +548,7 @@ export class Audio {
     if (urgency > 0.6) this._chime(f * 2, 0.30, 0.18, 0.20);
   }
 
-  // Picking up a lily, or drinking from a tulip.
+  // Picking up a lantern, or drinking from a tulip.
   //
   // A pentatonic scale, climbing a step for every flower taken without a
   // pause, and dropping back to the bottom when you stop. One flower is a

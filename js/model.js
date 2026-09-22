@@ -429,7 +429,7 @@ export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ,
   //
   // There is no depth buffer here and no face culling in the GL state, so a
   // closed shape draws its far side and then paints over it -- half the
-  // triangles in a tree, a hull or a lily bloom, projected, sorted, written
+  // triangles in a tree, a hull or a paper lantern, projected, sorted, written
   // into the buffer and rasterised, to be covered by the near side. A model
   // that is a closed shell says so with `solid`, and then the far side is
   // found by the sign of the projected triangle's area and skipped.

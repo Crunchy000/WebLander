@@ -82,7 +82,7 @@ const GROUPS = [
   ['landscape', ['landscape']],
   ['  objects in it', ['objects']],
   ['  flowers in it', ['flowers']],
-  ['  lilies in it', ['lilies']],
+  ['  lanterns in it', ['lanterns']],
   ['horizon (haze+ridges+near)', ['haze', 'ridges', 'nearGround']],
   ['sky (bands+stars+sun)', ['sky', 'stars', 'celestial']],
   ['clouds', ['clouds']],
