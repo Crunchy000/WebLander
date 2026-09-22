@@ -123,10 +123,13 @@ function flower(petals, radius, bud, height, col, edge, spent = false) {
   const tipX = spent ? rr * 1.6 : 0;          // how far the head hangs over
   const base = v(cx, top + len * 0.06, 0);
   const apex = v(cx + tipX, top - len, 0);
-  // The belly sits two thirds of the way up, not half: a bud that is widest
-  // in the middle is a diamond, and a tulip is a long taper into a short
-  // crown.
-  const bx = cx + tipX * 0.6, by = top - len * 0.63;
+  // The belly sits four fifths of the way up, and the bud is a little wider
+  // than it is long. Both of those are measured off a folded paper tulip
+  // rather than guessed: in that model the widest cross-section is within a
+  // twentieth of the tip, 0.36 across against 0.27 long, and it tapers all
+  // the way down from there into the stem. A bud with its belly in the
+  // middle is a diamond; this is a cup carried high.
+  const bx = cx + tipX * 0.6, by = top - len * 0.80;
   // Every other belly vertex is lifted, which costs nothing and turns the
   // top of the bud into a crown of uneven points rather than a cone: it is
   // the difference between a tulip and a cut gem, and it is one term.
@@ -158,14 +161,15 @@ function flower(petals, radius, bud, height, col, edge, spent = false) {
 // and bud together they run 0.50 to 0.80 tiles against a small tree's 1.17
 // and a tall one's 1.80.
 //
-// The bud is two fifths of that, and longer than it is wide -- a head sized
-// to be aimed at rather than looked for. The stems were cut back by the same
-// amount the bud grew, so the plant stands where it stood and the flower on
-// top of it is what got bigger.
+// The bud is a third of that and slightly wider than it is long, which is
+// the proportion the folded paper one has -- a head sized to be aimed at
+// rather than looked for. The stems were cut back as the bud grew, so the
+// plant stands about where it stood and the flower on top of it is what got
+// bigger.
 const SHAPES = [
-  { petals: 5, radius: 0.105, bud: 0.330, height: 0.470 },
-  { petals: 4, radius: 0.090, bud: 0.275, height: 0.355 },
-  { petals: 5, radius: 0.076, bud: 0.225, height: 0.275 },
+  { petals: 5, radius: 0.155, bud: 0.290, height: 0.470 },
+  { petals: 4, radius: 0.133, bud: 0.242, height: 0.355 },
+  { petals: 5, radius: 0.112, bud: 0.198, height: 0.275 },
 ];
 
 const KINDS = PAPERS.map((papers) => {
