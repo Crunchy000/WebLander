@@ -10,6 +10,7 @@ import {
   sky, sun, moon, STARS, advanceDay, skyColourAt, SKY_BAND_1, SKY_BAND_2, beacon,
 } from './daylight.js';
 import { drawRidges, drawNearGround, drawHorizonHaze, backdropAt } from './ridges.js';
+import { flowersInRow } from './flowers.js';
 import { sampleRibbon, drawRibbon, resetRibbon } from './ribbon.js';
 import { serene } from './style.js';
 import { depthAt, waveLift, seaShade } from './sea.js';
@@ -118,6 +119,7 @@ export class Game {
     this.prevOk = new Uint8Array(TILES_X);
 
     // Objects waiting to be drawn, staggered behind the landscape.
+    this.rowWorldZ = new Int32Array(TILES_Z + 2);
     this.pending = Array.from({ length: TILES_Z + 2 }, () => []);
     this.pendingBoats = Array.from({ length: TILES_Z + 2 }, () => []);
     this.pendingBalloons = Array.from({ length: TILES_Z + 2 }, () => []);
@@ -571,6 +573,7 @@ export class Game {
 
     for (let j = 0; j < TILES_Z; j++) {
       const worldZ = (zCameraTile - j * TILE) | 0;
+      this.rowWorldZ[j] = worldZ;
       const viewZ = (LANDSCAPE_Z - fracZ - j * TILE) | 0;
       const tz = worldZ >> 24;
 
@@ -697,6 +700,12 @@ export class Game {
     if (shipping && shipping.length) {
       for (const b of shipping) drawBoat(this.rd, b, eyeX, eyeY, eyeZ, haze);
       shipping.length = 0;
+    }
+
+    // Flowers stand on the ground this row has just drawn, and under
+    // anything else standing on it.
+    if (serene()) {
+      flowersInRow(this.rd, this.rowWorldZ[row], row, eyeX, eyeY, eyeZ, haze);
     }
 
     const list = this.pending[row];
