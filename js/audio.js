@@ -548,14 +548,14 @@ export class Audio {
     if (urgency > 0.6) this._chime(f * 2, 0.30, 0.18, 0.20);
   }
 
-  // Picking up a lantern.
+  // Picking up a lily, or drinking from a tulip.
   //
-  // A pentatonic scale, climbing a step for every lantern taken without a
-  // pause, and dropping back to the bottom when you stop. One lantern is a
+  // A pentatonic scale, climbing a step for every flower taken without a
+  // pause, and dropping back to the bottom when you stop. One flower is a
   // ding; a line of them played in one pass is a phrase, and a run across a
   // bay is a tune you wrote by flying. There is no wrong note in the scale,
   // which is the whole reason for using one.
-  lantern(step) {
+  chime(step) {
     if (!this.enabled) return;
     const scale = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21];
     const semis = scale[Math.min(step, scale.length - 1)] + (step >= scale.length ? 12 : 0);

@@ -29,8 +29,8 @@ import {
   updateBalloons, drawBalloon, drawFarBalloons, balloonsInRow, resetBalloons,
 } from './balloons.js';
 import {
-  updateLanterns, drawLantern, lanternsInRow, resetLanterns,
-} from './lanterns.js';
+  updateLilies, drawLily, liliesInRow, resetLilies,
+} from './lilies.js';
 import {
   updateParticles, drawParticles, resetParticles, particleData,
   spawnExplosion, spawnSparks, spawnSmoke, particleCount, P_BULLET,
@@ -61,10 +61,10 @@ const DEATH_MESSAGE = {
 };
 
 
-// What a lantern is worth, and how long a run may pause before it is over.
+// What a lily is worth, and how long a run may pause before it is over.
 // Two seconds is long enough to line up the next one and short enough that
 // the run has to be flown rather than wandered.
-const LANTERN_SCORE = 10;
+const LILY_SCORE = 10;
 
 // Nectar. Half a second of holding station buys a fourteenth of the pack,
 // which is about ten seconds of hovering -- so a meadow pays for the time
@@ -77,7 +77,7 @@ const SIP_ABOVE = 1.15;            // ... and how far above the bloom
 const SIP_SPEED = 0x01000000 * 0.03;
 const SIP_FRAMES = 26;             // just over half a second
 const NECTAR_RUN_GAP = 6 * 50;     // and six seconds between flowers keeps a run
-const LANTERN_RUN_GAP = 100;
+const LILY_RUN_GAP = 100;
 
 const STARTING_LIVES = 4;
 
@@ -135,7 +135,7 @@ export class Game {
     this.pending = Array.from({ length: TILES_Z + 2 }, () => []);
     this.pendingBoats = Array.from({ length: TILES_Z + 2 }, () => []);
     this.pendingBalloons = Array.from({ length: TILES_Z + 2 }, () => []);
-    this.pendingLanterns = Array.from({ length: TILES_Z + 2 }, () => []);
+    this.pendingLilies = Array.from({ length: TILES_Z + 2 }, () => []);
     this.warnTick = 0;
 
     this.newGame();
@@ -154,7 +154,7 @@ export class Game {
     resetTanks();
     resetBoats();
     resetBalloons();
-    resetLanterns();
+    resetLilies();
     resetWeather();
     resetFlowers();
     this.player.reset();
@@ -251,17 +251,17 @@ export class Game {
     p.charge = Math.min(CHARGE_MAX, p.charge + NECTAR);
     spawnSparks(near.x, near.bloom, near.z, 8);
 
-    // The same run the lanterns keep: a line of flowers taken without a
-    // pause is a phrase rather than the same note eight times. It is a slower
-    // phrase, though, and it gets a longer window to stay in: a lantern is
-    // taken by flying through it, while a flower has to be crept up on and
-    // held at walking pace for half a second, so the two seconds the lanterns
-    // allow would end a run that was never actually broken.
+    // The same run the lilies keep: a line of flowers taken without a pause
+    // is a phrase rather than the same note eight times. It is a slower
+    // phrase, though, and it gets a longer window to stay in: a lily is taken
+    // by flying through it, while a tulip has to be crept up on and held at
+    // walking pace for half a second, so the two seconds the water allows
+    // would end a run that was never actually broken.
     if (this.nectarRun === undefined || this.nectarAt === undefined ||
         sky.tick - this.nectarAt > NECTAR_RUN_GAP) {
       this.nectarRun = 0;
     }
-    this.audio.lantern(this.nectarRun);
+    this.audio.chime(this.nectarRun);
     const pts = NECTAR_SCORE * (1 + Math.min(this.nectarRun, 7));
     this.addScore(pts);
     this.nectarRun++;
@@ -269,25 +269,25 @@ export class Game {
     this.setMessage('nectar  +' + pts, 50);
   }
 
-  // A lantern gathered off the water.
+  // A lily gathered off the water.
   //
   // The run counts. Take one and the note is the bottom of the scale; keep
-  // taking them without a pause and it climbs, so a line of lanterns played
+  // taking them without a pause and it climbs, so a line of lilies played
   // in one pass is a phrase rather than the same ding eight times. Two
   // seconds without one and it drops back to the bottom.
   //
   // Points climb with it too, which is the only scoring in the game that
   // rewards doing something gracefully rather than doing it at all.
-  onLanternTaken(x, y, z) {
-    if (this.lanternRun === undefined || this.lanternAt === undefined ||
-        sky.tick - this.lanternAt > LANTERN_RUN_GAP) {
-      this.lanternRun = 0;
+  onLilyTaken(x, y, z) {
+    if (this.lilyRun === undefined || this.lilyAt === undefined ||
+        sky.tick - this.lilyAt > LILY_RUN_GAP) {
+      this.lilyRun = 0;
     }
-    this.audio.lantern(this.lanternRun);
-    this.addScore(LANTERN_SCORE * (1 + Math.min(this.lanternRun, 7)));
-    this.lanternRun++;
-    this.lanternAt = sky.tick;
-    this.lanternsTaken = (this.lanternsTaken || 0) + 1;
+    this.audio.chime(this.lilyRun);
+    this.addScore(LILY_SCORE * (1 + Math.min(this.lilyRun, 7)));
+    this.lilyRun++;
+    this.lilyAt = sky.tick;
+    this.liliesTaken = (this.liliesTaken || 0) + 1;
   }
 
   // A structure has gone over. Points either way, but a stack shoved by the
@@ -375,7 +375,7 @@ export class Game {
     sampleRibbon(this.player);
     updateBoats(this.player, this);
     updateBalloons(this.player);
-    updateLanterns(this.player, this);
+    updateLilies(this.player, this);
     updateBlocks();
     updateParticles(this.gravity, (i, bx, by, bz) => this.bulletHit(i, bx, by, bz));
 
@@ -645,7 +645,7 @@ export class Game {
     for (const list of this.pending) list.length = 0;
     for (const list of this.pendingBoats) list.length = 0;
     for (const list of this.pendingBalloons) list.length = 0;
-    for (const list of this.pendingLanterns) list.length = 0;
+    for (const list of this.pendingLilies) list.length = 0;
 
     const pt = { x: 0, y: 0 };
 
@@ -660,7 +660,7 @@ export class Game {
       if (j > 0) {
         boatsInRow(worldZ, (worldZ + TILE) | 0, this.pendingBoats[j]);
         balloonsInRow(worldZ, (worldZ + TILE) | 0, this.pendingBalloons[j]);
-        lanternsInRow(worldZ, (worldZ + TILE) | 0, this.pendingLanterns[j]);
+        liliesInRow(worldZ, (worldZ + TILE) | 0, this.pendingLilies[j]);
         // The craft's shadow belongs to whichever row the ground under it
         // is in, so it is drawn with that row and hidden by hills in front.
         if (eyeShadowZ >= worldZ && eyeShadowZ < worldZ + TILE) this.shadowRow = j;
@@ -766,11 +766,11 @@ export class Game {
       sky2.length = 0;
     }
 
-    // Lanterns before the shipping in the same row: a canoe passing a drift
+    // Lilies before the shipping in the same row: a canoe passing a drift
     // of them should be in front of them, not among them.
-    const drift = this.pendingLanterns[row];
+    const drift = this.pendingLilies[row];
     if (drift && drift.length) {
-      for (const l of drift) drawLantern(this.rd, l, eyeX, eyeY, eyeZ, haze);
+      for (const l of drift) drawLily(this.rd, l, eyeX, eyeY, eyeZ, haze);
       drift.length = 0;
     }
 
