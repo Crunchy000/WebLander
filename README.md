@@ -264,7 +264,8 @@ software rasterisation, so a phone GPU does not notice it.
 | `js/particles.js` | exhaust, bullets, explosions, smoke, spray |
 | `js/ribbon.js` | the streamer trailing the craft; a light trail after dark |
 | `js/balloons.js` | balloons in pairs, and the bunting slung between them |
-| `js/lanterns.js` | paper lanterns adrift on the water, lit after dark |
+| `js/lilies.js` | paper water lilies adrift on the sea, lit after dark |
+| `js/flowers.js` | folded paper tulips scattered over the ground, and their nectar |
 | `js/ridges.js` | parallax silhouette ranges along the horizon |
 | `js/style.js` | the palette transform the serene style is made of |
 | `js/music.js` | the soundtrack, if there is one |
