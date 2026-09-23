@@ -92,6 +92,33 @@ const SCALES = [1, 0.8, 0.65, 0.5, 0.4];
 const SLOW_MS = 21;             // a frame this long, three checks running...
 const FAST_MS = 13;             // ... and this short, six running, to go back up
 
+// ... unless the machine is not missing frames at all, but showing them at a
+// slower cadence than sixty a second. A console browser pinned at thirty has
+// a 33ms frame when everything about it is fine, and a fixed 21ms bar reads
+// that as trouble and goes on taking pixels away for ever -- arriving at the
+// smallest picture it is allowed to draw, still at thirty, because the cap
+// was never about pixels.
+//
+// A cadence gives itself away by being exact. Every frame the same length,
+// and that length one of the periods a display actually runs at; a machine
+// that is genuinely short of fill misses frames unevenly and the spread
+// between its quickest and its slowest is wide. So: tight spread and a
+// recognisable period means leave it alone -- and give back any pixels that
+// were taken away before it was recognised.
+// Sixty, fifty and thirty a second. Twenty is not on the list and must not
+// be: no display runs at it, so a machine sitting on a 50ms frame is a
+// machine in trouble, and mistaking that for a cadence would leave it there.
+const CADENCES = [16.67, 20, 33.33];
+const CADENCE_SLOP = 2.5;
+const CADENCE_TAIL = 1.3;       // ... and its slowest frames within this much of it
+
+function lockedCadence(median, slowest) {
+  for (const c of CADENCES) {
+    if (Math.abs(median - c) < CADENCE_SLOP && slowest < c * CADENCE_TAIL) return c;
+  }
+  return 0;
+}
+
 const MAX_TRIS = 16384;
 const FLOATS_PER_VERT = 3;   // x, y, packed rgb
 const VERTS_PER_TRI = 3;
@@ -310,19 +337,22 @@ export class Renderer {
   // Nothing about the game changes with it. The world is still drawn in the
   // same 586x256 coordinate space; only the number of real pixels it lands
   // in moves, so a step down costs sharpness and nothing else.
-  adapt(frameMs) {
+  adapt(stat) {
     // A backgrounded tab reports frames seconds long; that is not a machine
     // struggling, it is a machine not being asked.
-    if (!frameMs || frameMs > 250) return;
+    if (!stat || !stat.ready || stat.median > 250) return;
     const at = this.scaleAt || 0;
-    if (frameMs > SLOW_MS) {
+    const locked = lockedCadence(stat.median, stat.slowest) !== 0;
+    this.cadence = locked ? stat.median : 0;
+
+    if (!locked && stat.median > SLOW_MS) {
       this.fast = 0;
       if (++this.slow >= 3 && at < SCALES.length - 1) {
         this.slow = 0;
         this.scaleAt = at + 1;
         this.resize();
       }
-    } else if (frameMs < FAST_MS) {
+    } else if (locked || stat.median < FAST_MS) {
       this.slow = 0;
       if (++this.fast >= 6 && at > 0) {
         this.fast = 0;

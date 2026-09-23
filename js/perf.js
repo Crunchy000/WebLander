@@ -125,10 +125,23 @@ export function perfFrame(step, draw, tris, canvas, gl) {
   }
 }
 
-// The recent median frame, for whoever is deciding how many pixels to ask
-// for next. See Renderer.adapt().
-export function perfFrameMs() {
-  return n > 20 ? pct(interval, 0.5) : 0;
+// The recent frame, for whoever is deciding how many pixels to ask for next.
+// See Renderer.adapt().
+//
+// Three numbers, not one. The median says how it is going; the fastest
+// twentieth says what this machine's frames look like when nothing is in the
+// way, which is the display's own cadence and not something to chase past;
+// and the spread between fast and slow says whether the game is locked to
+// that cadence or missing it. A console browser pinned at thirty frames a
+// second is not a machine in trouble, and cannot be talked into sixty by
+// taking pixels away from it.
+const frameStat = { median: 0, quick: 0, slowest: 0, ready: false };
+export function perfFrameStat() {
+  frameStat.ready = n > 30;
+  frameStat.median = pct(interval, 0.5);
+  frameStat.quick = pct(interval, 0.05);
+  frameStat.slowest = pct(interval, 0.95);
+  return frameStat;
 }
 
 function fps() {
@@ -138,7 +151,8 @@ function fps() {
 
 function line(canvas, gl) {
   return fps().toFixed(0) + ' fps' +
-         '  frame ' + pct(interval, 0.5).toFixed(1) + '/' + pct(interval, 0.95).toFixed(1) + 'ms' +
+         '  frame ' + pct(interval, 0.5).toFixed(1) + '/' + pct(interval, 0.95).toFixed(1) +
+         'ms best ' + pct(interval, 0.05).toFixed(1) +
          '  draw ' + pct(drawMs, 0.5).toFixed(2) + '/' + pct(drawMs, 0.95).toFixed(2) + 'ms' +
          '  step ' + pct(stepMs, 0.5).toFixed(2) + 'ms' +
          '  ' + Math.round(pct(trisAt, 0.5)) + ' tris' +
@@ -158,7 +172,8 @@ function paint(canvas, gl) {
   }
   box.textContent =
     fps().toFixed(0) + ' fps   frame ' + pct(interval, 0.5).toFixed(1) +
-      ' / ' + pct(interval, 0.95).toFixed(1) + ' ms\n' +
+      ' / ' + pct(interval, 0.95).toFixed(1) + ' ms   best ' +
+      pct(interval, 0.05).toFixed(1) + '\n' +
     'draw  ' + pct(drawMs, 0.5).toFixed(2) + ' / ' + pct(drawMs, 0.95).toFixed(2) +
       ' ms    step ' + pct(stepMs, 0.5).toFixed(2) + ' ms\n' +
     Math.round(pct(trisAt, 0.5)) + ' tris   ' + describe(canvas, gl, true);

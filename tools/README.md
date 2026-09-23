@@ -96,3 +96,16 @@ what says whether dropping the far side of a closed model is safe. It is how
 the winding sign in `model.js` was chosen: one sign leaves 43,000 pixels
 different, the other 618 out of 378,000, and only the second one is the
 picture the game had before.
+
+## The resolution adaptor
+
+    node adapt.mjs                      # a machine that cannot keep up
+    node capped.mjs                     # ... and one that simply shows 30 a second
+
+Two cases that have to end differently. `adapt.mjs` watches the backing
+store on this container, which has no GPU: it should walk down a step at a
+time and settle where the frames come in on time. `capped.mjs` wraps
+requestAnimationFrame in a 33ms slot, the way a console browser locked to
+thirty does, and the backing store should not move at all -- a cadence is not
+a machine in trouble, and no amount of taking pixels away turns thirty into
+sixty.

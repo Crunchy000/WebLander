@@ -5,7 +5,7 @@ import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { startMusic, musicWanted } from './music.js';
 import { Game, STEP_MS } from './game.js';
-import { perf, perfInit, perfFrame, perfFrameMs, perfDescribe } from './perf.js';
+import { perf, perfInit, perfFrame, perfFrameStat, perfDescribe } from './perf.js';
 
 const canvas = document.getElementById('screen');
 const overlay = document.getElementById('overlay');
@@ -224,7 +224,7 @@ function frame(now) {
 
   // Four times a second, let the renderer decide whether the machine is
   // keeping up with the number of pixels it is being asked for.
-  if ((adaptTick = (adaptTick + 1) % 15) === 0) renderer.adapt(perfFrameMs());
+  if ((adaptTick = (adaptTick + 1) % 15) === 0) renderer.adapt(perfFrameStat());
 }
 
 
