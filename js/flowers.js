@@ -216,7 +216,11 @@ const NEAR_ROW = TILES_Z - 9;
 // The patch field: one value per eight tiles square, so a meadow is about
 // eight tiles across and most of the world is not one.
 const PATCH = 2;                  // tiles per patch, as a shift
-const PATCH_IN = 40;              // ... and how many patches in a hundred have anything
+// ... and how many patches in a hundred have anything. It was 40, which put
+// a meadow within sight almost everywhere and made the ground busy; 26
+// leaves a quarter of the world flowering, so a meadow is somewhere you
+// arrive at rather than the texture of the whole map.
+const PATCH_IN = 26;
 const MAX_PER_TILE = 2;
 
 // Every flower on one tile, handed to a callback. One function, used by both

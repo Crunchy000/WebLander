@@ -23,7 +23,12 @@ import { project, SCREEN_W, SCREEN_H } from './renderer.js';
 import { spawn, P_FADE } from './particles.js';
 import { weather } from './weather.js';
 
-export const MAX_LANTERNS = 84;
+// Thinned from 84. A drift of eighty-four covers the water in front of you
+// and the eye stops reading them as a ceremony and starts reading them as
+// wallpaper; at fifty-six there is water between them and a run is something
+// you fly rather than something you fall into. It is also the cheapest
+// frame-time there is to buy, since every one of them is a model drawn.
+export const MAX_LANTERNS = 56;
 
 const S = 1.0;
 // Kept inside the band the landscape is actually drawn in, so a lantern
