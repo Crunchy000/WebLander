@@ -89,8 +89,14 @@ const MAX_DEVICE_H = 1200;
 // machine cannot keep up. Each step is a little over half the pixels of the
 // one before it.
 const SCALES = [1, 0.8, 0.65, 0.5, 0.4];
-const SLOW_MS = 21;             // a frame this long, three checks running...
-const FAST_MS = 13;             // ... and this short, six running, to go back up
+const SLOW_MS = 21;             // a frame this long, a few checks running...
+const FAST_MS = 13;             // ... and this short, for a good while, to go back up
+const DOWN_CHECKS = 3;          // at four checks a second
+const UP_CHECKS = 40;           // ... so ten seconds of comfort before trying again
+// Going up and coming straight back down means that step does not hold here.
+// Within this many checks of a rise, a fall makes the step above a ceiling
+// and the size stops moving.
+const REGRET_CHECKS = 60;
 
 // ... unless the machine is not missing frames at all, but showing them at a
 // slower cadence than sixty a second. A console browser pinned at thirty has
@@ -271,8 +277,11 @@ export class Renderer {
     this.drawn = 0;
     // Where the adaptor has got to, and how long it has been wanting to move.
     this.scaleAt = 0;
+    this.want = 0;
     this.slow = 0;
     this.fast = 0;
+    this.checks = 0;
+    this.ceiling = 0;           // the largest picture still allowed
     // ... and the stylesheet needs the shape of it to letterbox correctly.
     document.documentElement.style.setProperty('--screen-aspect', String(SCREEN_W / SCREEN_H));
 
@@ -341,23 +350,28 @@ export class Renderer {
     // A backgrounded tab reports frames seconds long; that is not a machine
     // struggling, it is a machine not being asked.
     if (!stat || !stat.ready || stat.median > 250) return;
-    const at = this.scaleAt || 0;
+    const at = this.want === undefined ? (this.scaleAt || 0) : this.want;
     const locked = lockedCadence(stat.median, stat.slowest) !== 0;
     this.cadence = locked ? stat.median : 0;
+    this.checks = (this.checks || 0) + 1;
 
     if (!locked && stat.median > SLOW_MS) {
       this.fast = 0;
-      if (++this.slow >= 3 && at < SCALES.length - 1) {
+      if (++this.slow >= DOWN_CHECKS && at < SCALES.length - 1) {
         this.slow = 0;
-        this.scaleAt = at + 1;
-        this.resize();
+        // Coming down again soon after going up means the step above this
+        // one does not hold on this machine. Remember it and stop offering
+        // it: a picture that flickers between two sizes is worse than
+        // either of them, and this is where that flicker comes from.
+        if (this.checks - (this.wentUpAt || -1e9) < REGRET_CHECKS) this.ceiling = at + 1;
+        this.want = at + 1;
       }
     } else if (locked || stat.median < FAST_MS) {
       this.slow = 0;
-      if (++this.fast >= 6 && at > 0) {
+      if (++this.fast >= UP_CHECKS && at > (this.ceiling || 0)) {
         this.fast = 0;
-        this.scaleAt = at - 1;
-        this.resize();
+        this.wentUpAt = this.checks;
+        this.want = at - 1;
       }
     } else {
       this.slow = 0;
@@ -372,6 +386,14 @@ export class Renderer {
 
   begin(clear) {
     const gl = this.gl;
+    // Any change of size happens here, at the top of a frame, and never
+    // between one being drawn and being shown. Resizing a canvas throws its
+    // contents away, so a resize after the drawing hands the compositor an
+    // empty buffer -- one white frame, which is the flicker.
+    if (this.want !== undefined && this.want !== this.scaleAt) {
+      this.scaleAt = this.want;
+      this.resize();
+    }
     gl.clearColor(clear[0] / 255, clear[1] / 255, clear[2] / 255, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
     this.count = 0;
