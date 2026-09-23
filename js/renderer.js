@@ -67,16 +67,30 @@ export const FOCAL_Y = 512;
 
 // How much bigger than the display to draw, and it depends on the display.
 //
-// A phone at three device pixels to the point is already past the size where
-// an edge reads as a staircase, so it gets one to one and spends nothing on
-// smoothing it further. A desktop monitor at one is not, so it gets half
-// again and the browser scales it down, which is antialiasing paid for in
-// fill rate -- and fill rate is cheapest exactly where it is needed, because
-// a display that sparse has few pixels to fill in the first place.
-const supersampleFor = (dpr) => (dpr >= 2 ? 1 : 1.5);
+// A display at more than one device pixel to the point is already past the
+// size where an edge reads as a staircase, so it gets one to one and spends
+// nothing on smoothing it further. A monitor at exactly one is not, so it
+// gets half again and the browser scales it down, which is antialiasing paid
+// for in fill rate -- and fill rate is cheapest exactly where it is needed,
+// because a display that sparse has few pixels to fill in the first place.
+//
+// The bar used to be two, which was wrong in the one place it mattered. A
+// console browser on a 4K television reports a ratio of 1.5 and a CSS size of
+// 1280x639: one and a half is plenty to hide a staircase, but it fell on the
+// low side of the test and got another half again on top, asking for 2400
+// pixels across where the panel it lands on has 1920. Half as much fill again
+// as the display can even show.
+const supersampleFor = (dpr) => (dpr > 1.25 ? 1 : 1.5);
 
 // The tallest backing store worth asking for, in real pixels. See resize().
 const MAX_DEVICE_H = 1200;
+
+// ... and how far below that the game is allowed to drop itself when the
+// machine cannot keep up. Each step is a little over half the pixels of the
+// one before it.
+const SCALES = [1, 0.8, 0.65, 0.5, 0.4];
+const SLOW_MS = 21;             // a frame this long, three checks running...
+const FAST_MS = 13;             // ... and this short, six running, to go back up
 
 const MAX_TRIS = 16384;
 const FLOATS_PER_VERT = 3;   // x, y, packed rgb
@@ -228,6 +242,10 @@ export class Renderer {
     this.batchAlpha = false;
     this.blendOn = true;
     this.drawn = 0;
+    // Where the adaptor has got to, and how long it has been wanting to move.
+    this.scaleAt = 0;
+    this.slow = 0;
+    this.fast = 0;
     // ... and the stylesheet needs the shape of it to letterbox correctly.
     document.documentElement.style.setProperty('--screen-aspect', String(SCREEN_W / SCREEN_H));
 
@@ -268,7 +286,8 @@ export class Renderer {
     const canvas = this.canvas;
     const cssH = canvas.clientHeight || SCREEN_H;
     const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
-    let h = Math.round(cssH * Math.min(dpr, 3) * supersampleFor(dpr));
+    const step = SCALES[this.scaleAt || 0];
+    let h = Math.round(cssH * Math.min(dpr, 3) * supersampleFor(dpr) * step);
     if (h > MAX_DEVICE_H) h = MAX_DEVICE_H;
     if (h < SCREEN_H) h = SCREEN_H;
     const w = Math.round(h * (SCREEN_W / SCREEN_H));
@@ -276,6 +295,49 @@ export class Renderer {
     canvas.width = w;
     canvas.height = h;
     this.gl.viewport(0, 0, w, h);
+  }
+
+  // Give ground, and take it back.
+  //
+  // What a machine can fill is not a thing this code can know in advance --
+  // the same browser on the same screen is a different machine on a console,
+  // a laptop on battery and a phone in a case -- so it is measured instead.
+  // Handed the recent median frame time a few times a second, this walks the
+  // backing store down a step when the frames are long and back up when they
+  // are comfortably short, with the two thresholds far enough apart that it
+  // settles rather than oscillates.
+  //
+  // Nothing about the game changes with it. The world is still drawn in the
+  // same 586x256 coordinate space; only the number of real pixels it lands
+  // in moves, so a step down costs sharpness and nothing else.
+  adapt(frameMs) {
+    // A backgrounded tab reports frames seconds long; that is not a machine
+    // struggling, it is a machine not being asked.
+    if (!frameMs || frameMs > 250) return;
+    const at = this.scaleAt || 0;
+    if (frameMs > SLOW_MS) {
+      this.fast = 0;
+      if (++this.slow >= 3 && at < SCALES.length - 1) {
+        this.slow = 0;
+        this.scaleAt = at + 1;
+        this.resize();
+      }
+    } else if (frameMs < FAST_MS) {
+      this.slow = 0;
+      if (++this.fast >= 6 && at > 0) {
+        this.fast = 0;
+        this.scaleAt = at - 1;
+        this.resize();
+      }
+    } else {
+      this.slow = 0;
+      this.fast = 0;
+    }
+  }
+
+  // What the adaptor has settled on, for the readout.
+  get scale() {
+    return SCALES[this.scaleAt || 0];
   }
 
   begin(clear) {

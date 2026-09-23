@@ -52,7 +52,7 @@ function pct(buf, p) {
 // ones are always there and are usually enough to tell a phone from a laptop.
 function describe(canvas, gl, short = false) {
   const bits = [];
-  if (canvas) bits.push(canvas.width + 'x' + canvas.height);
+  if (canvas) bits.push(canvas.width + 'x' + canvas.height + scaleNote());
   if (typeof window !== 'undefined') {
     bits.push('dpr ' + (window.devicePixelRatio || 1).toFixed(1));
     if (window.innerWidth) bits.push('css ' + window.innerWidth + 'x' + window.innerHeight);
@@ -79,6 +79,15 @@ function trim(who) {
   const inner = /^ANGLE \(([^,]+),\s*([^,(]+)/.exec(who);
   const text = inner ? inner[1] + ' ' + inner[2].trim() : who;
   return text.length > 44 ? text.slice(0, 43) + '…' : text;
+}
+
+// The adaptor's doing, when it has done something: a backing store that is
+// not what the display asked for is the first thing to know about a slow
+// machine.
+function scaleNote() {
+  const r = typeof window !== 'undefined' && window.lander && window.lander.renderer;
+  const scale = r && r.scale;
+  return scale && scale < 1 ? ' @' + scale.toFixed(2).replace(/0$/, '') : '';
 }
 
 let described = false;
@@ -114,6 +123,12 @@ export function perfFrame(step, draw, tris, canvas, gl) {
     box.remove();
     box = null;
   }
+}
+
+// The recent median frame, for whoever is deciding how many pixels to ask
+// for next. See Renderer.adapt().
+export function perfFrameMs() {
+  return n > 20 ? pct(interval, 0.5) : 0;
 }
 
 function fps() {

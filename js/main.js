@@ -5,7 +5,7 @@ import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { startMusic, musicWanted } from './music.js';
 import { Game, STEP_MS } from './game.js';
-import { perf, perfInit, perfFrame, perfDescribe } from './perf.js';
+import { perf, perfInit, perfFrame, perfFrameMs, perfDescribe } from './perf.js';
 
 const canvas = document.getElementById('screen');
 const overlay = document.getElementById('overlay');
@@ -181,6 +181,7 @@ document.addEventListener('visibilitychange', () => {
 
 let last = performance.now();
 let acc = 0;
+let adaptTick = 0;
 
 function frame(now) {
   requestAnimationFrame(frame);
@@ -220,7 +221,12 @@ function frame(now) {
   // with the frame after this function returns -- which is where the time
   // goes on a machine that is compositing in software.
   perfFrame(t1 - t0, t2 - t1, renderer.triangleCount, canvas, renderer.gl);
+
+  // Four times a second, let the renderer decide whether the machine is
+  // keeping up with the number of pixels it is being asked for.
+  if ((adaptTick = (adaptTick + 1) % 15) === 0) renderer.adapt(perfFrameMs());
 }
+
 
 perfInit();
 perfDescribe(canvas, renderer.gl);
