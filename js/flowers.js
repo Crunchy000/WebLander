@@ -213,15 +213,18 @@ const BLOOM_Y = SHAPES.map((s) => ((s.height + s.bud * 0.5) * TILE) | 0);
 // so this is the last stretch before the craft and a little beyond it.
 const NEAR_ROW = TILES_Z - 9;
 
-// The patch field: one value per eight tiles square, so a meadow is about
-// eight tiles across and most of the world is not one.
-const PATCH = 2;                  // tiles per patch, as a shift
-// ... and how many patches in a hundred have anything. It was 40, which put
-// a meadow within sight almost everywhere and made the ground busy; 26
-// leaves a quarter of the world flowering, so a meadow is somewhere you
-// arrive at rather than the texture of the whole map.
-const PATCH_IN = 26;
-const MAX_PER_TILE = 2;
+// The patch field: one value per two tiles square, so a clump is a couple of
+// tiles across and most of the world has none.
+//
+// It was four tiles square, and the comment above it said eight, which is
+// what it had been before that -- a patch that size is not a clump, it is a
+// field, and a field of flowers arriving all at once is the ground changing
+// colour rather than something growing in it. Half the width is a quarter of
+// the area, so the share of patches that flower goes up to keep a meadow
+// worth finding.
+const PATCH = 1;                  // tiles per patch, as a shift
+const PATCH_IN = 22;              // ... and how many patches in a hundred have anything
+const MAX_PER_TILE = 1;
 
 // Every flower on one tile, handed to a callback. One function, used by both
 // the drawing and the bird, because a bird sipping at a flower that is not

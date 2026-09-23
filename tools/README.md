@@ -109,3 +109,14 @@ requestAnimationFrame in a 33ms slot, the way a console browser locked to
 thirty does, and the backing store should not move at all -- a cadence is not
 a machine in trouble, and no amount of taking pixels away turns thirty into
 sixty.
+
+## How big is a clump?
+
+    node clumps.mjs
+
+Sweeps 160 tiles square, asks the flower layer whether each tile has
+anything on it, and measures the connected runs. A screenshot cannot answer
+this -- the meadow harness finds the thickest patch in the world by
+construction, so every picture it takes looks like a field. The runs say
+what the ground actually does: median 1 tile, ninetieth percentile 3,
+biggest 12, over 5.6 per cent of the ground.
