@@ -12,11 +12,10 @@ import { TouchStick, throttleCurve, expo } from './stick.js';
 import { SCREEN_W, SCREEN_H } from './renderer.js';
 
 // A deadzone on one axis of a stick, with the travel beyond it rescaled so
-// the rim still reads 1. The thumb sticks on the glass are round, but each is
-// two controls on one thumb -- height and strafe on the left, away/towards
-// and turn on the right -- and a thumb pushing one of them is never quite
-// square to the other. Without this every turn was also a gentle climb or
-// sink, and every climb a slow turn.
+// the rim still reads 1. The thumb sticks on the glass are round, but the
+// left one is two controls on one thumb -- height and strafe -- and a thumb
+// pushing one of them is never quite square to the other. Without this every
+// strafe was also a gentle climb or sink, and every climb a slow slide.
 const AXIS_DEAD = 0.15;
 function axisDead(v) {
   const a = Math.abs(v);
@@ -45,14 +44,11 @@ export class Input {
     // whichever thumb arrives. Which of the two is in charge is `steerMode`,
     // and a device with no motion sensor gets the stick whatever it says.
     // Two of them, one under each thumb, laid out as the pad's two sticks
-    // are: see _canvasTouch. Linear, because each carries two different
-    // controls and is shaped per axis in sample().
+    // are: see _canvasTouch. The left carries two different controls and is
+    // shaped per axis in sample(), so it is linear; the right is the lean,
+    // and is the steering stick it always was.
     this.leftThumb = new TouchStick({ linear: true });
-    this.rightThumb = new TouchStick({ linear: true });
-    // A yaw rate, -1 to 1, from whichever control has one -- or null when the
-    // one in charge has none, and the craft flies as it always has. See
-    // Player.update.
-    this.turn = null;
+    this.rightThumb = new TouchStick();
     // How much power is being asked for, 0 to 1. Whatever is steering, some
     // sources say only yes or no and some say how much; this is how much, and
     // it is 1 for the ones that only say yes.
@@ -97,7 +93,6 @@ export class Input {
     this.padActive = false;
     this.padThrust = 0;
     this.padLift = 0;
-    this.padTurn = 0;
     this.padFire = false;
     this.padAnyButton = false;
     this._padStartWas = false;
@@ -344,8 +339,8 @@ export class Input {
   //   left thumb    up/down     height: left alone it holds, up climbs,
   //                             down sinks
   //                 left/right  strafe
-  //   right thumb   up/down     away/towards
-  //                 left/right  turn
+  //   right thumb               the lean, on the screen: up is away, down
+  //                             towards, left and right tilt that way
   //
   // By side rather than by arrival, because first-come was tried and it
   // swaps the controls over whenever the right thumb happens to land first.
@@ -529,44 +524,64 @@ export class Input {
       this.padAnyButton = false;
       this.padThrust = 0;
       this.padLift = 0;
-      this.padTurn = 0;
-      this.padFire = false;
+        this.padFire = false;
       return;
     }
 
     const btn = (i) => (pad.buttons[i] ? pad.buttons[i].value > 0.25 || pad.buttons[i].pressed : false);
     const axis = (i) => (pad.axes.length > i ? pad.axes[i] : 0);
 
-    // Two sticks, four controls, laid out as the player asked for them:
+    // Two sticks, laid out as the player asked for them:
     //
     //   left stick    up/down     height: centred holds it, up climbs,
     //                             down sinks (see Input.sample)
-    //                 left/right  strafe: bank to either side of the nose
-    //   right stick   up/down     away/towards: lean along the nose
-    //                 right/left  turn the nose round
+    //                 left/right  strafe
+    //   right stick               the lean itself, on the screen: up flies
+    //                             away, down towards, left and right tilt
+    //                             that way
     //
-    // Deadzones per axis rather than on the magnitude. Each stick is two
-    // unrelated controls, and a thumb pushing one of them is never quite
-    // square to the other: a round deadzone let every climb strafe a little
-    // and every turn creep forwards.
+    // Nothing turns the craft. Directions are the screen's, as they are for
+    // the mouse and the tilt, and the bird faces whichever way it leans --
+    // side on when it is going sideways.
     //
     // Screen y runs down and the sticks report up as negative, so the signs
     // flip to meet the one convention every input here has to produce:
     // y > 0 is away.
+    //
+    // The left stick is two unrelated controls, so its deadzones are per
+    // axis: a thumb pushing one of them is never quite square to the other,
+    // and a round deadzone let every climb strafe a little.
     const DEAD = 0.14;
     const dz = (v) => {
       const a = Math.abs(v);
       return a <= DEAD ? 0 : Math.sign(v) * Math.min(1, (a - DEAD) / (0.95 - DEAD));
     };
-    // Strafe and away/towards are the lean, and get the same expo the thumb
-    // stick and the tilt use: gentle in the middle, where the corrections are.
-    const shape = (v) => Math.sign(v) * expo(Math.abs(v));
-    let x = shape(dz(axis(0)));
-    let y = shape(dz(-axis(3)));
+    this.padLift = dz(-axis(1));
+    // Strafe gets the steering expo: gentle in the middle, where the
+    // corrections are.
+    const strafe = Math.sign(axis(0)) * expo(Math.abs(dz(axis(0))));
+
+    // The right stick is one control -- a direction -- so its deadzone is on
+    // the magnitude. Squaring it off would make the corners reachable and the
+    // cardinals sticky, which is the same mistake the tilt mapper made and
+    // the same fix.
+    let x = axis(2), y = -axis(3);
+    const LEAN_DEAD = 0.16;
+    let m = Math.hypot(x, y);
+    if (m < LEAN_DEAD) {
+      x = y = 0;
+    } else {
+      // Rescale so the stick still reaches full deflection after the deadzone
+      // is taken out of the bottom of its travel.
+      const k = Math.min(1, (m - LEAN_DEAD) / (0.95 - LEAN_DEAD)) / m;
+      x *= k; y *= k;
+    }
     // The d-pad, for whoever prefers it, is the same lean.
     if (btn(14)) x = -1; else if (btn(15)) x = 1;
     if (btn(12)) y = 1; else if (btn(13)) y = -1;
-    const m = Math.hypot(x, y);
+    // Strafe adds to the lean across; together they are still one stick.
+    x += strafe;
+    m = Math.hypot(x, y);
     if (m > 1) { x /= m; y /= m; }
     this.padStick.x = x;
     this.padStick.y = y;
@@ -574,11 +589,6 @@ export class Input {
     // Right trigger or A for full power, left trigger or X to hover. They win
     // over the height stick while they are held.
     this.padThrust = (btn(7) || btn(0)) ? 2 : (btn(6) || btn(2)) ? 1 : 0;
-
-    // Height and turn, signed and straight; Input.sample() and Player.update
-    // lay them out.
-    this.padLift = dz(-axis(1));
-    this.padTurn = dz(axis(2));
     this.padFire = btn(5) || btn(1) || btn(4);
 
     let any = false;
@@ -590,8 +600,7 @@ export class Input {
     if (startNow && !this._padStartWas) this.startPressed = true;
     this._padStartWas = startNow;
 
-    this.padActive = x !== 0 || y !== 0 || this.padThrust > 0 || this.padLift !== 0
-      || this.padTurn !== 0 || any;
+    this.padActive = x !== 0 || y !== 0 || this.padThrust > 0 || this.padLift !== 0 || any;
     if (this.padActive) this.padUsed = true;
   }
 
@@ -621,15 +630,14 @@ export class Input {
     // when the thumb is not there.
     const L = this.leftThumb, Rt = this.rightThumb;
     const lx = L.active ? axisDead(L.x) : 0, ly = L.active ? axisDead(L.y) : 0;
-    const rx = Rt.active ? axisDead(Rt.x) : 0, ry = Rt.active ? axisDead(Rt.y) : 0;
 
     if (this.padOwns) {
       this.stick = this.padStick;
     } else if (thumbs) {
-      // Strafe from the left thumb, away/towards from the right, with the
-      // steering expo on each.
-      let sx = Math.sign(lx) * expo(Math.abs(lx));
-      let sy = Math.sign(ry) * expo(Math.abs(ry));
+      // The lean from the right thumb, with the strafe from the left added
+      // across it.
+      let sx = (Rt.active ? Rt.x : 0) + Math.sign(lx) * expo(Math.abs(lx));
+      let sy = Rt.active ? Rt.y : 0;
       const m = Math.hypot(sx, sy);
       if (m > 1) { sx /= m; sy /= m; }
       this.thumbStick.x = sx;
@@ -679,15 +687,6 @@ export class Input {
     this.thrust = thrust;
     this.throttle = throttle;
     this.hold = hold;
-
-    // Turning, from the controls that have it. Either of them in charge puts
-    // the craft in drone mode -- the stick read relative to the nose -- even
-    // while it is not turning, so the frame does not change under the pilot
-    // every time the thumb comes off. Everything else is null: no turn, and
-    // the stick's bearing on the screen is the heading.
-    if (this.padOwns) this.turn = this.padTurn;
-    else if (thumbs) this.turn = rx;
-    else this.turn = null;
 
     this.fire = this.mouseFire || this.touchFire || this.padFire
       || k.has('KeyC') || k.has('ShiftLeft');

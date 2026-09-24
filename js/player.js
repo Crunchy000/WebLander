@@ -5,7 +5,7 @@
 // for sideways acceleration. That single idea is the whole flight model, and
 // it is why the controls map so naturally onto a phone you physically tilt.
 
-import { TILE, matFromAim, matApply, matMul, clamp, rnd, rndSigned } from './maths.js';
+import { TILE, matFromAim, matApply, clamp, rnd, rndSigned } from './maths.js';
 import { Model, shade, facet, drawModel } from './model.js';
 import {
   landAltitude, SEA_LEVEL, LAUNCHPAD_ALT, LAUNCHPAD_Y,
@@ -151,7 +151,7 @@ const HOVER_CLEAR = TILE * 0.6;
 // LANDING_SPEED, which is the fastest arrival the ground will forgive, so a
 // craft that comes down under it and level will walk away.
 const AUTO_DESCENT = (LANDING_SPEED * 0.6) | 0;
-// The descent a centred second stick settles into near the ground: gentle
+// The descent a centred height stick settles into near the ground: gentle
 // enough that a craft let go of there arrives with room to spare.
 const HOLD_SETTLE = (LANDING_SPEED * 0.4) | 0;
 
@@ -161,28 +161,6 @@ const HOLD_SETTLE = (LANDING_SPEED * 0.4) | 0;
 // be, and a slap that kills is just a rule you learn by dying to it.
 export const HULL_HITS = 3;
 const LEAN_RATE = 0.30;         // how fast the craft follows the stick -- snappier response
-// How fast a full turn input yaws the craft round, in radians a step: about
-// a hundred and fifteen degrees a second, so a half turn takes a second and
-// a half with the stick held over.
-const YAW_RATE = 0.04;
-
-// Which way the bird is drawn facing, when something is turning it.
-//
-// Flown like a drone, the lean and the nose are separate: strafe, and the
-// craft banks to one side of where it is pointing. On a quadrotor that is
-// how it looks. On a bird it looks wrong -- a bird banked over sideways and
-// sliding along is not a bird flying. So the bird turns to face the way it
-// is leaning, nose first and tipped forward into it, as it always did, and
-// turns back to the nose's heading when it levels off again. The physics
-// never sees any of this: the lean is the lean, whichever way the body is
-// drawn round it.
-const FACE_LEAN = 0.12;   // radians of lean before the body turns into it
-const FACE_RATE = 0.15;   // how quickly it turns, per step
-
-// Scratch for the facing, so building the matrix allocates nothing.
-const aimMat = new Float64Array(9);
-const yawMat = new Float64Array(9);
-yawMat[4] = 1;
 const DRAG = 0.985;             // damping; without it the craft is unflyable
 
 const DRAW_HOVER = 3;    // power drawn per frame while hovering
@@ -334,10 +312,6 @@ export class Player {
     this.vx = 0; this.vy = 0; this.vz = 0;
     this.leanDir = 0;
     this.lean = 0;
-    // Where the nose points, which is only its own thing when something is
-    // turning it. See update().
-    this.yaw = 0;
-    this.facing = 0;
     this.looping = false;
     this.matrix = matFromAim(0, 0);
     this.charge = CHARGE_MAX;
@@ -402,32 +376,25 @@ export class Player {
   // `stick` is the control input as x/y in [-1, 1]; `thrust` is 0, 1 (hover)
   // or 2 (full); `fire` is a boolean.
   // `throttle` is how much of the full power is being asked for, -1 to 1. Most
-  // ways of asking only say yes, and say it as 1; the second stick -- a
-  // thumb on the glass or the pad's right stick -- can say how much. Hover is not scaled --
-  // it is a setting rather than an amount, and a half-strength hold that does
-  // not hold is no use to anybody.
+  // ways of asking only say yes, and say it as 1; the height stick -- the
+  // left thumb on the glass or the pad's left stick -- can say how much.
+  // Hover is not scaled -- it is a setting rather than an amount, and a
+  // half-strength hold that does not hold is no use to anybody.
   //
   // Negative is reverse thrust: the rotors driven the other way, pushing
   // along the floor rather than the roof. It is the same one force with a
   // sign on it, so everything downstream of it -- the ceiling, the battery,
   // the lean -- falls out of that rather than needing a second set of rules.
-  // No control asks for it at present: the second stick's bottom is now
+  // No control asks for it at present: the height stick's bottom is
   // "no power" rather than "backwards". It is kept because it costs nothing.
   //
-  // `turn` is a yaw rate, -1 to 1, from the controls that have one: the pad's
-  // right stick and the second thumb on the glass. When it is null nothing
-  // is turning the craft, and it flies as it always has -- the stick's
-  // bearing on the screen is the heading, and the nose follows the lean.
-  // When it is a number the craft is flown like a drone: the nose is turned
-  // by `turn`, and the stick is read relative to it -- forward is where the
-  // nose points, left and right bank either side of it.
-  //
-  // `hold` is the same controls' throttle sitting centred, which asks the
-  // craft to stay at the height it is at -- a drone's altitude hold. It is
-  // the hover's physics without the hover's handling: the lean keeps
-  // whatever authority it had, because the stick passes through the middle
-  // all the time and the handling must not change every time it does.
-  update(stick, thrust, fire, gravity, game, throttle = 1, turn = null, hold = false) {
+  // `hold` is the height stick -- the pad's left stick, the left thumb on
+  // the glass -- sitting centred, which asks the craft to stay at the height
+  // it is at: a drone's altitude hold. It is the hover's physics without the
+  // hover's handling: the lean keeps whatever authority it had, because the
+  // stick passes through the middle all the time and the handling must not
+  // change every time it does.
+  update(stick, thrust, fire, gravity, game, throttle = 1, hold = false) {
     if (this.dead) {
       this.deathTimer--;
       return;
@@ -496,18 +463,7 @@ export class Player {
     // silently hand back the authority the pilot chose to give up.
     if (thrust) this.leanMode = thrust;
     const targetLean = mag * (this.leanMode === 1 ? HOVER_LEAN : MAX_LEAN);
-    // Drone style: the yaw is turned by hand, and the stick's bearing is
-    // measured from it. Not on the ground, for the same reason the stick
-    // flies nothing there. Otherwise the nose simply follows the lean, which
-    // keeps the two in step for the moment a turning control is picked up.
-    const drone = turn !== null;
-    if (drone && !this.landed) {
-      this.yaw += clamp(turn, -1, 1) * YAW_RATE;
-      if (this.yaw > Math.PI) this.yaw -= Math.PI * 2;
-      else if (this.yaw < -Math.PI) this.yaw += Math.PI * 2;
-    }
-    const bearing = Math.atan2(stick.x, stick.y) + (drone ? this.yaw : 0);
-    const targetDir = (mag > 0.02) ? bearing : this.leanDir;
+    const targetDir = (mag > 0.02) ? Math.atan2(stick.x, stick.y) : this.leanDir;
 
     // Interpolate the direction the short way round the circle.
     let dd = targetDir - this.leanDir;
@@ -533,34 +489,7 @@ export class Player {
     if (this.lean >= Math.PI * 2) this.lean -= Math.PI * 2;
     else if (this.lean < 0) this.lean += Math.PI * 2;
 
-    if (!drone) {
-      this.yaw = this.leanDir;
-      this.facing = this.leanDir;
-    } else {
-      // Into the lean while there is one worth the name, back to the nose's
-      // heading when there is not. See FACE_LEAN. The lean runs round to two
-      // pi on a loop, so "how much" is the short way to level.
-      const tilt = Math.min(this.lean, Math.PI * 2 - this.lean);
-      const want = tilt > FACE_LEAN ? this.leanDir : this.yaw;
-      let df = want - this.facing;
-      while (df > Math.PI) df -= Math.PI * 2;
-      while (df < -Math.PI) df += Math.PI * 2;
-      this.facing += df * FACE_RATE;
-      if (this.facing > Math.PI) this.facing -= Math.PI * 2;
-      else if (this.facing < -Math.PI) this.facing += Math.PI * 2;
-    }
-
-    // The lean tips the craft towards leanDir; the facing turns it about its
-    // own vertical axis first, so the body can point one way while the craft
-    // leans another. Turning about that axis leaves the roof where it was,
-    // so the thrust -- which acts along the roof -- is exactly what the lean
-    // alone would give. With the body facing the lean the turn is zero and
-    // this is the plain aim it always was.
-    matFromAim(this.leanDir, this.lean, aimMat);
-    const spin = this.facing - this.leanDir;
-    const c = Math.cos(spin), sn = Math.sin(spin);
-    yawMat[0] = c; yawMat[2] = sn; yawMat[6] = -sn; yawMat[8] = c;
-    matMul(aimMat, yawMat, this.matrix);
+    matFromAim(this.leanDir, this.lean, this.matrix);
 
     // Past the handling, the hold is a hover. See above.
     if (hold) thrust = 1;
