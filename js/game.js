@@ -372,7 +372,7 @@ export class Game {
     }
 
     // Playing.
-    this.player.update(inp.stick, inp.thrust, inp.fire, this.gravity, this, inp.throttle);
+    this.player.update(inp.stick, inp.thrust, inp.fire, this.gravity, this, inp.throttle, inp.turn);
     // Gated on the style for the same reason the drawing is: a flower you
     // can drink from and cannot see would be worse than no flower at all.
     if (serene() && this.state === STATE.PLAYING) this.sipNectar(this.player);
@@ -571,7 +571,10 @@ export class Game {
     // screen that is not part of the world -- it is the player's own thumb,
     // drawn back at them.
     // Only when it is steering: under tilt a finger is just the engine.
-    if (this.input.touchSteers) drawTouchStick(this.rd, this.input.touchStick.furniture);
+    if (this.input.touchSteers) {
+      drawTouchStick(this.rd, this.input.touchStick.furniture);
+      drawTouchStick(this.rd, this.input.thrustStick.furniture);
+    }
 
     rd.flush();
   }

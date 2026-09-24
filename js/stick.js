@@ -54,7 +54,12 @@ function expo(u) {
 }
 
 export class TouchStick {
-  constructor() {
+  // `linear` leaves out the expo. The steering stick wants it -- fine
+  // corrections in the middle -- but the thrust stick is laid out around its
+  // hold point by throttleCurve, and a curve on top of a curve would put that
+  // point somewhere a thumb cannot find.
+  constructor({ linear = false } = {}) {
+    this.linear = linear;
     this.reset();
   }
 
@@ -109,7 +114,8 @@ export class TouchStick {
     if (m > 1) m = 1;
     if (m <= DEADZONE) { this.x = this.y = 0; return; }
 
-    const shaped = expo((m - DEADZONE) / (1 - DEADZONE));
+    const u = (m - DEADZONE) / (1 - DEADZONE);
+    const shaped = this.linear ? u : expo(u);
     const k = shaped / (m * RADIUS);
     this.x = dx * k;
     // Screen y grows downwards and the stick's y grows away from the viewer,
@@ -152,9 +158,8 @@ export class TouchStick {
 
 // --- the throttle curve ------------------------------------------------------
 //
-// The pad's right stick is a throttle, and this is how its travel maps onto
-// power. It used to belong to a second thumb on the screen as well; the
-// reasoning is the same for any throttle.
+// Up on the second stick -- the pad's right stick, or the second thumb on the
+// glass -- is a throttle, and this is how its travel maps onto power.
 //
 // What a pilot is choosing is not a number of watts, it is a rate of climb,
 // and in this machine those two are nothing like each other: a fifth of full

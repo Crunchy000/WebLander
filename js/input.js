@@ -33,6 +33,13 @@ export class Input {
     // whichever thumb arrives. Which of the two is in charge is `steerMode`,
     // and a device with no motion sensor gets the stick whatever it says.
     this.touchStick = new TouchStick();
+    // ... and a second, under the right thumb: up is power, down is reverse,
+    // and left and right turn the craft. See _canvasTouch.
+    this.thrustStick = new TouchStick({ linear: true });
+    // A yaw rate, -1 to 1, from whichever control has one -- or null when the
+    // one in charge has none, and the craft flies as it always has. See
+    // Player.update.
+    this.turn = null;
     // How much power is being asked for, 0 to 1. Whatever is steering, some
     // sources say only yes or no and some say how much; this is how much, and
     // it is 1 for the ones that only say yes.
@@ -75,6 +82,7 @@ export class Input {
     this.padActive = false;
     this.padThrust = 0;
     this.padThrottle = 0;
+    this.padTurn = 0;
     this.padFire = false;
     this.padAnyButton = false;
     this._padStartWas = false;
@@ -315,19 +323,22 @@ export class Input {
 
   // What a finger means depends on what is steering.
   //
-  // Steering by stick, the first finger is the stick and nothing else, and a
-  // second finger, anywhere, is full power for as long as it stays down.
+  // Steering by stick, there are two, and the side of the screen a thumb
+  // lands on says which it gets. The left is the steering stick. The right
+  // is the second stick, laid out the same way as the pad's right stick: up
+  // is power -- half way holds your height -- down is reverse, and left and
+  // right turn the craft. Centred, or not there at all, it asks for nothing.
+  //
+  // By side rather than by arrival, because first-come was tried and it
+  // swaps the controls over whenever the right thumb happens to land first.
+  // A thumb on a side whose stick is already taken does nothing.
+  //
   // Steering by tilt, the handset is the stick, so there is nothing for a
   // finger to steer: any finger on the glass is full power, and no ring is
   // drawn under it.
   //
-  // There used to be more. A throttle under the right thumb -- a relative
-  // slider with a hold-height mark half way up -- which had to be found,
-  // grabbed and remembered; and then one finger meaning hover. Both went:
-  // on glass the power is on or off.
-  //
-  // The stick is fed whatever the mode, so switching between tilt and touch
-  // mid-flight does not need it warming up first.
+  // Both sticks are fed whatever the mode, so switching between tilt and
+  // touch mid-flight does not need them warming up first.
   _canvasTouch(e) {
     e.preventDefault();
     const r = this.canvas.getBoundingClientRect();
@@ -339,17 +350,22 @@ export class Input {
       ((t.clientY - r.top) / r.height) * SCREEN_H,
     ];
 
+    const sticks = [this.touchStick, this.thrustStick];
     for (const t of e.changedTouches) {
       const [bx, by] = toBuffer(t);
-      // The first finger gets the stick; any others only count.
-      if (e.type === 'touchstart') this.touchStick.down(t.identifier, bx, by);
-      else if (e.type === 'touchmove') this.touchStick.move(t.identifier, bx, by);
-      else this.touchStick.up(t.identifier);
+      if (e.type === 'touchstart') {
+        (bx < SCREEN_W / 2 ? this.touchStick : this.thrustStick).down(t.identifier, bx, by);
+      } else {
+        for (const s of sticks) {
+          if (e.type === 'touchmove') s.move(t.identifier, bx, by);
+          else s.up(t.identifier);
+        }
+      }
     }
-    // A finger lifted elsewhere can leave the stick owned by one that is no
-    // longer down, so the owner is checked against the live list as well.
-    const s = this.touchStick;
-    if (s.active) {
+    // A finger lifted elsewhere can leave a stick owned by one that is no
+    // longer down, so the owners are checked against the live list as well.
+    for (const s of sticks) {
+      if (!s.active) continue;
       let stillDown = false;
       for (const t of e.touches) if (t.identifier === s.id) stillDown = true;
       if (!stillDown) s.up(s.id);
@@ -495,6 +511,7 @@ export class Input {
       this.padAnyButton = false;
       this.padThrust = 0;
       this.padThrottle = 0;
+      this.padTurn = 0;
       this.padFire = false;
       return;
     }
@@ -549,9 +566,9 @@ export class Input {
     // The deadzone is the same either way, so a thumb resting on the stick
     // flies nothing at all.
     // Up is laid out around the one landmark it has -- half way up holds
-    // your height; see throttleCurve in stick.js. Down is straight: reverse has no
-    // landmark in it to lay anything out around, and pushing the stick down
-    // is a deliberate act rather than something you trim.
+    // your height; see throttleCurve in stick.js. Down is straight: reverse
+    // has no landmark in it to lay anything out around, and pushing the stick
+    // down is a deliberate act rather than something you trim.
     const THROTTLE_DEAD = 0.12;
     const v = -axis(3);
     const av = Math.abs(v);
@@ -559,6 +576,11 @@ export class Input {
       ? Math.min(1, (av - THROTTLE_DEAD) / (0.95 - THROTTLE_DEAD))
       : 0;
     this.padThrottle = amount === 0 ? 0 : (v < 0 ? -amount : throttleCurve(amount));
+    // ... and across, it turns the craft, drone style. See Player.update.
+    const h = axis(2), ah = Math.abs(h);
+    this.padTurn = ah > THROTTLE_DEAD
+      ? Math.sign(h) * Math.min(1, (ah - THROTTLE_DEAD) / (0.95 - THROTTLE_DEAD))
+      : 0;
     this.padFire = btn(5) || btn(1) || btn(4);
 
     let any = false;
@@ -570,7 +592,8 @@ export class Input {
     if (startNow && !this._padStartWas) this.startPressed = true;
     this._padStartWas = startNow;
 
-    this.padActive = x !== 0 || y !== 0 || this.padThrust > 0 || this.padThrottle !== 0 || any;
+    this.padActive = x !== 0 || y !== 0 || this.padThrust > 0 || this.padThrottle !== 0
+      || this.padTurn !== 0 || any;
     if (this.padActive) this.padUsed = true;
   }
 
@@ -591,6 +614,7 @@ export class Input {
     const tilt = this._tiltStick();
     // The rings fade in and out whether or not they are steering.
     this.touchStick.tick(1 / 50);
+    this.thrustStick.tick(1 / 50);
     // Touch wins when it has been chosen, or when there is no tilt to be had.
     this.touchSteers = this.steerMode === 'touch' || !tilt;
     const touch = this.touchSteers ? this.touchStick.stick : null;
@@ -609,19 +633,29 @@ export class Input {
 
     // Thrust, from whichever source is active, and how much of it.
     //
-    // Most sources only say on or off, or hover or full. One says how much:
-    // the right-hand stick on a pad, which can also ask for it the other way
-    // round, and owns the power while it is being used.
+    // Most sources only say on or off, or hover or full. Two say how much,
+    // and can ask for it the other way round: the pad's right stick and the
+    // thumb stick on the right of the glass. Either owns the power while it
+    // is being used.
     let thrust = this.mouseThrust;
     let throttle = 1;
     if (this.touchThrust) thrust = 2;
-    // Under the stick it takes a second finger; under tilt, any finger.
-    if (this.fingers >= (this.touchSteers ? 2 : 1)) thrust = 2;
+    // Under tilt, any finger is the engine.
+    const thumbs = this.touchUi && this.touchSteers;
+    if (!thumbs && this.fingers > 0) thrust = 2;
     if (k.has('KeyZ') || k.has('Space')) thrust = 2;
     else if (k.has('KeyX')) thrust = thrust || 1;
     if (this.padThrust) thrust = this.padThrust;
 
-    if (this.padThrottle !== 0) {
+    // The thumb stick on the right: up through throttleCurve, so half way
+    // holds your height, and down straight into reverse, the same as the pad.
+    const up = thumbs && this.thrustStick.active ? this.thrustStick.y : 0;
+    const thumbThrottle = up > 0 ? throttleCurve(up) : up;
+
+    if (thumbThrottle !== 0) {
+      throttle = thumbThrottle;
+      thrust = 2;
+    } else if (this.padThrottle !== 0) {
       // Negative is reverse: still full-power mode, still the rotors, just
       // turning the other way. The player decides how much and which way;
       // what that does to the craft depends on where its roof is pointing.
@@ -630,6 +664,15 @@ export class Input {
     }
     this.thrust = thrust;
     this.throttle = throttle;
+
+    // Turning, from the controls that have it. Either of them in charge puts
+    // the craft in drone mode -- the stick read relative to the nose -- even
+    // while it is not turning, so the frame does not change under the pilot
+    // every time the thumb comes off. Everything else is null: no turn, and
+    // the stick's bearing on the screen is the heading.
+    if (this.padOwns) this.turn = this.padTurn;
+    else if (thumbs) this.turn = this.thrustStick.active ? this.thrustStick.x : 0;
+    else this.turn = null;
 
     this.fire = this.mouseFire || this.touchFire || this.padFire
       || k.has('KeyC') || k.has('ShiftLeft');

@@ -5,7 +5,7 @@
 // for sideways acceleration. That single idea is the whole flight model, and
 // it is why the controls map so naturally onto a phone you physically tilt.
 
-import { TILE, matFromAim, matApply, clamp, rnd, rndSigned } from './maths.js';
+import { TILE, matFromAim, matApply, matMul, clamp, rnd, rndSigned } from './maths.js';
 import { Model, shade, facet, drawModel } from './model.js';
 import {
   landAltitude, SEA_LEVEL, LAUNCHPAD_ALT, LAUNCHPAD_Y,
@@ -158,6 +158,15 @@ const AUTO_DESCENT = (LANDING_SPEED * 0.6) | 0;
 // be, and a slap that kills is just a rule you learn by dying to it.
 export const HULL_HITS = 3;
 const LEAN_RATE = 0.30;         // how fast the craft follows the stick -- snappier response
+// How fast a full turn input yaws the craft round, in radians a step: about
+// a hundred and fifteen degrees a second, so a half turn takes a second and
+// a half with the stick held over.
+const YAW_RATE = 0.04;
+
+// Scratch for the facing, so building the matrix allocates nothing.
+const aimMat = new Float64Array(9);
+const yawMat = new Float64Array(9);
+yawMat[4] = 1;
 const DRAG = 0.985;             // damping; without it the craft is unflyable
 
 const DRAW_HOVER = 3;    // power drawn per frame while hovering
@@ -309,6 +318,9 @@ export class Player {
     this.vx = 0; this.vy = 0; this.vz = 0;
     this.leanDir = 0;
     this.lean = 0;
+    // Where the nose points, which is only its own thing when something is
+    // turning it. See update().
+    this.yaw = 0;
     this.looping = false;
     this.matrix = matFromAim(0, 0);
     this.charge = CHARGE_MAX;
@@ -382,7 +394,15 @@ export class Player {
   // along the floor rather than the roof. It is the same one force with a
   // sign on it, so everything downstream of it -- the ceiling, the battery,
   // the lean -- falls out of that rather than needing a second set of rules.
-  update(stick, thrust, fire, gravity, game, throttle = 1) {
+  //
+  // `turn` is a yaw rate, -1 to 1, from the controls that have one: the pad's
+  // right stick and the second thumb on the glass. When it is null nothing
+  // is turning the craft, and it flies as it always has -- the stick's
+  // bearing on the screen is the heading, and the nose follows the lean.
+  // When it is a number the craft is flown like a drone: the nose is turned
+  // by `turn`, and the stick is read relative to it -- forward is where the
+  // nose points, left and right bank either side of it.
+  update(stick, thrust, fire, gravity, game, throttle = 1, turn = null) {
     if (this.dead) {
       this.deathTimer--;
       return;
@@ -433,7 +453,18 @@ export class Player {
     // silently hand back the authority the pilot chose to give up.
     if (thrust) this.leanMode = thrust;
     const targetLean = mag * (this.leanMode === 1 ? HOVER_LEAN : MAX_LEAN);
-    const targetDir = (mag > 0.02) ? Math.atan2(stick.x, stick.y) : this.leanDir;
+    // Drone style: the yaw is turned by hand, and the stick's bearing is
+    // measured from it. Not on the ground, for the same reason the stick
+    // flies nothing there. Otherwise the nose simply follows the lean, which
+    // keeps the two in step for the moment a turning control is picked up.
+    const drone = turn !== null;
+    if (drone && !this.landed) {
+      this.yaw += clamp(turn, -1, 1) * YAW_RATE;
+      if (this.yaw > Math.PI) this.yaw -= Math.PI * 2;
+      else if (this.yaw < -Math.PI) this.yaw += Math.PI * 2;
+    }
+    const bearing = Math.atan2(stick.x, stick.y) + (drone ? this.yaw : 0);
+    const targetDir = (mag > 0.02) ? bearing : this.leanDir;
 
     // Interpolate the direction the short way round the circle.
     let dd = targetDir - this.leanDir;
@@ -459,7 +490,19 @@ export class Player {
     if (this.lean >= Math.PI * 2) this.lean -= Math.PI * 2;
     else if (this.lean < 0) this.lean += Math.PI * 2;
 
-    matFromAim(this.leanDir, this.lean, this.matrix);
+    if (!drone) this.yaw = this.leanDir;
+
+    // The lean tips the craft towards leanDir; the yaw turns it about its own
+    // vertical axis first, so the nose can point one way while the craft
+    // banks another. Turning about that axis leaves the roof where it was,
+    // so the thrust -- which acts along the roof -- is exactly what the lean
+    // alone would give. With the nose following the lean the turn is zero
+    // and this is the plain aim it always was.
+    matFromAim(this.leanDir, this.lean, aimMat);
+    const spin = this.yaw - this.leanDir;
+    const c = Math.cos(spin), sn = Math.sin(spin);
+    yawMat[0] = c; yawMat[2] = sn; yawMat[6] = -sn; yawMat[8] = c;
+    matMul(aimMat, yawMat, this.matrix);
 
     // A flat battery means no thrust at all. Remembering that it was asked
     // for lets the HUD say so, rather than the machine simply going quiet.
