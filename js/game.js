@@ -372,7 +372,7 @@ export class Game {
     }
 
     // Playing.
-    this.player.update(inp.stick, inp.thrust, inp.fire, this.gravity, this, inp.throttle, inp.turn);
+    this.player.update(inp.stick, inp.thrust, inp.fire, this.gravity, this, inp.throttle, inp.turn, inp.hold);
     // Gated on the style for the same reason the drawing is: a flower you
     // can drink from and cannot see would be worse than no flower at all.
     if (serene() && this.state === STATE.PLAYING) this.sipNectar(this.player);

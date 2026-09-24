@@ -151,6 +151,9 @@ const HOVER_CLEAR = TILE * 0.6;
 // LANDING_SPEED, which is the fastest arrival the ground will forgive, so a
 // craft that comes down under it and level will walk away.
 const AUTO_DESCENT = (LANDING_SPEED * 0.6) | 0;
+// The descent a centred second stick settles into near the ground: gentle
+// enough that a craft let go of there arrives with room to spare.
+const HOLD_SETTLE = (LANDING_SPEED * 0.4) | 0;
 
 // How many hits from a vessel's point defence the airframe will take. Shells
 // and missiles still kill outright: those are ordnance, and dodging them is
@@ -385,8 +388,8 @@ export class Player {
   // `stick` is the control input as x/y in [-1, 1]; `thrust` is 0, 1 (hover)
   // or 2 (full); `fire` is a boolean.
   // `throttle` is how much of the full power is being asked for, -1 to 1. Most
-  // ways of asking only say yes, and say it as 1; a second thumb on the glass
-  // and the right-hand stick on a pad can say how much. Hover is not scaled --
+  // ways of asking only say yes, and say it as 1; the second stick -- a
+  // thumb on the glass or the pad's right stick -- can say how much. Hover is not scaled --
   // it is a setting rather than an amount, and a half-strength hold that does
   // not hold is no use to anybody.
   //
@@ -394,6 +397,8 @@ export class Player {
   // along the floor rather than the roof. It is the same one force with a
   // sign on it, so everything downstream of it -- the ceiling, the battery,
   // the lean -- falls out of that rather than needing a second set of rules.
+  // No control asks for it at present: the second stick's bottom is now
+  // "no power" rather than "backwards". It is kept because it costs nothing.
   //
   // `turn` is a yaw rate, -1 to 1, from the controls that have one: the pad's
   // right stick and the second thumb on the glass. When it is null nothing
@@ -402,10 +407,34 @@ export class Player {
   // When it is a number the craft is flown like a drone: the nose is turned
   // by `turn`, and the stick is read relative to it -- forward is where the
   // nose points, left and right bank either side of it.
-  update(stick, thrust, fire, gravity, game, throttle = 1, turn = null) {
+  //
+  // `hold` is the same controls' throttle sitting centred, which asks the
+  // craft to stay at the height it is at -- a drone's altitude hold. It is
+  // the hover's physics without the hover's handling: the lean keeps
+  // whatever authority it had, because the stick passes through the middle
+  // all the time and the handling must not change every time it does.
+  update(stick, thrust, fire, gravity, game, throttle = 1, turn = null, hold = false) {
     if (this.dead) {
       this.deathTimer--;
       return;
+    }
+
+    // A hold only holds something in the air. Sat on the ground it asks for
+    // nothing, so a centred stick neither lifts the craft off the pad nor
+    // runs its battery there. Above the hover's clearance it is the hover.
+    //
+    // In between, close to the ground, it settles: whatever power brings the
+    // descent to a steady HOLD_SETTLE, so letting go of the stick near the
+    // ground sets the craft down. It was the power that exactly carries the
+    // craft's weight, which sounds the same and is not: drag bleeds the
+    // descent away, and the craft hung a hand's width off the ground
+    // indefinitely -- measured, eight seconds without arriving.
+    if (!hold || thrust || this.landed) {
+      hold = false;
+    } else if (!(this.altitude > HOVER_CLEAR)) {
+      hold = false;
+      thrust = 2;
+      throttle = clamp((gravity + (this.vy - HOLD_SETTLE) * 0.2) / THRUST_FULL, 0, 1);
     }
 
     // Reverse thrust cannot push a machine through the ground it is already
@@ -503,6 +532,9 @@ export class Player {
     const c = Math.cos(spin), sn = Math.sin(spin);
     yawMat[0] = c; yawMat[2] = sn; yawMat[6] = -sn; yawMat[8] = c;
     matMul(aimMat, yawMat, this.matrix);
+
+    // Past the handling, the hold is a hover. See above.
+    if (hold) thrust = 1;
 
     // A flat battery means no thrust at all. Remembering that it was asked
     // for lets the HUD say so, rather than the machine simply going quiet.

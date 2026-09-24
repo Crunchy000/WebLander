@@ -11,6 +11,17 @@ import { TiltSteering } from './tilt.js';
 import { TouchStick, throttleCurve } from './stick.js';
 import { SCREEN_W, SCREEN_H } from './renderer.js';
 
+// A deadzone on one axis of a stick, with the travel beyond it rescaled so
+// the rim still reads 1. The thumb stick on the glass is round, but the
+// second one is two controls on one thumb -- height up and down, turn across
+// -- and a thumb dragged sideways to turn is never quite level. Without this
+// every turn was also a gentle climb or sink, and every climb a slow turn.
+const AXIS_DEAD = 0.15;
+function axisDead(v) {
+  const a = Math.abs(v);
+  return a <= AXIS_DEAD ? 0 : Math.sign(v) * (a - AXIS_DEAD) / (1 - AXIS_DEAD);
+}
+
 export class Input {
   constructor(canvas) {
     this.canvas = canvas;
@@ -46,6 +57,7 @@ export class Input {
     this.throttle = 1;
     this.steerMode = 'touch';
     this.thrust = 0;      // 0 none, 1 hover, 2 full
+    this.hold = false;    // the second stick centred: stay at this height
     this.fire = false;
     this.startPressed = false;
 
@@ -81,7 +93,7 @@ export class Input {
     this.padStick = { x: 0, y: 0 };
     this.padActive = false;
     this.padThrust = 0;
-    this.padThrottle = 0;
+    this.padLift = 0;
     this.padTurn = 0;
     this.padFire = false;
     this.padAnyButton = false;
@@ -510,7 +522,7 @@ export class Input {
       this.padActive = false;
       this.padAnyButton = false;
       this.padThrust = 0;
-      this.padThrottle = 0;
+      this.padLift = 0;
       this.padTurn = 0;
       this.padFire = false;
       return;
@@ -547,35 +559,24 @@ export class Input {
     // Right trigger or A for full power, left trigger or X to hover.
     this.padThrust = (btn(7) || btn(0)) ? 2 : (btn(6) || btn(2)) ? 1 : 0;
 
-    // ... and the right-hand stick is the throttle. It is the one control on
-    // the pad that can ask for part of the power rather than all of it, which
-    // is what makes a gentle descent something you fly rather than something
-    // you feather with a trigger. The buttons still work alongside it.
+    // ... and the right-hand stick is the height, drone style: centred holds
+    // the height you are at, up climbs, down sinks -- more the further it
+    // goes. It is the one control on the pad that can ask for part of the
+    // power rather than all of it, which is what makes a gentle descent
+    // something you fly rather than something you feather with a trigger.
+    // The buttons still work alongside it, and win while they are held.
     //
-    // Pushed down it reverses: the same rotors driven the other way, pushing
-    // along the floor instead of the roof. Fixed props could not, reversible
-    // ones can, and this machine has them.
+    // It used to reverse when pushed down. Centred meaning "stay here" is
+    // worth more: it is the setting a pilot wants most of the time, and it
+    // is the one a thumb returns to by letting go.
     //
-    // It is worth having for the same reason the lean goes past ninety.
-    // Thrust acts along the craft's own axis wherever that axis is pointing,
-    // so reverse is not simply "down": upright it drives you at the ground,
-    // inverted it climbs, and banked over it pulls you back the way you came
-    // without turning the machine round -- which is a brake you can use while
-    // still looking where you were going.
-    //
-    // The deadzone is the same either way, so a thumb resting on the stick
-    // flies nothing at all.
-    // Up is laid out around the one landmark it has -- half way up holds
-    // your height; see throttleCurve in stick.js. Down is straight: reverse
-    // has no landmark in it to lay anything out around, and pushing the stick
-    // down is a deliberate act rather than something you trim.
+    // Signed and straight here; Input.sample() lays it out.
     const THROTTLE_DEAD = 0.12;
     const v = -axis(3);
     const av = Math.abs(v);
-    const amount = av > THROTTLE_DEAD
-      ? Math.min(1, (av - THROTTLE_DEAD) / (0.95 - THROTTLE_DEAD))
+    this.padLift = av > THROTTLE_DEAD
+      ? Math.sign(v) * Math.min(1, (av - THROTTLE_DEAD) / (0.95 - THROTTLE_DEAD))
       : 0;
-    this.padThrottle = amount === 0 ? 0 : (v < 0 ? -amount : throttleCurve(amount));
     // ... and across, it turns the craft, drone style. See Player.update.
     const h = axis(2), ah = Math.abs(h);
     this.padTurn = ah > THROTTLE_DEAD
@@ -592,7 +593,7 @@ export class Input {
     if (startNow && !this._padStartWas) this.startPressed = true;
     this._padStartWas = startNow;
 
-    this.padActive = x !== 0 || y !== 0 || this.padThrust > 0 || this.padThrottle !== 0
+    this.padActive = x !== 0 || y !== 0 || this.padThrust > 0 || this.padLift !== 0
       || this.padTurn !== 0 || any;
     if (this.padActive) this.padUsed = true;
   }
@@ -633,12 +634,12 @@ export class Input {
 
     // Thrust, from whichever source is active, and how much of it.
     //
-    // Most sources only say on or off, or hover or full. Two say how much,
-    // and can ask for it the other way round: the pad's right stick and the
-    // thumb stick on the right of the glass. Either owns the power while it
-    // is being used.
+    // Most sources only say on or off, or hover or full. The second stick --
+    // the pad's right stick, or the thumb stick on the right of the glass --
+    // says how much, around a middle that holds the height you are at.
     let thrust = this.mouseThrust;
     let throttle = 1;
+    let hold = false;
     if (this.touchThrust) thrust = 2;
     // Under tilt, any finger is the engine.
     const thumbs = this.touchUi && this.touchSteers;
@@ -647,23 +648,27 @@ export class Input {
     else if (k.has('KeyX')) thrust = thrust || 1;
     if (this.padThrust) thrust = this.padThrust;
 
-    // The thumb stick on the right: up through throttleCurve, so half way
-    // holds your height, and down straight into reverse, the same as the pad.
-    const up = thumbs && this.thrustStick.active ? this.thrustStick.y : 0;
-    const thumbThrottle = up > 0 ? throttleCurve(up) : up;
-
-    if (thumbThrottle !== 0) {
-      throttle = thumbThrottle;
-      thrust = 2;
-    } else if (this.padThrottle !== 0) {
-      // Negative is reverse: still full-power mode, still the rotors, just
-      // turning the other way. The player decides how much and which way;
-      // what that does to the craft depends on where its roof is pointing.
-      throttle = this.padThrottle;
-      thrust = 2;
+    // The second stick, when one is in charge: -1 (all the way down) to 1.
+    // Centred -- or let go of, which is the same thing -- holds the height.
+    // Either side of that the travel runs through throttleCurve from its
+    // middle, which is the power that carries the craft's weight: up to all
+    // of it at the top, down to none at the bottom. So the stick is
+    // continuous through the middle, and a little either side of it is a
+    // gentle climb or a gentle sink. A pad button held wins.
+    const lift = this.padOwns ? this.padLift
+      : thumbs ? (this.thrustStick.active ? axisDead(this.thrustStick.y) : 0)
+      : null;
+    if (lift !== null && !this.padThrust) {
+      if (lift === 0) {
+        hold = true;
+      } else {
+        const power = throttleCurve(0.5 + lift / 2);
+        if (power > 0) { thrust = 2; throttle = power; }
+      }
     }
     this.thrust = thrust;
     this.throttle = throttle;
+    this.hold = hold;
 
     // Turning, from the controls that have it. Either of them in charge puts
     // the craft in drone mode -- the stick read relative to the nose -- even
@@ -671,7 +676,7 @@ export class Input {
     // every time the thumb comes off. Everything else is null: no turn, and
     // the stick's bearing on the screen is the heading.
     if (this.padOwns) this.turn = this.padTurn;
-    else if (thumbs) this.turn = this.thrustStick.active ? this.thrustStick.x : 0;
+    else if (thumbs) this.turn = this.thrustStick.active ? axisDead(this.thrustStick.x) : 0;
     else this.turn = null;
 
     this.fire = this.mouseFire || this.touchFire || this.padFire
