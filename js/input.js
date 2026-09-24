@@ -150,6 +150,7 @@ export class Input {
 
   _bindMouse() {
     const c = this.canvas;
+    const stage = c.parentElement;
 
     // Steering reads the pointer's position, not its movement, so the cursor
     // leaving the canvas or the window losing focus used to strand the stick
@@ -157,59 +158,114 @@ export class Input {
     // cursor cannot leave, because there is no longer a cursor.
     //
     // Locked, the browser reports movement rather than position, so the
-    // position is kept here instead and the same mapping applied to it. The
-    // gain is deliberately identical -- a movement of half the canvas width
-    // still means half deflection -- so locking changes nothing about how it
-    // flies, only that it cannot be lost.
+    // position is kept here instead and the same mapping applied to it, so
+    // locking and unlocking change nothing about how it flies.
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === c;
+      this._spiked = false;
+      this._lastMove = 0;
     });
     document.addEventListener('pointerlockerror', () => { this.locked = false; });
 
-    c.addEventListener('mousemove', (e) => {
+    // The same scale on both axes, and a round rim.
+    //
+    // It was half the canvas width across and half its height up and down,
+    // clamped per axis. On a canvas twice as wide as it is tall that made
+    // up-and-down twice as sensitive as side-to-side, so the craft leaned at
+    // 28 degrees when the hand went at 45 -- the lean never quite went where
+    // the mouse did. And the square clamp let the stick sit at 1.41 in a
+    // corner: a loop starts at 0.96 and only lets go below 0.80, so after
+    // pulling a fifth of the way back out of a corner it still read 1.13 and
+    // the craft went on looping. A stick has a round rim, and now so does this
+    // one: full deflection is half the canvas height in any direction, and
+    // the first movement back off the rim is answered at once.
+    const radius = () => {
+      const h = c.getBoundingClientRect().height;
+      return h > 0 ? h / 2 : 0;
+    };
+    const rim = (x, y) => {
+      const m = Math.hypot(x, y);
+      return m > 1 ? { x: x / m, y: y / m } : { x, y };
+    };
+
+    // On the window rather than the canvas: when the window is a different
+    // shape from the game there are bars at the sides, and a pointer over
+    // them is still steering.
+    addEventListener('mousemove', (e) => {
+      this._buttons(this._held &= e.buttons);
       if (this.touchUi && this.tiltEnabled) return;
-      const r = c.getBoundingClientRect();
-      if (!r.width || !r.height) return;
+      const R = radius();
+      if (!R) return;
 
       if (this.locked) {
-        this.mouseStick = {
-          x: clamp(this.mouseStick.x + (e.movementX / (r.width / 2)), -1, 1),
-          y: clamp(this.mouseStick.y - (e.movementY / (r.height / 2)), -1, 1),
-        };
+        // Some browsers now and then report a single movement far larger
+        // than any hand made -- Chrome with pointer lock is the one people
+        // meet -- and with the position kept here, a spike does not flick
+        // the stick and come back: it moves it to the rim and leaves it
+        // there. So a movement of more than the stick's whole radius in one
+        // event, out of nowhere, is held back. If the next one is large too,
+        // it was a real flick, and it goes through -- a hand that fast was
+        // at the rim either way.
+        const d = Math.hypot(e.movementX, e.movementY);
+        if (d > R && d > this._lastMove * 4 && !this._spiked) {
+          this._spiked = true;
+          return;
+        }
+        this._spiked = false;
+        this._lastMove = d;
+        this.mouseStick = rim(
+          this.mouseStick.x + e.movementX / R,
+          // Negated: screen y grows downwards, but moving up the screen,
+          // towards the horizon, has to fly away from the viewer.
+          this.mouseStick.y - e.movementY / R);
         return;
       }
 
-      // Map the pointer's position within the canvas onto the stick, the same
-      // way the original maps the mouse's 0-1023 range onto -512..+511.
-      this.mouseStick = {
-        x: clamp(((e.clientX - r.left) / r.width) * 2 - 1, -1, 1),
-        // Negated: screen y grows downwards, but moving the pointer up the
-        // screen, towards the horizon, has to fly away from the viewer.
-        y: clamp(1 - ((e.clientY - r.top) / r.height) * 2, -1, 1),
-      };
+      // Unlocked, where the pointer is, measured from the middle of the
+      // canvas, is the stick -- the way the original maps the mouse's
+      // range onto -512..+511.
+      const r = c.getBoundingClientRect();
+      this.mouseStick = rim(
+        (e.clientX - (r.left + r.width / 2)) / R,
+        ((r.top + r.height / 2) - e.clientY) / R);
     });
 
-    c.addEventListener('mousedown', (e) => {
+    // The buttons, read from the mask the browser keeps rather than tracked
+    // press by press. Tracked, letting go of the middle button cut the power
+    // while the left was still held, and a press whose release never arrived
+    // -- the window losing focus with a button down -- left the engine on
+    // until the next click.
+    //
+    // Anywhere in the play area, not only on the canvas: a click on the bars
+    // at the sides used to do nothing. The title card covers the whole stage
+    // while it is up, so this cannot reach under it. Only a press that began
+    // here counts: the click on the start button may still be held as the
+    // flight begins, and that is not a request for power.
+    stage.addEventListener('mousedown', (e) => {
+      if (e.target !== c && e.target !== stage) return;
       e.preventDefault();
       // Any click takes the pointer back, so wandering out of the window or
       // pressing Escape costs one click rather than the rest of the flight.
       this.grabPointer();
-      if (e.button === 0) this.mouseThrust = 2;
-      else if (e.button === 1) this.mouseThrust = 1;
-      else if (e.button === 2) this.mouseFire = true;
+      this._buttons(this._held = e.buttons);
     });
-
-    const clear = (e) => {
-      if (e.button === 0 || e.button === 1) this.mouseThrust = 0;
-      else if (e.button === 2) this.mouseFire = false;
-    };
-    addEventListener('mouseup', clear);
+    addEventListener('mouseup', (e) => this._buttons(this._held &= e.buttons));
+    addEventListener('blur', () => this._buttons(this._held = 0));
     c.addEventListener('contextmenu', (e) => e.preventDefault());
 
     this.mouseStick = { x: 0, y: 0 };
     this.mouseThrust = 0;
     this.mouseFire = false;
     this.locked = false;
+    this._held = 0;
+    this._spiked = false;
+    this._lastMove = 0;
+  }
+
+  // Left is full power, middle is hover, right is the gun.
+  _buttons(mask) {
+    this.mouseThrust = mask & 1 ? 2 : mask & 4 ? 1 : 0;
+    this.mouseFire = !!(mask & 2);
   }
 
   // Ask for the pointer. Needs a user gesture, and throws if it is called too
