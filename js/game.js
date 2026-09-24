@@ -570,7 +570,8 @@ export class Game {
     // The touch stick goes over everything, because it is the one thing on
     // screen that is not part of the world -- it is the player's own thumb,
     // drawn back at them.
-    drawTouchStick(this.rd, this.input.touchStick && this.input.touchStick.furniture);
+    // Only when it is steering: under tilt a finger is just the engine.
+    if (this.input.touchSteers) drawTouchStick(this.rd, this.input.touchStick.furniture);
 
     rd.flush();
   }

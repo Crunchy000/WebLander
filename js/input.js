@@ -249,25 +249,26 @@ export class Input {
     this.touchThrust = false;
     this.touchFire = false;
 
-    this.tapThrust = 0;   // 0 no fingers, 1 hover, 2 full
+    this.fingers = 0;     // on the game itself
+    this.touchSteers = true;
 
     for (const ev of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) {
       this.canvas.addEventListener(ev, (e) => this._canvasTouch(e), { passive: false });
     }
   }
 
-  // One finger does both jobs: it puts the engine on at hover and, by how
-  // far it has moved since it landed, says which way to lean. That pairing is
-  // not a convenience -- power on is exactly when the craft is being flown,
-  // and it is what the tilt steering uses to know when to hold its neutral
-  // still. A second finger, anywhere, is full power for as long as it stays.
+  // What a finger means depends on what is steering.
   //
-  // There used to be a throttle under the right thumb: a relative slider
-  // with a hold-height mark half way up. It gave a finer control than two
-  // settings, but it had to be found, grabbed and remembered, and it stayed
-  // wherever it was left. Hover and full are the two settings the mouse and
-  // the keyboard have always had, and on glass they are now one finger and
-  // two.
+  // Steering by stick, the first finger is the stick and nothing else, and a
+  // second finger, anywhere, is full power for as long as it stays down.
+  // Steering by tilt, the handset is the stick, so there is nothing for a
+  // finger to steer: any finger on the glass is full power, and no ring is
+  // drawn under it.
+  //
+  // There used to be more. A throttle under the right thumb -- a relative
+  // slider with a hold-height mark half way up -- which had to be found,
+  // grabbed and remembered; and then one finger meaning hover. Both went:
+  // on glass the power is on or off.
   //
   // The stick is fed whatever the mode, so switching between tilt and touch
   // mid-flight does not need it warming up first.
@@ -299,8 +300,7 @@ export class Input {
     }
 
     // Fingers on the game itself, not on anything laid over it.
-    const n = e.targetTouches.length;
-    this.tapThrust = n >= 2 ? 2 : n;
+    this.fingers = e.targetTouches.length;
   }
 
   // -- tilt -----------------------------------------------------------------
@@ -536,7 +536,8 @@ export class Input {
     // The rings fade in and out whether or not they are steering.
     this.touchStick.tick(1 / 50);
     // Touch wins when it has been chosen, or when there is no tilt to be had.
-    const touch = (this.steerMode === 'touch' || !tilt) ? this.touchStick.stick : null;
+    this.touchSteers = this.steerMode === 'touch' || !tilt;
+    const touch = this.touchSteers ? this.touchStick.stick : null;
 
     if (this.padOwns) {
       this.stick = this.padStick;
@@ -552,13 +553,14 @@ export class Input {
 
     // Thrust, from whichever source is active, and how much of it.
     //
-    // Most sources only say hover or full. One says how much: the right-hand
-    // stick on a pad, which can also ask for it the other way round, and owns
-    // the power while it is being used.
+    // Most sources only say on or off, or hover or full. One says how much:
+    // the right-hand stick on a pad, which can also ask for it the other way
+    // round, and owns the power while it is being used.
     let thrust = this.mouseThrust;
     let throttle = 1;
     if (this.touchThrust) thrust = 2;
-    if (this.tapThrust > thrust) thrust = this.tapThrust;
+    // Under the stick it takes a second finger; under tilt, any finger.
+    if (this.fingers >= (this.touchSteers ? 2 : 1)) thrust = 2;
     if (k.has('KeyZ') || k.has('Space')) thrust = 2;
     else if (k.has('KeyX')) thrust = thrust || 1;
     if (this.padThrust) thrust = this.padThrust;
