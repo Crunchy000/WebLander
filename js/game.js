@@ -18,7 +18,7 @@ import { updateWeather, drawWeather, resetWeather, weather, SNOW } from './weath
 import { drawClouds } from './clouds.js';
 import { project, depthOf, SCREEN_W, SCREEN_H, CENTRE_X } from './renderer.js';
 import { ModelPass } from './modelpass.js';
-import { drawTouchStick, drawThrottle } from './stick.js';
+import { drawTouchStick } from './stick.js';
 import { Player, GRAVITY_START, CHARGE_MAX, HULL_HITS } from './player.js';
 import { drawModel, drawShadow, drawLightPool, silhouetteAmount } from './model.js';
 import {
@@ -167,9 +167,6 @@ export class Game {
     resetWeather();
     resetFlowers();
     this.player.reset();
-    // A fresh flight starts with the power in the pilot's hands rather than
-    // wherever the last one left it.
-    this.input.throttleStick.reset();
     this.state = STATE.PLAYING;
   }
 
@@ -574,7 +571,6 @@ export class Game {
     // screen that is not part of the world -- it is the player's own thumb,
     // drawn back at them.
     drawTouchStick(this.rd, this.input.touchStick && this.input.touchStick.furniture);
-    drawThrottle(this.rd, this.input.throttleStick && this.input.throttleStick.furniture);
 
     rd.flush();
   }

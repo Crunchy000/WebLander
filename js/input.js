@@ -8,7 +8,7 @@
 
 import { clamp } from './maths.js';
 import { TiltSteering } from './tilt.js';
-import { TouchStick, ThrottleStick, throttleCurve, throttleTravelFor } from './stick.js';
+import { TouchStick, throttleCurve } from './stick.js';
 import { SCREEN_W, SCREEN_H } from './renderer.js';
 
 export class Input {
@@ -33,8 +33,6 @@ export class Input {
     // whichever thumb arrives. Which of the two is in charge is `steerMode`,
     // and a device with no motion sensor gets the stick whatever it says.
     this.touchStick = new TouchStick();
-    // ... and a second thumb, which does nothing but say how hard.
-    this.throttleStick = new ThrottleStick();
     // How much power is being asked for, 0 to 1. Whatever is steering, some
     // sources say only yes or no and some say how much; this is how much, and
     // it is 1 for the ones that only say yes.
@@ -251,18 +249,25 @@ export class Input {
     this.touchThrust = false;
     this.touchFire = false;
 
-    this.tapThrust = false;
+    this.tapThrust = 0;   // 0 no fingers, 1 hover, 2 full
 
     for (const ev of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) {
       this.canvas.addEventListener(ev, (e) => this._canvasTouch(e), { passive: false });
     }
   }
 
-  // One finger does both jobs: it puts the engine on and, by how far it has
-  // moved since it landed, says which way to lean. That pairing is not a
-  // convenience -- power on is exactly when the craft is being flown, and it
-  // is what the tilt steering uses to know when to hold its neutral still.
-  // A second finger works the gun.
+  // One finger does both jobs: it puts the engine on at hover and, by how
+  // far it has moved since it landed, says which way to lean. That pairing is
+  // not a convenience -- power on is exactly when the craft is being flown,
+  // and it is what the tilt steering uses to know when to hold its neutral
+  // still. A second finger, anywhere, is full power for as long as it stays.
+  //
+  // There used to be a throttle under the right thumb: a relative slider
+  // with a hold-height mark half way up. It gave a finer control than two
+  // settings, but it had to be found, grabbed and remembered, and it stayed
+  // wherever it was left. Hover and full are the two settings the mouse and
+  // the keyboard have always had, and on glass they are now one finger and
+  // two.
   //
   // The stick is fed whatever the mode, so switching between tilt and touch
   // mid-flight does not need it warming up first.
@@ -279,51 +284,23 @@ export class Input {
 
     for (const t of e.changedTouches) {
       const [bx, by] = toBuffer(t);
-      if (e.type === 'touchstart') {
-        // The right-hand side belongs to the throttle -- but only once there
-        // is already a thumb steering, or the throttle has been used before.
-        // A lone first finger steers from wherever it lands, which is what
-        // keeps "one finger anywhere flies" true for somebody who has never
-        // gone looking for a throttle.
-        //
-        // Roles by position rather than by arrival order, once there are two
-        // of them. It used to be first-come: whichever thumb touched down
-        // first got the stick and the other got the throttle. Put your right
-        // thumb down first, as you would if you were setting the power before
-        // steering, and the two controls swapped ends of the handset without
-        // saying so -- which is exactly what a throttle that will not respond
-        // feels like.
-        const toThrottle = ThrottleStick.claims(bx)
-          && (this.touchStick.active || this.throttleStick.armed);
-        // What the engines are being given right now, as a thumb position,
-        // so that taking hold of the throttle for the first time changes
-        // nothing until the thumb moves.
-        const seed = throttleTravelFor(this.thrust === 2 ? this.throttle : 0);
-        if (toThrottle) {
-          if (!this.throttleStick.down(t.identifier, bx, by, seed)) {
-            this.touchStick.down(t.identifier, bx, by);
-          }
-        } else if (!this.touchStick.down(t.identifier, bx, by)) {
-          this.throttleStick.down(t.identifier, bx, by, seed);
-        }
-      } else if (e.type === 'touchmove') {
-        this.touchStick.move(t.identifier, bx, by);
-        this.throttleStick.move(t.identifier, bx, by);
-      } else {
-        this.touchStick.up(t.identifier);
-        this.throttleStick.up(t.identifier);
-      }
+      // The first finger gets the stick; any others only count.
+      if (e.type === 'touchstart') this.touchStick.down(t.identifier, bx, by);
+      else if (e.type === 'touchmove') this.touchStick.move(t.identifier, bx, by);
+      else this.touchStick.up(t.identifier);
     }
-    // A finger lifted elsewhere can leave a stick owned by one that is no
-    // longer down, so the owners are checked against the live list as well.
-    for (const s of [this.touchStick, this.throttleStick]) {
-      if (!s.active) continue;
+    // A finger lifted elsewhere can leave the stick owned by one that is no
+    // longer down, so the owner is checked against the live list as well.
+    const s = this.touchStick;
+    if (s.active) {
       let stillDown = false;
       for (const t of e.touches) if (t.identifier === s.id) stillDown = true;
       if (!stillDown) s.up(s.id);
     }
 
-    this.tapThrust = e.touches.length >= 1;
+    // Fingers on the game itself, not on anything laid over it.
+    const n = e.targetTouches.length;
+    this.tapThrust = n >= 2 ? 2 : n;
   }
 
   // -- tilt -----------------------------------------------------------------
@@ -515,9 +492,8 @@ export class Input {
     //
     // The deadzone is the same either way, so a thumb resting on the stick
     // flies nothing at all.
-    // Up is laid out the same way the thumb throttle is -- half way up holds
-    // your height -- so the two controls mean the same thing and a player who
-    // has learnt one has learnt the other. Down is straight: reverse has no
+    // Up is laid out around the one landmark it has -- half way up holds
+    // your height; see throttleCurve in stick.js. Down is straight: reverse has no
     // landmark in it to lay anything out around, and pushing the stick down
     // is a deliberate act rather than something you trim.
     const THROTTLE_DEAD = 0.12;
@@ -559,7 +535,6 @@ export class Input {
     const tilt = this._tiltStick();
     // The rings fade in and out whether or not they are steering.
     this.touchStick.tick(1 / 50);
-    this.throttleStick.tick(1 / 50);
     // Touch wins when it has been chosen, or when there is no tilt to be had.
     const touch = (this.steerMode === 'touch' || !tilt) ? this.touchStick.stick : null;
 
@@ -577,29 +552,18 @@ export class Input {
 
     // Thrust, from whichever source is active, and how much of it.
     //
-    // Most sources only say yes or no, so they ask for all of it. Two say how
-    // much: a second thumb on the screen, and the right-hand stick on a pad,
-    // which can also ask for it the other way round. Whichever of those is in
-    // use owns the power while it is.
+    // Most sources only say hover or full. One says how much: the right-hand
+    // stick on a pad, which can also ask for it the other way round, and owns
+    // the power while it is being used.
     let thrust = this.mouseThrust;
     let throttle = 1;
-    if (this.touchThrust || this.tapThrust) thrust = 2;
+    if (this.touchThrust) thrust = 2;
+    if (this.tapThrust > thrust) thrust = this.tapThrust;
     if (k.has('KeyZ') || k.has('Space')) thrust = 2;
     else if (k.has('KeyX')) thrust = thrust || 1;
     if (this.padThrust) thrust = this.padThrust;
 
-    // The throttle takes the power over the moment it is used, and keeps it.
-    // Until then, one finger on the glass is still simply "fly", which is
-    // what it has always been -- so nobody has to know about the throttle to
-    // get off the ground.
-    if (this.throttleStick.armed) {
-      // Armed, not held: once the throttle has been used it owns the power
-      // whether or not a thumb is on it, because that is what a throttle is.
-      // The power, not the thumb position: half way up the travel is the
-      // fifth of full power that holds height. See stick.js.
-      throttle = this.throttleStick.power;
-      thrust = throttle > 0 ? 2 : 0;
-    } else if (this.padThrottle !== 0) {
+    if (this.padThrottle !== 0) {
       // Negative is reverse: still full-power mode, still the rotors, just
       // turning the other way. The player decides how much and which way;
       // what that does to the craft depends on where its roof is pointing.
