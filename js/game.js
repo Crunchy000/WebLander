@@ -926,11 +926,24 @@ export class Game {
     const lifeText = 'birds ' + Math.max(0, this.lives - 1);
     drawText(rd, lifeText, SCREEN_W - 4 - textWidth(lifeText), by, DIM);
 
-    // Altitude, which matters most when you are trying to put down.
+    // Two heights, because they answer two different questions.
+    //
+    // `alt` is the height above the sea: the one the ceiling is set in, and
+    // the one that says where you are in the sky. The readout used to be
+    // labelled alt and show the other one, height over whatever was directly
+    // below, so it jumped with every hill passed over and said nothing about
+    // how near the thin air was.
+    //
+    // `gnd` is that other one, now under its own name: how far the skids are
+    // from the ground (or the water) straight down, which is the number that
+    // matters when you are trying to put down.
     if (this.state === STATE.PLAYING) {
-      const alt = Math.max(0, p.altitude / TILE);
-      const txt = 'alt ' + alt.toFixed(1);
-      drawText(rd, txt, SCREEN_W - 4 - textWidth(txt), 14, DIM);
+      const alt = (SEA_LEVEL - UNDERCARRIAGE_Y - p.y) / TILE;
+      const gnd = Math.max(0, p.altitude / TILE);
+      const altTxt = 'alt ' + alt.toFixed(1);
+      const gndTxt = 'gnd ' + gnd.toFixed(1);
+      drawText(rd, altTxt, SCREEN_W - 4 - textWidth(altTxt), 14, DIM);
+      drawText(rd, gndTxt, SCREEN_W - 4 - textWidth(gndTxt), 25, DIM);
 
       // Say why the machine is not climbing. Both of these used to happen in
       // silence, which is how a limit gets mistaken for a fault.
@@ -939,11 +952,11 @@ export class Game {
       // there is no more air -- said the way you would say it to someone
       // sitting next to you.
       if (p.autorotating) {
-        drawText(rd, 'gliding down', SCREEN_W - 4 - textWidth('gliding down'), 25, WARM);
+        drawText(rd, 'gliding down', SCREEN_W - 4 - textWidth('gliding down'), 36, WARM);
       } else if (p.flat) {
-        drawText(rd, 'out of charge', SCREEN_W - 4 - textWidth('out of charge'), 25, CLAY);
+        drawText(rd, 'out of charge', SCREEN_W - 4 - textWidth('out of charge'), 36, CLAY);
       } else if (p.ceiling > 0.12) {
-        drawText(rd, 'thin air up here', SCREEN_W - 4 - textWidth('thin air up here'), 25, WARM);
+        drawText(rd, 'thin air up here', SCREEN_W - 4 - textWidth('thin air up here'), 36, WARM);
       }
     }
 
