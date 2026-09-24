@@ -256,6 +256,7 @@ software rasterisation, so a phone GPU does not notice it.
 | `js/landscape.js` | the altitude formula and VIDC tile colours |
 | `js/renderer.js` | WebGL batcher and the projection |
 | `js/model.js` | flat-shaded polygon model primitives |
+| `js/modelpass.js` | scenery drawn on the GPU: shapes uploaded once, positioned per instance |
 | `js/objects.js` | scenery models and the stateless object map |
 | `js/tanks.js` | roving armour, their gunnery and their destruction |
 | `js/boats.js` | canoes on the sea, the one moving thing left out there |

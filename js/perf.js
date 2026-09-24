@@ -53,6 +53,7 @@ function pct(buf, p) {
 function describe(canvas, gl, short = false) {
   const bits = [];
   if (canvas) bits.push(canvas.width + 'x' + canvas.height + scaleNote());
+  bits.push(modelsNote());
   if (typeof window !== 'undefined') {
     bits.push('dpr ' + (window.devicePixelRatio || 1).toFixed(1));
     if (window.innerWidth) bits.push('css ' + window.innerWidth + 'x' + window.innerHeight);
@@ -88,6 +89,14 @@ function scaleNote() {
   const r = typeof window !== 'undefined' && window.lander && window.lander.renderer;
   const scale = r && r.scale;
   return scale && scale < 1 ? ' @' + scale.toFixed(2).replace(/0$/, '') : '';
+}
+
+// Which way the scenery is being drawn: positioned on the GPU from shapes
+// uploaded once, or projected here and sent up every frame (WebGL1, or
+// ?cpumodels). A figure from a device means little without knowing which.
+function modelsNote() {
+  const r = typeof window !== 'undefined' && window.lander && window.lander.renderer;
+  return r && r.instancer ? 'gpu models' : 'cpu models';
 }
 
 let described = false;

@@ -9,7 +9,7 @@
 import { TILE, matApply } from './maths.js';
 import { landAltitude, SEA_LEVEL } from './landscape.js';
 import { sky, litColour, emissive, skyColourAt, silhouetteDark } from './daylight.js';
-import { project, projScale } from './renderer.js';
+import { project, projScale, depthOf } from './renderer.js';
 
 // --- model construction ----------------------------------------------------
 
@@ -228,6 +228,9 @@ export function recolour(model, fn, glow = false) {
   out.verts = model.verts;
   out.height = model.height;
   out.radius = model.radius;
+  // The faces below keep the original's index arrays, so they keep its
+  // winding too -- a recoloured closed shell is still a closed shell.
+  out.solid = model.solid;
   out.faces = model.faces.map((f) => {
     const col = fn(f.col);
     if (!col) return f;
@@ -362,7 +365,7 @@ const SIL_NEAR = 11.8;
 // Where in that fade the target stops being the dusk dark and becomes black.
 // Below this the near objects match the hills behind them, above it they
 // separate from them on purpose.
-const SIL_BLACK_AT = 0.55;
+export const SIL_BLACK_AT = 0.55;
 
 export function silhouetteAmount(dx, dz) {
   const d = Math.sqrt(dx * dx + dz * dz);
@@ -386,6 +389,7 @@ const fadeCol = [0, 0, 0, 255];
 const FRONT_FACE = -1;
 
 let faceOrder = [];             // face indices, sorted far to near
+let depthZ = new Float32Array(256);   // each vertex's depth, when it is wanted
 let faceDepth = new Float64Array(64);
 const matOut = [0, 0, 0];       // ... and one output for matApply, not one a vertex
 const byDepth = (a, b) => faceDepth[b] - faceDepth[a];
@@ -398,11 +402,25 @@ const byDepth = (a, b) => faceDepth[b] - faceDepth[a];
 // blend -- no extra blend mode, no extra draw call.
 export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ,
                           fog = 0, sil = 0, fade = 1) {
+  // Inside the landscape pass, anything that stands still, is opaque and does
+  // not glow can go to the GPU instead (see modelpass.js): it is tested
+  // against the depth the pass is laying down, so it no longer needs to be
+  // drawn at exactly the right moment in the painter's order. Anything that
+  // is turned by a matrix, fading, or lit from inside stays on this path.
+  if (!matrix && fade >= 0.999 && rd.instancer && rd.depthState === 'paint' &&
+      rd.instancer.add(model, (wx - camX) | 0, (wy - camY) | 0, (wz - camZ) | 0, fog, sil)) {
+    return;
+  }
   const verts = model.verts;
   const n = verts.length / 3;
 
-  // Transform and project every vertex once.
+  // Transform and project every vertex once -- and, when the renderer is
+  // keeping depth, work out each vertex's depth as well, so the faces can
+  // carry it into the buffer. Outside the landscape pass nothing reads it
+  // and it is not worked out.
   while (scratch.length < n * 3) scratch.push(0);
+  const wantZ = rd.depthState !== undefined && rd.depthState !== 'off';
+  if (wantZ && depthZ.length < n) depthZ = new Float32Array(n * 2);
   let anyVisible = false;
   for (let i = 0; i < n; i++) {
     let px = verts[i * 3], py = verts[i * 3 + 1], pz = verts[i * 3 + 2];
@@ -417,6 +435,7 @@ export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ,
       scratch[i * 3] = pt.x;
       scratch[i * 3 + 1] = pt.y;
       scratch[i * 3 + 2] = vz;
+      if (wantZ) depthZ[i] = depthOf(vz);
       anyVisible = true;
     } else {
       scratch[i * 3 + 2] = -1; // behind the camera
@@ -496,7 +515,16 @@ export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ,
       col = silCol;
     }
     const i0 = idx[0] * 3, i1 = idx[1] * 3, i2 = idx[2] * 3;
-    if (idx.length === 3) {
+    if (wantZ) {
+      // The same shapes, each corner carrying its depth.
+      const z0 = depthZ[idx[0]];
+      for (let k = 1; k + 1 < idx.length; k++) {
+        const a = idx[k], b = idx[k + 1];
+        rd.triZ(scratch[i0], scratch[i0 + 1], z0,
+                scratch[a * 3], scratch[a * 3 + 1], depthZ[a],
+                scratch[b * 3], scratch[b * 3 + 1], depthZ[b], col);
+      }
+    } else if (idx.length === 3) {
       rd.tri(scratch[i0], scratch[i0 + 1], scratch[i1], scratch[i1 + 1],
              scratch[i2], scratch[i2 + 1], col);
     } else if (idx.length === 4) {

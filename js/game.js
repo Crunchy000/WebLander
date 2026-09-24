@@ -16,7 +16,8 @@ import { serene } from './style.js';
 import { depthAt, waveLift, seaShade } from './sea.js';
 import { updateWeather, drawWeather, resetWeather, weather, SNOW } from './weather.js';
 import { drawClouds } from './clouds.js';
-import { project, SCREEN_W, SCREEN_H, CENTRE_X } from './renderer.js';
+import { project, depthOf, SCREEN_W, SCREEN_H, CENTRE_X } from './renderer.js';
+import { ModelPass } from './modelpass.js';
 import { drawTouchStick, drawThrottle } from './stick.js';
 import { Player, GRAVITY_START, CHARGE_MAX, HULL_HITS } from './player.js';
 import { drawModel, drawShadow, drawLightPool, silhouetteAmount } from './model.js';
@@ -114,6 +115,13 @@ function corona(rd, cx, cy, w, col, mix) {
 export class Game {
   constructor(renderer, input, audio) {
     this.rd = renderer;
+    // The scenery is drawn on the GPU where it can be (see modelpass.js).
+    // ?cpumodels puts it back on the old path, which is how the two are
+    // compared frame for frame.
+    this.models = new ModelPass(renderer);
+    const gpu = !(typeof location !== 'undefined' && /[?&]cpumodels\b/.test(location.search));
+    // drawModel looks for it here, and hands over what it can.
+    renderer.instancer = gpu && this.models.ok ? this.models : null;
     this.input = input;
     this.audio = audio;
 
@@ -132,6 +140,7 @@ export class Game {
 
     // Objects waiting to be drawn, staggered behind the landscape.
     this.rowWorldZ = new Int32Array(TILES_Z + 2);
+    this.rowDepth = new Float32Array(TILES_Z + 2);
     this.pending = Array.from({ length: TILES_Z + 2 }, () => []);
     this.pendingBoats = Array.from({ length: TILES_Z + 2 }, () => []);
     this.pendingBalloons = Array.from({ length: TILES_Z + 2 }, () => []);
@@ -659,11 +668,23 @@ export class Game {
 
     const pt = { x: 0, y: 0 };
 
+    // The landscape pass keeps depth: see Renderer.depthMode('paint'). The
+    // picture is painter's order exactly as before; the depth buffer comes
+    // out of it holding the nearest surface at every pixel.
+    rd.depthMode('paint');
+    let prevDepth = 1;
+
     for (let j = 0; j < TILES_Z; j++) {
       const worldZ = (zCameraTile - j * TILE) | 0;
       this.rowWorldZ[j] = worldZ;
       const viewZ = (LANDSCAPE_Z - fracZ - j * TILE) | 0;
       const tz = worldZ >> 24;
+      // Every corner in a row is at the same distance, so one depth does the
+      // whole row -- and anything drawn with the row that does not carry a
+      // depth of its own takes this one.
+      const rowDepth = depthOf(viewZ);
+      rd.z = rowDepth;
+      this.rowDepth[j] = rowDepth;
 
       // Any tank standing in this row's band of ground draws with it, so
       // hills in front still hide what is behind them.
@@ -708,11 +729,11 @@ export class Game {
           // the beach rather than in front of it.
           const wet = alt === SEA_LEVEL && prevAlt === SEA_LEVEL;
           const col = tileColour(prevAlt, alt, j, worldX, worldZ, wet ? seaLift : 0);
-          rd.quad(
-            this.prevX[i - 1], this.prevY[i - 1],
-            this.prevX[i], this.prevY[i],
-            this.rowX[i], this.rowY[i],
-            this.rowX[i - 1], this.rowY[i - 1],
+          rd.quadZ(
+            this.prevX[i - 1], this.prevY[i - 1], prevDepth,
+            this.prevX[i], this.prevY[i], prevDepth,
+            this.rowX[i], this.rowY[i], rowDepth,
+            this.rowX[i - 1], this.rowY[i - 1], rowDepth,
             col,
           );
         }
@@ -734,15 +755,26 @@ export class Game {
       [this.prevOk, this.rowOk] = [this.rowOk, this.prevOk];
 
       if (j >= 2) this.flushObjects(j - 2, eyeX, eyeY, eyeZ);
+      prevDepth = rowDepth;
     }
 
     // Anything left in the last couple of rows.
     this.flushObjects(TILES_Z - 2, eyeX, eyeY, eyeZ);
     this.flushObjects(TILES_Z - 1, eyeX, eyeY, eyeZ);
+    // The scenery that went to the GPU, all of it at once, tested against
+    // the depth the pass above has just left behind.
+    this.models.flush();
+    rd.depthMode('off');
+    rd.z = 1;
   }
 
   flushObjects(row, eyeX, eyeY, eyeZ) {
     const haze = fogForRow(row);
+    // Objects are drawn a couple of rows after the ground they stand on, so
+    // anything among them without a depth of its own -- a shadow, a
+    // reflection -- takes the depth of their row rather than of the row
+    // being laid when they are drawn.
+    this.rd.z = this.rowDepth[row];
 
     // The craft's own shadow: it grows and fades as you climb, which is the
     // cue that was missing when judging height on an approach.

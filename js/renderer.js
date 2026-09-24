@@ -126,7 +126,7 @@ function lockedCadence(median, slowest) {
 }
 
 const MAX_TRIS = 16384;
-const FLOATS_PER_VERT = 3;   // x, y, packed rgb
+const FLOATS_PER_VERT = 4;   // x, y, depth, packed rgba
 const VERTS_PER_TRI = 3;
 
 // The one line of maths on the GPU: pixel space, origin top-left, to clip
@@ -135,11 +135,11 @@ const VERTS_PER_TRI = 3;
 // gl_FragColor in 1.00 -- and a `#version` line has to be the first thing in
 // the file, which is why these templates start hard against the backtick.
 const BODY = `
-  gl_Position = vec4(aPos.x * uScale.x - 1.0, 1.0 - aPos.y * uScale.y, 0.0, 1.0);
+  gl_Position = vec4(aPos.x * uScale.x - 1.0, 1.0 - aPos.y * uScale.y, aPos.z, 1.0);
   vCol = aCol;`;
 
 const VERT_300 = `#version 300 es
-in vec2 aPos;
+in vec3 aPos;
 in vec4 aCol;
 out vec4 vCol;
 uniform vec2 uScale;
@@ -153,7 +153,7 @@ out vec4 oCol;
 void main() { oCol = vCol; }`;
 
 const VERT_100 = `
-attribute vec2 aPos;
+attribute vec3 aPos;
 attribute vec4 aCol;
 varying vec4 vCol;
 uniform vec2 uScale;
@@ -191,7 +191,12 @@ export class Renderer {
       // They are the right way round for choosing between the two and the
       // wrong way round for guessing at a phone.
       antialias: false,
-      depth: false,
+      // A depth buffer, which this renderer went without for its whole life:
+      // painter's order was enough while everything was drawn back to front
+      // by hand. It is here so that things drawn on the GPU can be hidden by
+      // the landscape the CPU painted -- see depthMode() for how the two
+      // agree without the painted picture changing at all.
+      depth: true,
       stencil: false,
       preserveDrawingBuffer: false,
       powerPreference: 'low-power',
@@ -252,9 +257,9 @@ export class Renderer {
     gl.bufferData(gl.ARRAY_BUFFER, this.buffer.byteLength, gl.DYNAMIC_DRAW);
 
     gl.enableVertexAttribArray(this.aPos);
-    gl.vertexAttribPointer(this.aPos, 2, gl.FLOAT, false, this.stride, 0);
+    gl.vertexAttribPointer(this.aPos, 3, gl.FLOAT, false, this.stride, 0);
     gl.enableVertexAttribArray(this.aCol);
-    gl.vertexAttribPointer(this.aCol, 4, gl.UNSIGNED_BYTE, true, this.stride, 8);
+    gl.vertexAttribPointer(this.aCol, 4, gl.UNSIGNED_BYTE, true, this.stride, 12);
 
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.CULL_FACE);
@@ -274,6 +279,8 @@ export class Renderer {
     // blending an opaque colour over anything gives the opaque colour.
     this.batchAlpha = false;
     this.blendOn = true;
+    this.z = 1;
+    this.depthState = 'off';
     this.drawn = 0;
     // Where the adaptor has got to, and how long it has been wanting to move.
     this.scaleAt = 0;
@@ -395,7 +402,13 @@ export class Renderer {
       this.resize();
     }
     gl.clearColor(clear[0] / 255, clear[1] / 255, clear[2] / 255, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT);
+    // Depth writes have to be on for a depth clear to happen at all.
+    gl.depthMask(true);
+    gl.clearDepth(1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    this.depthState = undefined;
+    this.depthMode('off');
+    this.z = 1;
     this.count = 0;
     this.drawn = 0;
     this.blend('over');
@@ -423,14 +436,59 @@ export class Renderer {
     else gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   }
 
+  // Put the GL state back the way this renderer left it, after something else
+  // -- the GPU model pass -- has used the context for a while. The program,
+  // the attribute layout and the buffer it reads from are the renderer's;
+  // blending is whatever the other pass left, so it is marked unknown and
+  // the next batch sets it.
+  restore() {
+    const gl = this.gl;
+    gl.useProgram(this.prog);
+    if (this.gl2) gl.bindVertexArray(this.vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
+    this.blendOn = !this.blendOn;
+    const want = this.blendMode === 'add' || this.batchAlpha;
+    if (want) gl.enable(gl.BLEND); else gl.disable(gl.BLEND);
+    this.blendOn = want;
+  }
+
+  // How the depth buffer takes part in what is drawn next.
+  //
+  // 'off'   -- not at all. The sky, the horizon, the overlays: all of it is
+  //            painter's order and nothing else, as it always was.
+  // 'paint' -- every fragment passes, and each one writes its depth. This is
+  //            the landscape pass. The picture comes out exactly as painter's
+  //            order makes it, because nothing is ever rejected -- but the
+  //            buffer is left holding, at every pixel, the depth of whatever
+  //            was painted there last, which in a correct painter's order is
+  //            the nearest surface. That is what the GPU-drawn models test
+  //            against afterwards.
+  // 'test'  -- the ordinary thing: nearer wins.
+  //
+  // Like blend(), a change of mode closes the batch; order survives it.
+  depthMode(mode) {
+    if (mode === this.depthState) return;
+    this.flush();
+    this.depthState = mode;
+    const gl = this.gl;
+    if (mode === 'off') {
+      gl.disable(gl.DEPTH_TEST);
+    } else {
+      gl.enable(gl.DEPTH_TEST);
+      gl.depthFunc(mode === 'paint' ? gl.ALWAYS : gl.LEQUAL);
+      gl.depthMask(true);
+    }
+  }
+
   // Append one vertex. Colour components are 0-255, and so is alpha -- which
   // a colour may carry as a fourth entry, or leave out to mean opaque.
-  vertex(x, y, r, g, b, a) {
+  vertex(x, y, r, g, b, a, z = this.z) {
     const i = this.count;
     const fi = i * FLOATS_PER_VERT;
     this.f32[fi] = x;
     this.f32[fi + 1] = y;
-    const bi = i * this.stride + 8;
+    this.f32[fi + 2] = z;
+    const bi = i * this.stride + 12;
     this.u8[bi] = r;
     this.u8[bi + 1] = g;
     this.u8[bi + 2] = b;
@@ -462,6 +520,28 @@ export class Renderer {
     this.vertex(x0, y0, r, g, b, a);
     this.vertex(x2, y2, r, g, b, a);
     this.vertex(x3, y3, r, g, b, a);
+  }
+
+  // The same two, with a depth at every corner. Everything else takes the
+  // renderer's current depth, `z`, which a caller sets once for a run of
+  // flat things lying at one distance -- a shadow, a reflection, a row.
+  triZ(x0, y0, z0, x1, y1, z1, x2, y2, z2, col) {
+    if (this.full) return;
+    const r = col[0], g = col[1], b = col[2], a = col[3];
+    this.vertex(x0, y0, r, g, b, a, z0);
+    this.vertex(x1, y1, r, g, b, a, z1);
+    this.vertex(x2, y2, r, g, b, a, z2);
+  }
+
+  quadZ(x0, y0, z0, x1, y1, z1, x2, y2, z2, x3, y3, z3, col) {
+    if (this.full) return;
+    const r = col[0], g = col[1], b = col[2], a = col[3];
+    this.vertex(x0, y0, r, g, b, a, z0);
+    this.vertex(x1, y1, r, g, b, a, z1);
+    this.vertex(x2, y2, r, g, b, a, z2);
+    this.vertex(x0, y0, r, g, b, a, z0);
+    this.vertex(x2, y2, r, g, b, a, z2);
+    this.vertex(x3, y3, r, g, b, a, z3);
   }
 
   // A quad with a colour at each corner. The shader has always interpolated
@@ -541,6 +621,22 @@ export class Renderer {
 // near-plane clipper either, it simply discards offending vertices, which is
 // why things vanish abruptly as they pass the camera.
 const NEAR = 0x00040000; // 1/64 tile
+
+// View distance to depth, the same way a perspective matrix would do it --
+// affine in 1/distance, which is what makes a depth worked out at a corner on
+// the CPU interpolate across a painted triangle exactly as the GPU would
+// interpolate the same corner's depth for itself. Near is the projection's own
+// near plane; far is well past the back of the landscape, so nothing that is
+// drawn with depth can fall off the end of it.
+const DEPTH_FAR = 64 * 0x01000000;
+const DEPTH_A = (DEPTH_FAR + 0x00040000) / (DEPTH_FAR - 0x00040000);
+const DEPTH_B = (-2 * DEPTH_FAR * 0x00040000) / (DEPTH_FAR - 0x00040000);
+export function depthOf(vz) {
+  if (vz <= 0x00040000) return -1;
+  const d = DEPTH_A + DEPTH_B / vz;
+  return d > 1 ? 1 : d;
+}
+export const DEPTH = { A: DEPTH_A, B: DEPTH_B, NEAR: 0x00040000, FAR: DEPTH_FAR };
 
 export function project(vx, vy, vz, out) {
   if (vz < NEAR) return false;

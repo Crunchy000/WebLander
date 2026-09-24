@@ -235,7 +235,7 @@ export function invalidateLight() {
 // --- the light applied to everything solid ---------------------------------
 
 const litCache = new Map();
-const FOG_STEPS = 24;
+export const FOG_STEPS = 24;
 
 // Tint a colour for the time of day and then fade it into the haze.
 //

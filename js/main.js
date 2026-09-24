@@ -228,6 +228,10 @@ function frame(now) {
 }
 
 
+// Expose for debugging from the console -- and before the first perf line,
+// which reads the renderer's state off it.
+window.lander = { game, input, audio, renderer, perf };
+
 perfInit();
 perfDescribe(canvas, renderer.gl);
 requestAnimationFrame(frame);
@@ -247,5 +251,3 @@ if ('serviceWorker' in navigator) {
     .catch(() => {});
 }
 
-// Expose for debugging from the console.
-window.lander = { game, input, audio, renderer, perf };

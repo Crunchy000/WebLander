@@ -97,6 +97,20 @@ the winding sign in `model.js` was chosen: one sign leaves 43,000 pixels
 different, the other 618 out of 378,000, and only the second one is the
 picture the game had before.
 
+    OUT=/tmp/a node pixeldiff.mjs               # four fixed scenes
+    OUT=/tmp/b QUERY='?cpumodels' node pixeldiff.mjs
+    A=/tmp/a B=/tmp/b node pixeldiff.mjs        # ... and how many pixels differ
+
+`pixeldiff.mjs` renders the same four frames every time: meadow at noon,
+forest at dusk, the sea at night and high over the land by day. It gets that
+by seeding `Math.random`, turning `requestAnimationFrame` off and stepping
+the game by hand. Without those, two runs of the same build differ from each
+other, and a diff says nothing. With them, the depth buffer went in at zero
+pixels different in all four scenes, and the GPU scenery pass differs from
+the CPU one by 2015 / 232 / 5 / 158 pixels out of 378,000. Nearly all of
+that is the tiered firs, where a per-pixel depth test sorts the tiers better
+than sorting whole faces by their mean depth does.
+
 ## The resolution adaptor
 
     node adapttest.mjs                  # the decision itself, no browser
