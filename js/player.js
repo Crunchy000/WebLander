@@ -166,6 +166,19 @@ const LEAN_RATE = 0.30;         // how fast the craft follows the stick -- snapp
 // a half with the stick held over.
 const YAW_RATE = 0.04;
 
+// Which way the bird is drawn facing, when something is turning it.
+//
+// Flown like a drone, the lean and the nose are separate: strafe, and the
+// craft banks to one side of where it is pointing. On a quadrotor that is
+// how it looks. On a bird it looks wrong -- a bird banked over sideways and
+// sliding along is not a bird flying. So the bird turns to face the way it
+// is leaning, nose first and tipped forward into it, as it always did, and
+// turns back to the nose's heading when it levels off again. The physics
+// never sees any of this: the lean is the lean, whichever way the body is
+// drawn round it.
+const FACE_LEAN = 0.12;   // radians of lean before the body turns into it
+const FACE_RATE = 0.15;   // how quickly it turns, per step
+
 // Scratch for the facing, so building the matrix allocates nothing.
 const aimMat = new Float64Array(9);
 const yawMat = new Float64Array(9);
@@ -324,6 +337,7 @@ export class Player {
     // Where the nose points, which is only its own thing when something is
     // turning it. See update().
     this.yaw = 0;
+    this.facing = 0;
     this.looping = false;
     this.matrix = matFromAim(0, 0);
     this.charge = CHARGE_MAX;
@@ -519,16 +533,31 @@ export class Player {
     if (this.lean >= Math.PI * 2) this.lean -= Math.PI * 2;
     else if (this.lean < 0) this.lean += Math.PI * 2;
 
-    if (!drone) this.yaw = this.leanDir;
+    if (!drone) {
+      this.yaw = this.leanDir;
+      this.facing = this.leanDir;
+    } else {
+      // Into the lean while there is one worth the name, back to the nose's
+      // heading when there is not. See FACE_LEAN. The lean runs round to two
+      // pi on a loop, so "how much" is the short way to level.
+      const tilt = Math.min(this.lean, Math.PI * 2 - this.lean);
+      const want = tilt > FACE_LEAN ? this.leanDir : this.yaw;
+      let df = want - this.facing;
+      while (df > Math.PI) df -= Math.PI * 2;
+      while (df < -Math.PI) df += Math.PI * 2;
+      this.facing += df * FACE_RATE;
+      if (this.facing > Math.PI) this.facing -= Math.PI * 2;
+      else if (this.facing < -Math.PI) this.facing += Math.PI * 2;
+    }
 
-    // The lean tips the craft towards leanDir; the yaw turns it about its own
-    // vertical axis first, so the nose can point one way while the craft
-    // banks another. Turning about that axis leaves the roof where it was,
+    // The lean tips the craft towards leanDir; the facing turns it about its
+    // own vertical axis first, so the body can point one way while the craft
+    // leans another. Turning about that axis leaves the roof where it was,
     // so the thrust -- which acts along the roof -- is exactly what the lean
-    // alone would give. With the nose following the lean the turn is zero
-    // and this is the plain aim it always was.
+    // alone would give. With the body facing the lean the turn is zero and
+    // this is the plain aim it always was.
     matFromAim(this.leanDir, this.lean, aimMat);
-    const spin = this.yaw - this.leanDir;
+    const spin = this.facing - this.leanDir;
     const c = Math.cos(spin), sn = Math.sin(spin);
     yawMat[0] = c; yawMat[2] = sn; yawMat[6] = -sn; yawMat[8] = c;
     matMul(aimMat, yawMat, this.matrix);

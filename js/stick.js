@@ -49,7 +49,7 @@ const EXPO = 0.45;
 const FADE_IN = 0.06;
 const FADE_OUT = 0.22;
 
-function expo(u) {
+export function expo(u) {
   return EXPO * u * u * u + (1 - EXPO) * u;
 }
 
