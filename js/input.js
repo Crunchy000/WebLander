@@ -22,16 +22,6 @@ function axisDead(v) {
   return a <= AXIS_DEAD ? 0 : Math.sign(v) * (a - AXIS_DEAD) / (1 - AXIS_DEAD);
 }
 
-// The throttle under tilt steering: swipes up and down anywhere on the
-// glass, a step each. See _canvasTouch.
-export const THROTTLE_STEPS = 8;  // the gauge's ticks; the hover is half way
-const SWIPE_MIN = 0.08;           // of the canvas height: less is a finger settling
-const SWIPE_BIG = 0.30;           // ... and this far is a long swipe
-const SWIPE_GAIN = 1.25;          // throttle per canvas height, for a short swipe
-const SWIPE_WINDOW = 600;         // ms from touching down: slower is not a swipe
-// Where a long swipe down goes, from above: hover, then off.
-const HOVER_SET = 0.5;
-
 export class Input {
   constructor(canvas) {
     this.canvas = canvas;
@@ -337,10 +327,8 @@ export class Input {
     this.touchFire = false;
 
     // The tilt throttle: where it is set, 0 to 1, and the finger setting it.
-    this.tiltThrottle = 0;
+    this.fingers = 0;     // on the game itself: under tilt, the engine
     this.tiltTouch = false;
-    this._swipes = new Map();
-    this._stepAt = -1e9;         // when the throttle last moved, for the gauge
     this.touchSteers = true;
 
     for (const ev of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) {
@@ -364,23 +352,14 @@ export class Input {
   // A thumb on a side whose stick is already taken does nothing.
   //
   // Steering by tilt, the handset is the stick, so there is nothing for a
-  // finger to steer, and no ring is drawn. A finger works the throttle
-  // instead. A short swipe up anywhere is more, down is less, by as much as
-  // the swipe is long -- a flick is a nudge, a longer stroke a bigger change
-  // -- and with no finger on the glass the setting stays where it was left.
-  // A long swipe up is full power, straight away: it is how you get off the
-  // ground, and what you reach for when you need out of somewhere. A long
-  // swipe down drops to the next landmark below: from above the hover, to
-  // the hover; from the hover or under it, to nothing. A flight starts with it at nothing. There are THROTTLE_STEPS of
-  // them and the travel runs through throttleCurve, so half way -- four
-  // swipes up -- holds the height you are at, as it does on the height
-  // stick. A gauge at the right edge shows the setting.
+  // finger to steer, and no ring is drawn. Fingers are the engine instead:
+  // one on the glass, anywhere, is hover -- the height held, the lean kept
+  // gentle -- and two are full power. None is nothing.
   //
-  // It was a hold with swipes for bursts on top, and then a finger dragged
-  // like a slider. Holding the height by itself took the power out of the
-  // player's hands; a burst that faded was not something you could fly on;
-  // and a drag had to be watched on the gauge to be set. A step is a thing
-  // you can count without looking.
+  // In between it has been a hold with swipes for bursts, a dragged
+  // throttle, and swipes in steps and by size with a gauge to read them
+  // on. All of those asked the player to set something and remember it; a
+  // tap asks nothing, and what the craft is doing is what the hand is.
   //
   // Both sticks are fed whatever the mode, so switching between tilt and
   // touch mid-flight does not need them warming up first.
@@ -416,43 +395,8 @@ export class Input {
       if (!stillDown) s.up(s.id);
     }
 
-    // The tilt throttle's swipes. Each finger can make one. Once it has gone
-    // far enough to be a swipe, the throttle follows it -- more the further
-    // it goes -- so the change is felt while the finger is still moving; if
-    // it carries on to SWIPE_BIG it becomes a long swipe, and jumps. All of
-    // it is measured from where the throttle was before this swipe began,
-    // and only for SWIPE_WINDOW: a finger that lingers stops counting.
-    // Tracked whatever the mode; only tilt steering listens.
-    const now = performance.now();
-    for (const t of e.changedTouches) {
-      if (e.type === 'touchstart') {
-        const from = this.tiltThrottle;
-        this._swipes.set(t.identifier, { y: t.clientY, at: now, from, stage: 0, sign: 0 });
-      } else if (e.type === 'touchmove') {
-        const sw = this._swipes.get(t.identifier);
-        if (!sw || sw.stage === 2 || now - sw.at > SWIPE_WINDOW) continue;
-        // Up the screen is more.
-        const dy = (sw.y - t.clientY) / r.height;
-        const size = Math.abs(dy), sign = Math.sign(dy);
-        // A swipe that turns back on itself is not a longer one.
-        if (sw.stage === 1 && sign !== sw.sign) continue;
-        let to;
-        if (size >= SWIPE_BIG) {
-          sw.stage = 2;
-          to = sign > 0 ? 1 : sw.from > HOVER_SET + 0.01 ? HOVER_SET : 0;
-        } else if (size >= SWIPE_MIN) {
-          sw.stage = 1;
-          sw.sign = sign;
-          to = sw.from + sign * size * SWIPE_GAIN;
-        } else {
-          continue;
-        }
-        this.tiltThrottle = to < 0 ? 0 : to > 1 ? 1 : to;
-        this._stepAt = now;
-      } else {
-        this._swipes.delete(t.identifier);
-      }
-    }
+    // Fingers on the game itself, not on anything laid over it.
+    this.fingers = e.targetTouches.length;
   }
 
   // -- tilt -----------------------------------------------------------------
@@ -744,12 +688,11 @@ export class Input {
         if (power > 0) { thrust = 2; throttle = power; }
       }
     }
-    // Under tilt on a handset, the dragged throttle: no hold, just the power
-    // it is set to, through the same curve. See _canvasTouch.
+    // Under tilt on a handset, fingers: one hovers, two is everything.
     this.tiltTouch = this.touchUi && !this.touchSteers;
     if (this.tiltTouch && !this.padOwns) {
-      const power = throttleCurve(this.tiltThrottle);
-      if (power > 0) { thrust = 2; throttle = power; }
+      if (this.fingers >= 2) thrust = 2;
+      else if (this.fingers === 1) thrust = thrust || 1;
     }
     this.thrust = thrust;
     this.throttle = throttle;
@@ -766,17 +709,6 @@ export class Input {
       || k.has('KeyC') || k.has('ShiftLeft');
 
     return this;
-  }
-
-  // A new flight starts with the tilt throttle at nothing.
-  resetFlight() {
-    this.tiltThrottle = 0;
-    this._swipes.clear();
-  }
-
-  // Did the tilt throttle just move? The gauge brightens for a moment.
-  get stepped() {
-    return performance.now() - this._stepAt < 700;
   }
 
   consumeStart() {

@@ -18,8 +18,7 @@ import { updateWeather, drawWeather, resetWeather, weather, SNOW } from './weath
 import { drawClouds } from './clouds.js';
 import { project, depthOf, SCREEN_W, SCREEN_H, CENTRE_X } from './renderer.js';
 import { ModelPass } from './modelpass.js';
-import { drawTouchStick, drawThrottleGauge } from './stick.js';
-import { THROTTLE_STEPS } from './input.js';
+import { drawTouchStick } from './stick.js';
 import { Player, GRAVITY_START, CHARGE_MAX, HULL_HITS } from './player.js';
 import { drawModel, drawShadow, drawLightPool, silhouetteAmount } from './model.js';
 import {
@@ -168,7 +167,6 @@ export class Game {
     resetWeather();
     resetFlowers();
     this.player.reset();
-    this.input.resetFlight();
     this.state = STATE.PLAYING;
   }
 
@@ -422,8 +420,6 @@ export class Game {
     resetParticles();
     resetRibbon();
     this.player.reset();
-    // A new bird on the pad, not one that lifts off with the last one's power.
-    this.input.resetFlight();
     this.state = STATE.PLAYING;
     this.setMessage(null, 0);
   }
@@ -578,12 +574,6 @@ export class Game {
     if (this.input.touchSteers) {
       drawTouchStick(this.rd, this.input.leftThumb.furniture);
       drawTouchStick(this.rd, this.input.rightThumb.furniture);
-    }
-    // Under tilt the throttle is a finger dragged anywhere, so its setting
-    // is shown at the edge instead. See Input._canvasTouch.
-    if (this.input.tiltTouch && this.state === STATE.PLAYING) {
-      drawThrottleGauge(this.rd, this.input.tiltThrottle, this.input.stepped ? 1 : 0.6,
-                        THROTTLE_STEPS);
     }
 
     rd.flush();
