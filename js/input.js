@@ -55,7 +55,8 @@ export class Input {
     this.throttle = 1;
     this.steerMode = 'touch';
     this.thrust = 0;      // 0 none, 1 hover, 2 full
-    this.hold = false;    // the second stick centred: stay at this height
+    this.hold = false;    // the height stick centred: stay at this height
+    this.stay = false;    // an assisted lean stick: centred, stay put
     this.fire = false;
     this.startPressed = false;
 
@@ -687,6 +688,9 @@ export class Input {
     this.thrust = thrust;
     this.throttle = throttle;
     this.hold = hold;
+    // ... and the lean stick centred on the same controls asks the craft to
+    // stay where it is. See Player.update.
+    this.stay = this.padOwns || thumbs;
 
     this.fire = this.mouseFire || this.touchFire || this.padFire
       || k.has('KeyC') || k.has('ShiftLeft');

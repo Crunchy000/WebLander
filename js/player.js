@@ -14,7 +14,6 @@ import {
 } from './landscape.js';
 import { MODELS, objectAt, objectOffset, isWreck, isBlocks, structureIndex } from './objects.js';
 import { topple, isKnocked } from './blocks.js';
-import { weather } from './weather.js';
 import { project } from './renderer.js';
 import { spawnExhaust, spawnExplosion, spawnSparks, spawnSmoke, spawnDust } from './particles.js';
 import { drawUav } from './uav.js';
@@ -154,6 +153,10 @@ const AUTO_DESCENT = (LANDING_SPEED * 0.6) | 0;
 // The descent a centred height stick settles into near the ground: gentle
 // enough that a craft let go of there arrives with room to spare.
 const HOLD_SETTLE = (LANDING_SPEED * 0.4) | 0;
+// How quickly a craft told to stay where it is comes to rest across the
+// ground, per step: a tenth of its speed left after three quarters of a
+// second. See `stay` in update().
+const STAY_SETTLE = 0.94;
 
 // How many hits from a vessel's point defence the airframe will take. Shells
 // and missiles still kill outright: those are ordnance, and dodging them is
@@ -181,8 +184,8 @@ const SCAN = 2;            // tiles either way to test for scenery
 //
 // It does not start until you first ask for power. It used to start the
 // instant the craft appeared, which meant the clock was running while you
-// were still reading the screen, working out which way the wind was going, or
-// simply not there yet -- and a beginner who sat and looked at it for five
+// were still reading the screen, working out the controls, or simply not
+// there yet -- and a beginner who sat and looked at it for five
 // seconds got no grace at all, which is the exact opposite of what it is for.
 // Sitting on the pad costs nothing now: the five seconds begin the moment you
 // lift.
@@ -394,7 +397,14 @@ export class Player {
   // hover's handling: the lean keeps whatever authority it had, because the
   // stick passes through the middle all the time and the handling must not
   // change every time it does.
-  update(stick, thrust, fire, gravity, game, throttle = 1, hold = false) {
+  //
+  // `stay` is the same for the ground under it: the lean stick is one of the
+  // assisted ones -- the pad's right stick, the right thumb -- and while it
+  // sits centred with the engine running, the craft stops and stays put, as
+  // a camera drone holding its position does. It does it without leaning
+  // back into the stop, because the bird is drawn facing its lean, and
+  // braking that way turned it round to face the way it had come.
+  update(stick, thrust, fire, gravity, game, throttle = 1, hold = false, stay = false) {
     if (this.dead) {
       this.deathTimer--;
       return;
@@ -562,20 +572,17 @@ export class Player {
       else this.rotorWash();
     }
 
-    // Gravity, then wind, then damping, then move.
+    // Gravity, then damping, then move. There is no wind: see weather.js.
     //
-    // Wind only has purchase on a machine that is off the ground. Sitting on
-    // its skids it is not going anywhere, and a craft that slid about the
-    // landing pad in a breeze would be maddening rather than atmospheric.
     // A hovering craft carries its own weight, so gravity is taken off it --
     // all but the share the thinning air at the ceiling has already stopped
     // it from answering. Push a hover up there and it starts to sink, same as
     // anything else.
     this.vy = (this.vy + (holding ? Math.round(gravity * (1 - lift)) : gravity)) | 0;
-    if (!this.landed) {
-      this.vx = (this.vx + weather.windX) | 0;
-      this.vz = (this.vz + weather.windZ) | 0;
-    }
+    // Staying put: the lean stick centred on an assisted control, in the
+    // air, with power to do it. A craft falling with its engine off, or a
+    // flat pack, gets no help.
+    const staying = stay && !this.landed && thrust > 0 && mag === 0;
     this.vx = (this.vx * DRAG) | 0;
     this.vy = (this.vy * DRAG) | 0;
     this.vz = (this.vz * DRAG) | 0;
@@ -583,6 +590,11 @@ export class Player {
     // ... and whatever vertical speed it still had is bled away, so it comes
     // to rest at the height it was given rather than drifting off it.
     if (holding) this.vy = (this.vy * HOVER_SETTLE) | 0;
+    // ... and the same across the ground, when it has been told to stay.
+    if (staying) {
+      this.vx = (this.vx * STAY_SETTLE) | 0;
+      this.vz = (this.vz * STAY_SETTLE) | 0;
+    }
 
     // Autorotation. A flat pack is not a dead machine: the rotors are still
     // turning, and holding hover feathers them into the airflow so they brake

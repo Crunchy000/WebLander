@@ -1,4 +1,4 @@
-// weather.js -- fronts, precipitation and wind.
+// weather.js -- fronts and precipitation.
 //
 // Weather is the one thing in this world that is NOT a pure function of where
 // you are. The landscape, the biomes and the object map all are: fly back and
@@ -25,9 +25,9 @@ export const CLEAR = 0, RAIN = 1, SNOW = 2;
 export const weather = {
   wet: 0,          // how hard it is coming down, 0 to 1
   kind: CLEAR,
-  windX: 0,        // push on anything airborne, fixed point per frame
-  windZ: 0,
-  strength: 0,     // wind as a fraction of a gale, for things that only care how hard
+  // How stormy it is, 0 to 1: the sea's chop and the gusts in the sound.
+  // There is no wind to push anything any more -- see updateWeather.
+  strength: 0,
   struck: false,   // true on the single frame a bolt goes, for the thunder
 };
 
@@ -41,17 +41,12 @@ const FRONT_A = 0.0016, FRONT_B = 0.00061;
 // Only the top of the range is wet, so most of the time it is merely cloudy.
 const WET_AT = 0.28, WET_FULL = 0.86;
 
-// Terminal drift in a full gale works out around a tile a second: enough that
-// hovering over one spot needs holding, not enough to take the machine away
-// from you.
-const WIND_MAX = TILE * 0.00035;
-
 let flash = 0, flashHold = 0;
 
 export function resetWeather() {
   weather.wet = 0;
   weather.kind = CLEAR;
-  weather.windX = weather.windZ = weather.strength = 0;
+  weather.strength = 0;
   weather.struck = false;
   sky.murk = 0;
   sky.flash = 0;
@@ -78,13 +73,15 @@ export function updateWeather(px, pz) {
   if (wet < 0.02) weather.kind = CLEAR;
   weather.wet = wet;
 
-  // Wind. There is always a little; a front brings a lot. The bearing turns
-  // slowly rather than jumping, so rain never changes direction mid-shower.
-  const bearing = t * 0.00042 + Math.sin(t * 0.00017) * 1.4;
+  // How stormy it is. There is always a little; a front brings a lot.
+  //
+  // This used to be a wind as well, a push on everything airborne of up to
+  // about a tile a second, turning slowly with the front. It went: a bird
+  // told to hover drifted off the spot it was left on, and holding it there
+  // was work the player had not asked for. The storm is still heard and
+  // still roughens the sea; it just no longer moves anything.
   const gust = 0.78 + 0.22 * Math.sin(t * 0.021) * Math.sin(t * 0.0067);
   weather.strength = (0.16 + 0.84 * wet) * gust;
-  weather.windX = (Math.sin(bearing) * weather.strength * WIND_MAX) | 0;
-  weather.windZ = (Math.cos(bearing) * weather.strength * WIND_MAX) | 0;
 
   // Cloud closes the world in and takes the colour out of it.
   const murk = wet * 0.72 + Math.max(0, front) * 0.18;
@@ -200,9 +197,6 @@ function stepDrops(px, pz) {
 
   const snow = weather.kind === SNOW;
   const fall = snow ? SNOW_FALL : RAIN_FALL;
-  // Snow is light enough for the wind to carry it bodily; rain is not, so it
-  // only leans.
-  const carry = snow ? 2.6 : 1.0;
   const t = sky.tick;
 
   for (let i = 0; i < n; i++) {
@@ -210,8 +204,6 @@ function stepDrops(px, pz) {
     let x = drops[o], y = drops[o + 1], z = drops[o + 2];
 
     y = (y + fall) | 0;
-    x = (x + weather.windX * carry * 30) | 0;
-    z = (z + weather.windZ * carry * 30) | 0;
     // A flake wanders; a raindrop does not.
     if (snow) x = (x + Math.sin(t * 0.07 + i) * TILE * 0.004) | 0;
 
@@ -264,7 +256,7 @@ export function drawWeather(rd, camX, camY, camZ) {
       continue;
     }
 
-    const bx = (drops[o] - camX - weather.windX * 30 * tail) | 0;
+    const bx = (drops[o] - camX) | 0;
     const by = (drops[o + 1] - camY - fall * tail) | 0;
     if (!project(bx, by, vz, pb)) continue;
 

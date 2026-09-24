@@ -21,7 +21,6 @@ import { landAltitude, SEA_LEVEL } from './landscape.js';
 import { depthAt, waveLift } from './sea.js';
 import { project, SCREEN_W, SCREEN_H } from './renderer.js';
 import { spawn, P_FADE } from './particles.js';
-import { weather } from './weather.js';
 
 // Thinned from 84. A drift of eighty-four covers the water in front of you
 // and the eye stops reading them as a ceremony and starts reading them as
@@ -176,7 +175,7 @@ for (let k = 0; k < LANTERNS.length; k++) {
 
 const lanterns = [];
 for (let i = 0; i < MAX_LANTERNS; i++) {
-  lanterns.push({ live: false, x: 0, z: 0, style: 0, phase: 0, spin: 0, drift: 0,
+  lanterns.push({ live: false, x: 0, z: 0, style: 0, phase: 0, spin: 0,
                   taken: 0, lift: 0 });
 }
 
@@ -221,7 +220,6 @@ function place(l, px, pz) {
     l.style = (Math.random() * PAPER.length) | 0;
     l.phase = rnd() * Math.PI * 2;
     l.spin = rndSigned() * 0.004;
-    l.drift = 0.3 + rnd() * 0.7;
     l.taken = 0;
     l.lift = 0;
     l.live = true;
@@ -243,15 +241,10 @@ export function updateLanterns(player, game) {
     if (l.taken) {
       l.taken--;
       l.lift += RISE_SPEED * (1 + (RISE_FRAMES - l.taken) * RISE_GATHER);
-      // It goes where the air goes on the way up, like everything else.
-      l.x = (l.x + weather.windX * 1.4) | 0;
-      l.z = (l.z + weather.windZ * 1.4) | 0;
       if (!l.taken) l.live = false;
       continue;
     }
 
-    l.x = (l.x + weather.windX * l.drift) | 0;
-    l.z = (l.z + weather.windZ * l.drift) | 0;
     l.phase += 0.02;
 
     if (!afloat(l.x, l.z)) { l.live = false; continue; }

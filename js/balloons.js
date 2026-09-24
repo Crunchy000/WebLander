@@ -20,7 +20,6 @@ import {
 } from './landscape.js';
 import { HIGHEST_ALTITUDE } from './player.js';
 import { project, SCREEN_W, SCREEN_H, CENTRE_X, FOCAL_X } from './renderer.js';
-import { weather } from './weather.js';
 
 // Groups, not balloons: see GROUP_SIZES below. They average a shade over two
 // apiece, so three groups is about six balloons where four pairs was eight.
@@ -438,14 +437,10 @@ export function updateBalloons(player) {
       continue;
     }
 
-    // They go where the air goes, and a good deal more slowly than it does.
-    const wx = weather.windX * 2.2, wz = weather.windZ * 2.2;
     g.phase += 0.011;
     const lift = Math.sin(g.phase) * TILE * 0.0016;
     for (let k = 0; k < g.n; k++) {
       const b = g.bs[k];
-      b.x = (b.x + wx) | 0;
-      b.z = (b.z + wz) | 0;
       b.y = (b.y + lift) | 0;
       keepInBand(b);
     }
