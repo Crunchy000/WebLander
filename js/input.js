@@ -22,13 +22,10 @@ function axisDead(v) {
   return a <= AXIS_DEAD ? 0 : Math.sign(v) * (a - AXIS_DEAD) / (1 - AXIS_DEAD);
 }
 
-// Swipes, for the power under tilt steering. See _canvasTouch and sample().
-// Distances are fractions of the canvas height.
-const SWIPE_MIN = 0.06;      // less than this is a finger settling, not a swipe
-const SWIPE_FULL = 0.30;     // a swipe this long asks for everything
-const SWIPE_WINDOW = 600;    // ms from touching down: after that it is a hold
-const BURST_HOLD = 250;      // ms a burst stays at full strength ...
-const BURST_FADE = 380;      // ... then fades with this time constant, in ms
+// The throttle under tilt steering: a finger dragged up or down anywhere on
+// the glass. See _canvasTouch. How far a drag goes from nothing to all of
+// it, as a fraction of the canvas height.
+const DRAG_TRAVEL = 0.40;
 
 export class Input {
   constructor(canvas) {
@@ -334,10 +331,10 @@ export class Input {
     this.touchThrust = false;
     this.touchFire = false;
 
-    // Swipes in progress, by touch identifier, and the burst the last one
-    // asked for: +1 up, -1 down, fading back to nothing.
-    this._swipes = new Map();
-    this.burst = { sign: 0, size: 0, at: 0 };
+    // The tilt throttle: where it is set, 0 to 1, and the finger setting it.
+    this.tiltThrottle = 0;
+    this.tiltTouch = false;
+    this._drag = null;
     this.touchSteers = true;
 
     for (const ev of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) {
@@ -361,13 +358,17 @@ export class Input {
   // A thumb on a side whose stick is already taken does nothing.
   //
   // Steering by tilt, the handset is the stick, so there is nothing for a
-  // finger to steer, and no ring is drawn. The bird holds its height by
-  // itself, and a finger is for changing it: swipe up anywhere for a burst
-  // of climb, down for a dip. The further and the quicker the swipe, the
-  // bigger the burst, and it fades back to holding over about a second. A
-  // finger merely resting on the glass asks for nothing -- it used to be
-  // full power, which meant the craft could not be left to hover while the
-  // hands were busy tilting.
+  // finger to steer, and no ring is drawn. A finger is the throttle
+  // instead: drag up anywhere for more power, down for less. It is relative
+  // -- it moves from wherever it is set, whatever part of the glass the
+  // finger lands on -- and it stays where it is left, because a throttle is
+  // a setting. A flight starts with it at nothing. The travel runs through
+  // throttleCurve, so half way holds the height you are at, as it does on
+  // the height stick; a gauge at the right edge shows where it is.
+  //
+  // It was a hold with swipes for bursts on top. Holding the height by
+  // itself took the power out of the player's hands, and a burst that faded
+  // was not something you could fly on.
   //
   // Both sticks are fed whatever the mode, so switching between tilt and
   // touch mid-flight does not need them warming up first.
@@ -403,39 +404,22 @@ export class Input {
       if (!stillDown) s.up(s.id);
     }
 
-    // Swipes. Tracked whatever the mode; only tilt steering listens.
-    const now = performance.now();
+    // The tilt throttle. One finger at a time sets it: the first one down,
+    // measured from where it landed and what the throttle was then.
+    // Tracked whatever the mode; only tilt steering listens.
     for (const t of e.changedTouches) {
       if (e.type === 'touchstart') {
-        this._swipes.set(t.identifier, { y: t.clientY, at: now });
-      } else if (e.type === 'touchmove') {
-        const sw = this._swipes.get(t.identifier);
-        if (!sw || now - sw.at > SWIPE_WINDOW) continue;
-        // Up the screen is up for the bird.
-        const dy = (sw.y - t.clientY) / r.height;
-        if (Math.abs(dy) < SWIPE_MIN) continue;
-        const sign = Math.sign(dy);
-        const size = Math.min(1, Math.max(0.35, Math.abs(dy) / SWIPE_FULL));
-        const b = this.burst;
-        // A swipe that grows keeps the burst growing with it, and restarts
-        // its clock; one the other way replaces it.
-        if (b.sign !== sign || size > this._burstNow(now) * sign) {
-          b.sign = sign; b.size = size; b.at = now;
+        if (!this._drag) this._drag = { id: t.identifier, y: t.clientY, from: this.tiltThrottle };
+      } else if (this._drag && t.identifier === this._drag.id) {
+        if (e.type === 'touchmove') {
+          // Up the screen is more.
+          const v = this._drag.from + (this._drag.y - t.clientY) / (r.height * DRAG_TRAVEL);
+          this.tiltThrottle = v < 0 ? 0 : v > 1 ? 1 : v;
+        } else {
+          this._drag = null;
         }
-      } else {
-        this._swipes.delete(t.identifier);
       }
     }
-  }
-
-  // What is left of the last swipe's burst, -1 to 1.
-  _burstNow(now) {
-    const b = this.burst;
-    if (!b.sign) return 0;
-    const age = now - b.at;
-    const k = age <= BURST_HOLD ? 1 : Math.exp(-(age - BURST_HOLD) / BURST_FADE);
-    if (b.size * k < 0.1) { b.sign = 0; return 0; }
-    return b.sign * b.size * k;
   }
 
   // -- tilt -----------------------------------------------------------------
@@ -716,12 +700,8 @@ export class Input {
     // of it at the top, down to none at the bottom. So the stick is
     // continuous through the middle, and a little either side of it is a
     // gentle climb or a gentle sink. A pad button held wins.
-    // Under tilt on a handset it is the last swipe's burst, so that with no
-    // finger on the glass the bird simply holds its height.
-    const tiltTouch = this.touchUi && !this.touchSteers;
     const lift = this.padOwns ? this.padLift
       : thumbs ? hy
-      : tiltTouch ? this._burstNow(performance.now())
       : null;
     if (lift !== null && !this.padThrust) {
       if (lift === 0) {
@@ -730,6 +710,13 @@ export class Input {
         const power = throttleCurve(0.5 + lift / 2);
         if (power > 0) { thrust = 2; throttle = power; }
       }
+    }
+    // Under tilt on a handset, the dragged throttle: no hold, just the power
+    // it is set to, through the same curve. See _canvasTouch.
+    this.tiltTouch = this.touchUi && !this.touchSteers;
+    if (this.tiltTouch && !this.padOwns) {
+      const power = throttleCurve(this.tiltThrottle);
+      if (power > 0) { thrust = 2; throttle = power; }
     }
     this.thrust = thrust;
     this.throttle = throttle;
@@ -746,6 +733,16 @@ export class Input {
       || k.has('KeyC') || k.has('ShiftLeft');
 
     return this;
+  }
+
+  // A new flight starts with the tilt throttle at nothing.
+  resetFlight() {
+    this.tiltThrottle = 0;
+    this._drag = null;
+  }
+
+  get dragging() {
+    return this._drag !== null;
   }
 
   consumeStart() {

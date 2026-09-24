@@ -29,6 +29,7 @@
 //   still, and a control that answers a tenth of a millimetre is a control
 //   that never sits level.
 
+import { SCREEN_W, SCREEN_H } from './renderer.js';
 import { HOLD_THROTTLE } from './player.js';
 
 // How far the thumb travels for full deflection, in buffer pixels. The buffer
@@ -223,6 +224,34 @@ export function drawTouchStick(rd, f) {
            f.knobX + Math.cos(t1) * kr, f.knobY + Math.sin(t1) * kr,
            knobCol);
   }
+}
+
+// The tilt throttle's gauge: a track at the right edge with a filled part, a
+// mark half way where the craft holds its height, and a knob where it is
+// set. The finger that sets it is dragged anywhere, so this is the only
+// place its setting can be seen. Narrow and quiet, and brighter while it is
+// being moved. `value` is 0 to 1, `alpha` 0 to 1.
+const GAUGE_X = 30;          // in from the right edge, in buffer pixels
+const GAUGE_Y = 0.80;        // the bottom, as a fraction of the height
+const GAUGE_LEN = 68;        // buffer pixels from nothing to everything
+export function drawThrottleGauge(rd, value, alpha) {
+  const x = SCREEN_W - GAUGE_X;
+  const y0 = Math.round(SCREEN_H * GAUGE_Y), y1 = y0 - GAUGE_LEN;
+  const w = 2;
+  ringCol[0] = RING[0]; ringCol[1] = RING[1]; ringCol[2] = RING[2];
+  ringCol[3] = Math.round(55 * alpha);
+  rd.rect(x - w, y1, w * 2, GAUGE_LEN, ringCol);
+
+  knobCol[0] = KNOB[0]; knobCol[1] = KNOB[1]; knobCol[2] = KNOB[2];
+  knobCol[3] = Math.round(120 * alpha);
+  const filled = GAUGE_LEN * value;
+  if (filled > 0) rd.rect(x - w, y0 - filled, w * 2, filled, knobCol);
+
+  ringCol[3] = Math.round(130 * alpha);
+  rd.rect(x - 8, y0 - GAUGE_LEN / 2, 16, 1, ringCol);
+
+  knobCol[3] = Math.round(170 * alpha);
+  rd.rect(x - 6, y0 - filled - 2, 12, 4, knobCol);
 }
 
 export { RADIUS as STICK_RADIUS };
