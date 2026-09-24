@@ -26,7 +26,10 @@ function axisDead(v) {
 // glass, a step each. See _canvasTouch.
 export const THROTTLE_STEPS = 8;  // from nothing to everything; 4 is the hover
 const SWIPE_MIN = 0.08;           // of the canvas height: less is a finger settling
-const SWIPE_WINDOW = 500;         // ms from touching down: slower is not a swipe
+const SWIPE_BIG = 0.30;           // ... and this far is a long swipe, a landmark
+const SWIPE_WINDOW = 600;         // ms from touching down: slower is not a swipe
+// The landmarks a long swipe jumps between, in steps: off, hover, full.
+const LANDMARKS = [0, THROTTLE_STEPS / 2, THROTTLE_STEPS];
 
 export class Input {
   constructor(canvas) {
@@ -361,9 +364,11 @@ export class Input {
   //
   // Steering by tilt, the handset is the stick, so there is nothing for a
   // finger to steer, and no ring is drawn. A finger works the throttle
-  // instead, in steps: a swipe up anywhere is one step more, a swipe down
-  // one step less, and with no finger on the glass it stays where it was
-  // left. A flight starts with it at nothing. There are THROTTLE_STEPS of
+  // instead, in steps: a short swipe up anywhere is one step more, a short
+  // swipe down one step less, and with no finger on the glass it stays where
+  // it was left. A long swipe jumps to the next landmark that way -- off,
+  // hover, full -- so from nothing, one long swipe up is hover and another
+  // is everything. A flight starts with it at nothing. There are THROTTLE_STEPS of
   // them and the travel runs through throttleCurve, so half way -- four
   // swipes up -- holds the height you are at, as it does on the height
   // stick. A gauge at the right edge shows the setting.
@@ -408,23 +413,39 @@ export class Input {
       if (!stillDown) s.up(s.id);
     }
 
-    // The tilt throttle's swipes. Each finger can make one: it counts the
-    // moment it has gone far enough, quickly enough, so the step comes
-    // while the finger is still moving rather than when it lifts. Tracked
-    // whatever the mode; only tilt steering listens.
+    // The tilt throttle's swipes. Each finger can make one. It counts as a
+    // step the moment it has gone far enough, quickly enough, so the step
+    // comes while the finger is still moving rather than when it lifts; if
+    // it carries on to SWIPE_BIG it becomes a long swipe, and the step is
+    // replaced by the jump to the next landmark from where the throttle was
+    // before this swipe began. Tracked whatever the mode; only tilt steering
+    // listens.
     const now = performance.now();
     for (const t of e.changedTouches) {
       if (e.type === 'touchstart') {
-        this._swipes.set(t.identifier, { y: t.clientY, at: now, done: false });
+        const from = Math.round(this.tiltThrottle * THROTTLE_STEPS);
+        this._swipes.set(t.identifier, { y: t.clientY, at: now, from, stage: 0, sign: 0 });
       } else if (e.type === 'touchmove') {
         const sw = this._swipes.get(t.identifier);
-        if (!sw || sw.done || now - sw.at > SWIPE_WINDOW) continue;
+        if (!sw || sw.stage === 2 || now - sw.at > SWIPE_WINDOW) continue;
         // Up the screen is more.
         const dy = (sw.y - t.clientY) / r.height;
-        if (Math.abs(dy) < SWIPE_MIN) continue;
-        sw.done = true;
-        const step = Math.round(this.tiltThrottle * THROTTLE_STEPS) + Math.sign(dy);
-        this.tiltThrottle = Math.max(0, Math.min(THROTTLE_STEPS, step)) / THROTTLE_STEPS;
+        const size = Math.abs(dy), sign = Math.sign(dy);
+        // A swipe that turns back on itself is not a longer one.
+        if (sw.stage === 1 && sign !== sw.sign) continue;
+        let to = sw.from;
+        if (size >= SWIPE_BIG) {
+          sw.stage = 2;
+          to = sign > 0 ? LANDMARKS.find((l) => l > sw.from) ?? THROTTLE_STEPS
+                        : [...LANDMARKS].reverse().find((l) => l < sw.from) ?? 0;
+        } else if (size >= SWIPE_MIN && sw.stage === 0) {
+          sw.stage = 1;
+          sw.sign = sign;
+          to = sw.from + sign;
+        } else {
+          continue;
+        }
+        this.tiltThrottle = Math.max(0, Math.min(THROTTLE_STEPS, to)) / THROTTLE_STEPS;
         this._stepAt = now;
       } else {
         this._swipes.delete(t.identifier);
