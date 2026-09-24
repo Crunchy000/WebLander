@@ -19,6 +19,7 @@ import { drawClouds } from './clouds.js';
 import { project, depthOf, SCREEN_W, SCREEN_H, CENTRE_X } from './renderer.js';
 import { ModelPass } from './modelpass.js';
 import { drawTouchStick, drawThrottleGauge } from './stick.js';
+import { THROTTLE_STEPS } from './input.js';
 import { Player, GRAVITY_START, CHARGE_MAX, HULL_HITS } from './player.js';
 import { drawModel, drawShadow, drawLightPool, silhouetteAmount } from './model.js';
 import {
@@ -581,7 +582,8 @@ export class Game {
     // Under tilt the throttle is a finger dragged anywhere, so its setting
     // is shown at the edge instead. See Input._canvasTouch.
     if (this.input.tiltTouch && this.state === STATE.PLAYING) {
-      drawThrottleGauge(this.rd, this.input.tiltThrottle, this.input.dragging ? 1 : 0.6);
+      drawThrottleGauge(this.rd, this.input.tiltThrottle, this.input.stepped ? 1 : 0.6,
+                        THROTTLE_STEPS);
     }
 
     rd.flush();

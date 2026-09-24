@@ -228,13 +228,13 @@ export function drawTouchStick(rd, f) {
 
 // The tilt throttle's gauge: a track at the right edge with a filled part, a
 // mark half way where the craft holds its height, and a knob where it is
-// set. The finger that sets it is dragged anywhere, so this is the only
-// place its setting can be seen. Narrow and quiet, and brighter while it is
-// being moved. `value` is 0 to 1, `alpha` 0 to 1.
+// set, with a tick for each step. The swipes that set it land anywhere, so
+// this is the only place the setting can be seen. Narrow and quiet, and
+// brighter for a moment after it moves. `value` is 0 to 1, `alpha` 0 to 1.
 const GAUGE_X = 30;          // in from the right edge, in buffer pixels
 const GAUGE_Y = 0.80;        // the bottom, as a fraction of the height
 const GAUGE_LEN = 68;        // buffer pixels from nothing to everything
-export function drawThrottleGauge(rd, value, alpha) {
+export function drawThrottleGauge(rd, value, alpha, steps = 8) {
   const x = SCREEN_W - GAUGE_X;
   const y0 = Math.round(SCREEN_H * GAUGE_Y), y1 = y0 - GAUGE_LEN;
   const w = 2;
@@ -247,8 +247,14 @@ export function drawThrottleGauge(rd, value, alpha) {
   const filled = GAUGE_LEN * value;
   if (filled > 0) rd.rect(x - w, y0 - filled, w * 2, filled, knobCol);
 
-  ringCol[3] = Math.round(130 * alpha);
-  rd.rect(x - 8, y0 - GAUGE_LEN / 2, 16, 1, ringCol);
+  // A tick for each step, and a longer one half way, where the craft
+  // holds its height.
+  for (let i = 1; i < steps; i++) {
+    const half = i * 2 === steps;
+    ringCol[3] = Math.round((half ? 130 : 70) * alpha);
+    const hw = half ? 8 : 4;
+    rd.rect(x - hw, Math.round(y0 - GAUGE_LEN * i / steps), hw * 2, 1, ringCol);
+  }
 
   knobCol[3] = Math.round(170 * alpha);
   rd.rect(x - 6, y0 - filled - 2, 12, 4, knobCol);

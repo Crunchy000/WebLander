@@ -22,10 +22,11 @@ function axisDead(v) {
   return a <= AXIS_DEAD ? 0 : Math.sign(v) * (a - AXIS_DEAD) / (1 - AXIS_DEAD);
 }
 
-// The throttle under tilt steering: a finger dragged up or down anywhere on
-// the glass. See _canvasTouch. How far a drag goes from nothing to all of
-// it, as a fraction of the canvas height.
-const DRAG_TRAVEL = 0.40;
+// The throttle under tilt steering: swipes up and down anywhere on the
+// glass, a step each. See _canvasTouch.
+export const THROTTLE_STEPS = 8;  // from nothing to everything; 4 is the hover
+const SWIPE_MIN = 0.08;           // of the canvas height: less is a finger settling
+const SWIPE_WINDOW = 500;         // ms from touching down: slower is not a swipe
 
 export class Input {
   constructor(canvas) {
@@ -334,7 +335,8 @@ export class Input {
     // The tilt throttle: where it is set, 0 to 1, and the finger setting it.
     this.tiltThrottle = 0;
     this.tiltTouch = false;
-    this._drag = null;
+    this._swipes = new Map();
+    this._stepAt = -1e9;         // when the throttle last moved, for the gauge
     this.touchSteers = true;
 
     for (const ev of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) {
@@ -358,17 +360,19 @@ export class Input {
   // A thumb on a side whose stick is already taken does nothing.
   //
   // Steering by tilt, the handset is the stick, so there is nothing for a
-  // finger to steer, and no ring is drawn. A finger is the throttle
-  // instead: drag up anywhere for more power, down for less. It is relative
-  // -- it moves from wherever it is set, whatever part of the glass the
-  // finger lands on -- and it stays where it is left, because a throttle is
-  // a setting. A flight starts with it at nothing. The travel runs through
-  // throttleCurve, so half way holds the height you are at, as it does on
-  // the height stick; a gauge at the right edge shows where it is.
+  // finger to steer, and no ring is drawn. A finger works the throttle
+  // instead, in steps: a swipe up anywhere is one step more, a swipe down
+  // one step less, and with no finger on the glass it stays where it was
+  // left. A flight starts with it at nothing. There are THROTTLE_STEPS of
+  // them and the travel runs through throttleCurve, so half way -- four
+  // swipes up -- holds the height you are at, as it does on the height
+  // stick. A gauge at the right edge shows the setting.
   //
-  // It was a hold with swipes for bursts on top. Holding the height by
-  // itself took the power out of the player's hands, and a burst that faded
-  // was not something you could fly on.
+  // It was a hold with swipes for bursts on top, and then a finger dragged
+  // like a slider. Holding the height by itself took the power out of the
+  // player's hands; a burst that faded was not something you could fly on;
+  // and a drag had to be watched on the gauge to be set. A step is a thing
+  // you can count without looking.
   //
   // Both sticks are fed whatever the mode, so switching between tilt and
   // touch mid-flight does not need them warming up first.
@@ -404,20 +408,26 @@ export class Input {
       if (!stillDown) s.up(s.id);
     }
 
-    // The tilt throttle. One finger at a time sets it: the first one down,
-    // measured from where it landed and what the throttle was then.
-    // Tracked whatever the mode; only tilt steering listens.
+    // The tilt throttle's swipes. Each finger can make one: it counts the
+    // moment it has gone far enough, quickly enough, so the step comes
+    // while the finger is still moving rather than when it lifts. Tracked
+    // whatever the mode; only tilt steering listens.
+    const now = performance.now();
     for (const t of e.changedTouches) {
       if (e.type === 'touchstart') {
-        if (!this._drag) this._drag = { id: t.identifier, y: t.clientY, from: this.tiltThrottle };
-      } else if (this._drag && t.identifier === this._drag.id) {
-        if (e.type === 'touchmove') {
-          // Up the screen is more.
-          const v = this._drag.from + (this._drag.y - t.clientY) / (r.height * DRAG_TRAVEL);
-          this.tiltThrottle = v < 0 ? 0 : v > 1 ? 1 : v;
-        } else {
-          this._drag = null;
-        }
+        this._swipes.set(t.identifier, { y: t.clientY, at: now, done: false });
+      } else if (e.type === 'touchmove') {
+        const sw = this._swipes.get(t.identifier);
+        if (!sw || sw.done || now - sw.at > SWIPE_WINDOW) continue;
+        // Up the screen is more.
+        const dy = (sw.y - t.clientY) / r.height;
+        if (Math.abs(dy) < SWIPE_MIN) continue;
+        sw.done = true;
+        const step = Math.round(this.tiltThrottle * THROTTLE_STEPS) + Math.sign(dy);
+        this.tiltThrottle = Math.max(0, Math.min(THROTTLE_STEPS, step)) / THROTTLE_STEPS;
+        this._stepAt = now;
+      } else {
+        this._swipes.delete(t.identifier);
       }
     }
   }
@@ -738,11 +748,12 @@ export class Input {
   // A new flight starts with the tilt throttle at nothing.
   resetFlight() {
     this.tiltThrottle = 0;
-    this._drag = null;
+    this._swipes.clear();
   }
 
-  get dragging() {
-    return this._drag !== null;
+  // Did the tilt throttle just move? The gauge brightens for a moment.
+  get stepped() {
+    return performance.now() - this._stepAt < 700;
   }
 
   consumeStart() {
