@@ -353,8 +353,9 @@ export class Input {
   //
   // Steering by tilt, the handset is the stick, so there is nothing for a
   // finger to steer, and no ring is drawn. Fingers are the engine instead:
-  // one on the glass, anywhere, is hover -- the height held -- and two are
-  // full power. None is nothing.
+  // one on the glass, anywhere, is full power, and two are hover -- the
+  // height held. None is nothing. One finger is the quick thing to do, and
+  // full power is the thing a tilting pilot reaches for most.
   //
   // In between it has been a hold with swipes for bursts, a dragged
   // throttle, and swipes in steps and by size with a gauge to read them
@@ -688,11 +689,11 @@ export class Input {
         if (power > 0) { thrust = 2; throttle = power; }
       }
     }
-    // Under tilt on a handset, fingers: one hovers, two is everything.
+    // Under tilt on a handset, fingers: one is everything, two hover.
     this.tiltTouch = this.touchUi && !this.touchSteers;
     if (this.tiltTouch && !this.padOwns) {
-      if (this.fingers >= 2) thrust = 2;
-      else if (this.fingers === 1) thrust = thrust || 1;
+      if (this.fingers >= 2) thrust = thrust || 1;
+      else if (this.fingers === 1) thrust = 2;
     }
     this.thrust = thrust;
     this.throttle = throttle;
