@@ -22,6 +22,14 @@ function axisDead(v) {
   return a <= AXIS_DEAD ? 0 : Math.sign(v) * (a - AXIS_DEAD) / (1 - AXIS_DEAD);
 }
 
+// Swipes, for the power under tilt steering. See _canvasTouch and sample().
+// Distances are fractions of the canvas height.
+const SWIPE_MIN = 0.06;      // less than this is a finger settling, not a swipe
+const SWIPE_FULL = 0.30;     // a swipe this long asks for everything
+const SWIPE_WINDOW = 600;    // ms from touching down: after that it is a hold
+const BURST_HOLD = 250;      // ms a burst stays at full strength ...
+const BURST_FADE = 380;      // ... then fades with this time constant, in ms
+
 export class Input {
   constructor(canvas) {
     this.canvas = canvas;
@@ -326,7 +334,10 @@ export class Input {
     this.touchThrust = false;
     this.touchFire = false;
 
-    this.fingers = 0;     // on the game itself
+    // Swipes in progress, by touch identifier, and the burst the last one
+    // asked for: +1 up, -1 down, fading back to nothing.
+    this._swipes = new Map();
+    this.burst = { sign: 0, size: 0, at: 0 };
     this.touchSteers = true;
 
     for (const ev of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) {
@@ -350,8 +361,13 @@ export class Input {
   // A thumb on a side whose stick is already taken does nothing.
   //
   // Steering by tilt, the handset is the stick, so there is nothing for a
-  // finger to steer: any finger on the glass is full power, and no ring is
-  // drawn under it.
+  // finger to steer, and no ring is drawn. The bird holds its height by
+  // itself, and a finger is for changing it: swipe up anywhere for a burst
+  // of climb, down for a dip. The further and the quicker the swipe, the
+  // bigger the burst, and it fades back to holding over about a second. A
+  // finger merely resting on the glass asks for nothing -- it used to be
+  // full power, which meant the craft could not be left to hover while the
+  // hands were busy tilting.
   //
   // Both sticks are fed whatever the mode, so switching between tilt and
   // touch mid-flight does not need them warming up first.
@@ -387,8 +403,39 @@ export class Input {
       if (!stillDown) s.up(s.id);
     }
 
-    // Fingers on the game itself, not on anything laid over it.
-    this.fingers = e.targetTouches.length;
+    // Swipes. Tracked whatever the mode; only tilt steering listens.
+    const now = performance.now();
+    for (const t of e.changedTouches) {
+      if (e.type === 'touchstart') {
+        this._swipes.set(t.identifier, { y: t.clientY, at: now });
+      } else if (e.type === 'touchmove') {
+        const sw = this._swipes.get(t.identifier);
+        if (!sw || now - sw.at > SWIPE_WINDOW) continue;
+        // Up the screen is up for the bird.
+        const dy = (sw.y - t.clientY) / r.height;
+        if (Math.abs(dy) < SWIPE_MIN) continue;
+        const sign = Math.sign(dy);
+        const size = Math.min(1, Math.max(0.35, Math.abs(dy) / SWIPE_FULL));
+        const b = this.burst;
+        // A swipe that grows keeps the burst growing with it, and restarts
+        // its clock; one the other way replaces it.
+        if (b.sign !== sign || size > this._burstNow(now) * sign) {
+          b.sign = sign; b.size = size; b.at = now;
+        }
+      } else {
+        this._swipes.delete(t.identifier);
+      }
+    }
+  }
+
+  // What is left of the last swipe's burst, -1 to 1.
+  _burstNow(now) {
+    const b = this.burst;
+    if (!b.sign) return 0;
+    const age = now - b.at;
+    const k = age <= BURST_HOLD ? 1 : Math.exp(-(age - BURST_HOLD) / BURST_FADE);
+    if (b.size * k < 0.1) { b.sign = 0; return 0; }
+    return b.sign * b.size * k;
   }
 
   // -- tilt -----------------------------------------------------------------
@@ -658,8 +705,6 @@ export class Input {
     let throttle = 1;
     let hold = false;
     if (this.touchThrust) thrust = 2;
-    // Under tilt, any finger is the engine.
-    if (!thumbs && this.fingers > 0) thrust = 2;
     if (k.has('KeyZ') || k.has('Space')) thrust = 2;
     else if (k.has('KeyX')) thrust = thrust || 1;
     if (this.padThrust) thrust = this.padThrust;
@@ -671,8 +716,12 @@ export class Input {
     // of it at the top, down to none at the bottom. So the stick is
     // continuous through the middle, and a little either side of it is a
     // gentle climb or a gentle sink. A pad button held wins.
+    // Under tilt on a handset it is the last swipe's burst, so that with no
+    // finger on the glass the bird simply holds its height.
+    const tiltTouch = this.touchUi && !this.touchSteers;
     const lift = this.padOwns ? this.padLift
       : thumbs ? hy
+      : tiltTouch ? this._burstNow(performance.now())
       : null;
     if (lift !== null && !this.padThrust) {
       if (lift === 0) {
