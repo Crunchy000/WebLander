@@ -157,6 +157,11 @@ const HOLD_SETTLE = (LANDING_SPEED * 0.4) | 0;
 // ground, per step: a tenth of its speed left after three quarters of a
 // second. See `stay` in update().
 const STAY_SETTLE = 0.94;
+// The sidestep: the left stick across, on the assisted controls. See `slide`
+// in update(). Two tiles a second at full stick, eased in and out over a
+// few frames so it neither jerks nor lurches.
+const SLIDE_SPEED = TILE * 0.04;
+const SLIDE_EASE = 0.15;
 
 // How many hits from a vessel's point defence the airframe will take. Shells
 // and missiles still kill outright: those are ordnance, and dodging them is
@@ -315,6 +320,7 @@ export class Player {
     this.vx = 0; this.vy = 0; this.vz = 0;
     this.leanDir = 0;
     this.lean = 0;
+    this.slideV = 0;
     this.looping = false;
     this.matrix = matFromAim(0, 0);
     this.charge = CHARGE_MAX;
@@ -404,7 +410,16 @@ export class Player {
   // a camera drone holding its position does. It does it without leaning
   // back into the stop, because the bird is drawn facing its lean, and
   // braking that way turned it round to face the way it had come.
-  update(stick, thrust, fire, gravity, game, throttle = 1, hold = false, stay = false) {
+  //
+  // `slide`, -1 to 1, is the left stick across on those same controls: a
+  // sidestep, left or right on the screen, with the bird kept level and
+  // facing where it was. Nothing that flies by leaning can do that -- a
+  // drone has to tip to go sideways, and so did this, which drew a bird
+  // turned side-on and tipped over for what the player meant as a step to
+  // one side. So it is not flown: it is simply where the player asked the
+  // bird to be, laid over the flight rather than made out of it. It needs
+  // the craft in the air and the engine running, like the other assists.
+  update(stick, thrust, fire, gravity, game, throttle = 1, hold = false, stay = false, slide = 0) {
     if (this.dead) {
       this.deathTimer--;
       return;
@@ -595,6 +610,10 @@ export class Player {
       this.vx = (this.vx * STAY_SETTLE) | 0;
       this.vz = (this.vz * STAY_SETTLE) | 0;
     }
+    // The sidestep, eased towards what the stick asks for. See `slide`.
+    const slideWant = !this.landed && thrust > 0 ? clamp(slide, -1, 1) * SLIDE_SPEED : 0;
+    this.slideV += (slideWant - this.slideV) * SLIDE_EASE;
+    if (Math.abs(this.slideV) < 1) this.slideV = 0;
 
     // Autorotation. A flat pack is not a dead machine: the rotors are still
     // turning, and holding hover feathers them into the airflow so they brake
@@ -618,7 +637,7 @@ export class Player {
       }
     }
 
-    this.x = (this.x + this.vx) | 0;
+    this.x = (this.x + this.vx + this.slideV) | 0;
     this.y = (this.y + this.vy) | 0;
     this.z = (this.z + this.vz) | 0;
 

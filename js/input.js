@@ -57,6 +57,7 @@ export class Input {
     this.thrust = 0;      // 0 none, 1 hover, 2 full
     this.hold = false;    // the height stick centred: stay at this height
     this.stay = false;    // an assisted lean stick: centred, stay put
+    this.slide = 0;       // the height stick across: a level sidestep
     this.fire = false;
     this.startPressed = false;
 
@@ -94,6 +95,7 @@ export class Input {
     this.padActive = false;
     this.padThrust = 0;
     this.padLift = 0;
+    this.padSlide = 0;
     this.padFire = false;
     this.padAnyButton = false;
     this._padStartWas = false;
@@ -339,7 +341,7 @@ export class Input {
   //
   //   left thumb    up/down     height: left alone it holds, up climbs,
   //                             down sinks
-  //                 left/right  strafe
+  //                 left/right  sidestep, level
   //   right thumb               the lean, on the screen: up is away, down
   //                             towards, left and right tilt that way
   //
@@ -525,7 +527,8 @@ export class Input {
       this.padAnyButton = false;
       this.padThrust = 0;
       this.padLift = 0;
-        this.padFire = false;
+      this.padSlide = 0;
+      this.padFire = false;
       return;
     }
 
@@ -536,7 +539,7 @@ export class Input {
     //
     //   left stick    up/down     height: centred holds it, up climbs,
     //                             down sinks (see Input.sample)
-    //                 left/right  strafe
+    //                 left/right  sidestep, level (see Player.update)
     //   right stick               the lean itself, on the screen: up flies
     //                             away, down towards, left and right tilt
     //                             that way
@@ -558,9 +561,9 @@ export class Input {
       return a <= DEAD ? 0 : Math.sign(v) * Math.min(1, (a - DEAD) / (0.95 - DEAD));
     };
     this.padLift = dz(-axis(1));
-    // Strafe gets the steering expo: gentle in the middle, where the
+    // The sidestep gets the steering expo: gentle in the middle, where the
     // corrections are.
-    const strafe = Math.sign(axis(0)) * expo(Math.abs(dz(axis(0))));
+    this.padSlide = Math.sign(axis(0)) * expo(Math.abs(dz(axis(0))));
 
     // The right stick is one control -- a direction -- so its deadzone is on
     // the magnitude. Squaring it off would make the corners reachable and the
@@ -580,8 +583,6 @@ export class Input {
     // The d-pad, for whoever prefers it, is the same lean.
     if (btn(14)) x = -1; else if (btn(15)) x = 1;
     if (btn(12)) y = 1; else if (btn(13)) y = -1;
-    // Strafe adds to the lean across; together they are still one stick.
-    x += strafe;
     m = Math.hypot(x, y);
     if (m > 1) { x /= m; y /= m; }
     this.padStick.x = x;
@@ -601,7 +602,8 @@ export class Input {
     if (startNow && !this._padStartWas) this.startPressed = true;
     this._padStartWas = startNow;
 
-    this.padActive = x !== 0 || y !== 0 || this.padThrust > 0 || this.padLift !== 0 || any;
+    this.padActive = x !== 0 || y !== 0 || this.padThrust > 0 || this.padLift !== 0
+      || this.padSlide !== 0 || any;
     if (this.padActive) this.padUsed = true;
   }
 
@@ -635,14 +637,9 @@ export class Input {
     if (this.padOwns) {
       this.stick = this.padStick;
     } else if (thumbs) {
-      // The lean from the right thumb, with the strafe from the left added
-      // across it.
-      let sx = (Rt.active ? Rt.x : 0) + Math.sign(lx) * expo(Math.abs(lx));
-      let sy = Rt.active ? Rt.y : 0;
-      const m = Math.hypot(sx, sy);
-      if (m > 1) { sx /= m; sy /= m; }
-      this.thumbStick.x = sx;
-      this.thumbStick.y = sy;
+      // The lean is the right thumb's, as it always was.
+      this.thumbStick.x = Rt.active ? Rt.x : 0;
+      this.thumbStick.y = Rt.active ? Rt.y : 0;
       this.stick = this.thumbStick;
     } else if (tilt) {
       this.stick = tilt;
@@ -691,6 +688,10 @@ export class Input {
     // ... and the lean stick centred on the same controls asks the craft to
     // stay where it is. See Player.update.
     this.stay = this.padOwns || thumbs;
+    // ... and the height stick across is the sidestep.
+    this.slide = this.padOwns ? this.padSlide
+      : thumbs ? Math.sign(lx) * expo(Math.abs(lx))
+      : 0;
 
     this.fire = this.mouseFire || this.touchFire || this.padFire
       || k.has('KeyC') || k.has('ShiftLeft');
