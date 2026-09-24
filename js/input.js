@@ -13,7 +13,7 @@ import { SCREEN_W, SCREEN_H } from './renderer.js';
 
 // A deadzone on one axis of a stick, with the travel beyond it rescaled so
 // the rim still reads 1. The thumb sticks on the glass are round, but the
-// left one is two controls on one thumb -- height and strafe -- and a thumb
+// right one is two controls on one thumb -- height and sidestep -- and a thumb
 // pushing one of them is never quite square to the other. Without this every
 // strafe was also a gentle climb or sink, and every climb a slow slide.
 const AXIS_DEAD = 0.15;
@@ -44,11 +44,11 @@ export class Input {
     // whichever thumb arrives. Which of the two is in charge is `steerMode`,
     // and a device with no motion sensor gets the stick whatever it says.
     // Two of them, one under each thumb, laid out as the pad's two sticks
-    // are: see _canvasTouch. The left carries two different controls and is
-    // shaped per axis in sample(), so it is linear; the right is the lean,
-    // and is the steering stick it always was.
-    this.leftThumb = new TouchStick({ linear: true });
-    this.rightThumb = new TouchStick();
+    // are: see _canvasTouch. The left is the lean, and is the steering stick
+    // it always was; the right carries two different controls and is shaped
+    // per axis in sample(), so it is linear.
+    this.leftThumb = new TouchStick();
+    this.rightThumb = new TouchStick({ linear: true });
     // How much power is being asked for, 0 to 1. Whatever is steering, some
     // sources say only yes or no and some say how much; this is how much, and
     // it is 1 for the ones that only say yes.
@@ -339,11 +339,11 @@ export class Input {
   // Steering by stick, there are two, laid out as the pad's are, and the
   // side of the screen a thumb lands on says which it gets:
   //
-  //   left thumb    up/down     height: left alone it holds, up climbs,
+  //   left thumb                the lean, on the screen: up is away, down
+  //                             towards, left and right tilt that way
+  //   right thumb   up/down     height: left alone it holds, up climbs,
   //                             down sinks
   //                 left/right  sidestep, level
-  //   right thumb               the lean, on the screen: up is away, down
-  //                             towards, left and right tilt that way
   //
   // By side rather than by arrival, because first-come was tried and it
   // swaps the controls over whenever the right thumb happens to land first.
@@ -537,12 +537,12 @@ export class Input {
 
     // Two sticks, laid out as the player asked for them:
     //
-    //   left stick    up/down     height: centred holds it, up climbs,
-    //                             down sinks (see Input.sample)
-    //                 left/right  sidestep, level (see Player.update)
-    //   right stick               the lean itself, on the screen: up flies
+    //   left stick                the lean itself, on the screen: up flies
     //                             away, down towards, left and right tilt
     //                             that way
+    //   right stick   up/down     height: centred holds it, up climbs,
+    //                             down sinks (see Input.sample)
+    //                 left/right  sidestep, level (see Player.update)
     //
     // Nothing turns the craft. Directions are the screen's, as they are for
     // the mouse and the tilt, and the bird faces whichever way it leans --
@@ -552,7 +552,7 @@ export class Input {
     // flip to meet the one convention every input here has to produce:
     // y > 0 is away.
     //
-    // The left stick is two unrelated controls, so its deadzones are per
+    // The right stick is two unrelated controls, so its deadzones are per
     // axis: a thumb pushing one of them is never quite square to the other,
     // and a round deadzone let every climb strafe a little.
     const DEAD = 0.14;
@@ -560,16 +560,16 @@ export class Input {
       const a = Math.abs(v);
       return a <= DEAD ? 0 : Math.sign(v) * Math.min(1, (a - DEAD) / (0.95 - DEAD));
     };
-    this.padLift = dz(-axis(1));
+    this.padLift = dz(-axis(3));
     // The sidestep gets the steering expo: gentle in the middle, where the
     // corrections are.
-    this.padSlide = Math.sign(axis(0)) * expo(Math.abs(dz(axis(0))));
+    this.padSlide = Math.sign(axis(2)) * expo(Math.abs(dz(axis(2))));
 
-    // The right stick is one control -- a direction -- so its deadzone is on
+    // The left stick is one control -- a direction -- so its deadzone is on
     // the magnitude. Squaring it off would make the corners reachable and the
     // cardinals sticky, which is the same mistake the tilt mapper made and
     // the same fix.
-    let x = axis(2), y = -axis(3);
+    let x = axis(0), y = -axis(1);
     const LEAN_DEAD = 0.16;
     let m = Math.hypot(x, y);
     if (m < LEAN_DEAD) {
@@ -631,15 +631,15 @@ export class Input {
     const thumbs = this.touchUi && this.touchSteers;
     // Each thumb's two axes, deadzoned one at a time (see axisDead) and zero
     // when the thumb is not there.
-    const L = this.leftThumb, Rt = this.rightThumb;
-    const lx = L.active ? axisDead(L.x) : 0, ly = L.active ? axisDead(L.y) : 0;
+    const Lean = this.leftThumb, H = this.rightThumb;
+    const hx = H.active ? axisDead(H.x) : 0, hy = H.active ? axisDead(H.y) : 0;
 
     if (this.padOwns) {
       this.stick = this.padStick;
     } else if (thumbs) {
-      // The lean is the right thumb's, as it always was.
-      this.thumbStick.x = Rt.active ? Rt.x : 0;
-      this.thumbStick.y = Rt.active ? Rt.y : 0;
+      // The lean is the left thumb's.
+      this.thumbStick.x = Lean.active ? Lean.x : 0;
+      this.thumbStick.y = Lean.active ? Lean.y : 0;
       this.stick = this.thumbStick;
     } else if (tilt) {
       this.stick = tilt;
@@ -652,7 +652,7 @@ export class Input {
     // Thrust, from whichever source is active, and how much of it.
     //
     // Most sources only say on or off, or hover or full. The height stick --
-    // the pad's left stick, or the left thumb on the glass -- says how much,
+    // the pad's right stick, or the right thumb on the glass -- says how much,
     // around a middle that holds the height you are at.
     let thrust = this.mouseThrust;
     let throttle = 1;
@@ -672,7 +672,7 @@ export class Input {
     // continuous through the middle, and a little either side of it is a
     // gentle climb or a gentle sink. A pad button held wins.
     const lift = this.padOwns ? this.padLift
-      : thumbs ? ly
+      : thumbs ? hy
       : null;
     if (lift !== null && !this.padThrust) {
       if (lift === 0) {
@@ -690,7 +690,7 @@ export class Input {
     this.stay = this.padOwns || thumbs;
     // ... and the height stick across is the sidestep.
     this.slide = this.padOwns ? this.padSlide
-      : thumbs ? Math.sign(lx) * expo(Math.abs(lx))
+      : thumbs ? Math.sign(hx) * expo(Math.abs(hx))
       : 0;
 
     this.fire = this.mouseFire || this.touchFire || this.padFire

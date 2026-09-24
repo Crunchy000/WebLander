@@ -158,7 +158,7 @@ export class TouchStick {
 
 // --- the throttle curve ------------------------------------------------------
 //
-// Up on the second stick -- the pad's right stick, or the second thumb on the
+// Up on the height stick -- the pad's right stick, or the right thumb on the
 // glass -- is a throttle, and this is how its travel maps onto power.
 //
 // What a pilot is choosing is not a number of watts, it is a rate of climb,

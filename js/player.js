@@ -157,7 +157,7 @@ const HOLD_SETTLE = (LANDING_SPEED * 0.4) | 0;
 // ground, per step: a tenth of its speed left after three quarters of a
 // second. See `stay` in update().
 const STAY_SETTLE = 0.94;
-// The sidestep: the left stick across, on the assisted controls. See `slide`
+// The sidestep: the height stick across, on the assisted controls. See `slide`
 // in update(). Two tiles a second at full stick, eased in and out over a
 // few frames so it neither jerks nor lurches.
 const SLIDE_SPEED = TILE * 0.04;
@@ -386,7 +386,7 @@ export class Player {
   // or 2 (full); `fire` is a boolean.
   // `throttle` is how much of the full power is being asked for, -1 to 1. Most
   // ways of asking only say yes, and say it as 1; the height stick -- the
-  // left thumb on the glass or the pad's left stick -- can say how much.
+  // right thumb on the glass or the pad's right stick -- can say how much.
   // Hover is not scaled -- it is a setting rather than an amount, and a
   // half-strength hold that does not hold is no use to anybody.
   //
@@ -397,7 +397,7 @@ export class Player {
   // No control asks for it at present: the height stick's bottom is
   // "no power" rather than "backwards". It is kept because it costs nothing.
   //
-  // `hold` is the height stick -- the pad's left stick, the left thumb on
+  // `hold` is the height stick -- the pad's right stick, the right thumb on
   // the glass -- sitting centred, which asks the craft to stay at the height
   // it is at: a drone's altitude hold. It is the hover's physics without the
   // hover's handling: the lean keeps whatever authority it had, because the
@@ -405,13 +405,13 @@ export class Player {
   // change every time it does.
   //
   // `stay` is the same for the ground under it: the lean stick is one of the
-  // assisted ones -- the pad's right stick, the right thumb -- and while it
+  // assisted ones -- the pad's left stick, the left thumb -- and while it
   // sits centred with the engine running, the craft stops and stays put, as
   // a camera drone holding its position does. It does it without leaning
   // back into the stop, because the bird is drawn facing its lean, and
   // braking that way turned it round to face the way it had come.
   //
-  // `slide`, -1 to 1, is the left stick across on those same controls: a
+  // `slide`, -1 to 1, is the height stick across on those same controls: a
   // sidestep, left or right on the screen, with the bird kept level and
   // facing where it was. Nothing that flies by leaning can do that -- a
   // drone has to tip to go sideways, and so did this, which drew a bird
