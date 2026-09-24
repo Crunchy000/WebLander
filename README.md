@@ -122,14 +122,10 @@ rule means ground rising under you puts the throttle back in your hand rather
 than flying you into it.
 
 So the vertical control is three-way: **full thrust climbs, hover holds,
-nothing descends.** Full thrust is untouched and still reaches 90° of lean,
-past about 78° of which there is not enough lift left to hold you up.
-
-The lean limit **latches on the last thrust you asked for** rather than
-lasting only while the button is down. Tap hover and the craft stays a 45°
-machine while you coast; tap full thrust and it is a 90° one again. Handling
-that changed under you every time you eased off the power would spring its
-surprise at the moment you could least afford one.
+nothing descends.** Both lean the same distance, all the way round: hover
+used to be capped at 45° and barred from looping, but since it carries the
+craft's weight whatever the lean, the cap bought no safety, only a machine
+that handled differently depending on which power it was on.
 
 There is no separate turn control, because steering *is* turning. The craft
 swings to face wherever you are steering, and since the gun fires along the

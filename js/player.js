@@ -97,14 +97,11 @@ export const HOLD_THROTTLE = GRAVITY_START / THRUST_FULL;
 // stick at exactly the right spot to hang upside down was the bug that
 // started all this.
 const MAX_LEAN = (Math.PI * 3) / 4;
-// How far the craft may lean while hover is held. Thrust acts along the roof,
-// so leaning trades lift for speed, and past a certain angle there is not
-// enough lift left to stand the craft up. Measured: hover holds altitude out
-// to 66.9 degrees and sinks at 2.0 tiles/s at the full 90, where full thrust
-// carries to 78.0. Hover is the mode you use to place the craft, so it is
-// capped where it always climbs -- at 45 degrees it still makes 1.6 tiles/s
-// with the stick buried.
-const HOVER_LEAN = Math.PI / 4;
+// Hover leans as far as anything else. It used to be capped at forty-five
+// degrees, and barred from looping, on the grounds that it was the mode for
+// placing the craft; but hover carries the craft's weight whatever the lean
+// (see `holding` in update), so the cap bought no safety, only a machine
+// that handled differently depending on which power it was on.
 // Past the rim of the stick the tilt stops being a position and becomes a
 // rate. Steering here has always been by position -- how far you push is how
 // far the nose drops -- and that is exactly why a loop was impossible: full
@@ -334,7 +331,6 @@ export class Player {
     // pilot asked for and stays there when the trigger is let go, so the
     // craft handles the same whether you are holding power or coasting.
     // Full range until told otherwise.
-    this.leanMode = 2;
     this.autorotating = false;
     this.hits = 0;
     this.hitFlash = 0;
@@ -479,15 +475,7 @@ export class Player {
     // the two now agree: square on its skids until it is off them, then
     // whatever you ask for, from a neutral that was taken as you left.
     const mag = this.landed ? 0 : Math.min(1, Math.hypot(stick.x, stick.y));
-    // Hover asks for a gentle machine, so it gets one: the same stick travel
-    // buys half the lean. The setting latches on the last thrust hit rather
-    // than lasting only while the trigger is down -- otherwise the craft's
-    // handling changes under you every time you ease off the power, which is
-    // the moment you can least afford a surprise. Asked for rather than
-    // delivered: a flat battery takes the lift away below, but it should not
-    // silently hand back the authority the pilot chose to give up.
-    if (thrust) this.leanMode = thrust;
-    const targetLean = mag * (this.leanMode === 1 ? HOVER_LEAN : MAX_LEAN);
+    const targetLean = mag * MAX_LEAN;
     const targetDir = (mag > 0.02) ? Math.atan2(stick.x, stick.y) : this.leanDir;
 
     // Interpolate the direction the short way round the circle.
@@ -496,10 +484,7 @@ export class Player {
     while (dd < -Math.PI) dd += Math.PI * 2;
     this.leanDir += dd * LEAN_RATE;
 
-    // Hover is never allowed to loop: it is the setting you use to place the
-    // craft, and a hold that could put you on your back is not one.
-    this.looping = this.leanMode !== 1
-                && mag >= (this.looping ? LOOP_KEEP : LOOP_AT);
+    this.looping = mag >= (this.looping ? LOOP_KEEP : LOOP_AT);
     if (this.looping) {
       this.lean += LOOP_RATE;
     } else {

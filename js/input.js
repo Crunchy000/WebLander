@@ -353,8 +353,8 @@ export class Input {
   //
   // Steering by tilt, the handset is the stick, so there is nothing for a
   // finger to steer, and no ring is drawn. Fingers are the engine instead:
-  // one on the glass, anywhere, is hover -- the height held, the lean kept
-  // gentle -- and two are full power. None is nothing.
+  // one on the glass, anywhere, is hover -- the height held -- and two are
+  // full power. None is nothing.
   //
   // In between it has been a hold with swipes for bursts, a dragged
   // throttle, and swipes in steps and by size with a gauge to read them
