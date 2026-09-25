@@ -37,10 +37,16 @@ const BASE_H = 256;
 const MAX_ASPECT = 2.5;
 const MIN_ASPECT = 4 / 3;
 
-// The device's shape, not the window's. A phone gives the same number held
-// either way round, so turning it does not want a buffer of a different size
-// -- which is just as well, since the size is settled here, once, and half
-// the game's modules read it as they load.
+// The window's shape, taken the long way over the short so that a phone
+// gives the same number held either way round.
+//
+// It used to be settled once, as the page loaded, and never again. On a
+// phone that is the worst possible moment to ask: the browser's own bars are
+// still showing, so the window is shorter than the screen it will be played
+// on, and once they went -- going fullscreen, or scrolling them away -- the
+// game kept the shape it had been given and left bars down both sides. On
+// one phone that was 370 of its 2400 pixels across. Now it is asked again
+// whenever the window changes; see reshape() and Renderer.begin().
 function displayAspect() {
   const w = typeof window !== 'undefined' ? window.innerWidth : 0;
   const h = typeof window !== 'undefined' ? window.innerHeight : 0;
@@ -48,14 +54,38 @@ function displayAspect() {
   return Math.max(w, h) / Math.min(w, h);
 }
 
+function widthFor(aspect) {
+  return Math.round(BASE_H * Math.min(MAX_ASPECT, Math.max(MIN_ASPECT, aspect)) / 2) * 2;
+}
+
+// Live bindings: they change when the window does, and every module that
+// imports them sees the new value. Anything that sizes memory by the width
+// sizes it by SCREEN_W_MAX instead, which never changes.
 export const SCREEN_H = BASE_H;
-export const SCREEN_W = Math.round(
-  BASE_H * Math.min(MAX_ASPECT, Math.max(MIN_ASPECT, displayAspect())) / 2) * 2;
+export let SCREEN_W = widthFor(displayAspect());
+export const SCREEN_W_MAX = widthFor(MAX_ASPECT);
 
 // Screen centre for the projection. The horizontal centre is the middle of
 // the screen, but the vertical centre sits high, at y = 64 -- that is what
 // tips the view down over the landscape without the camera ever rotating.
-export const CENTRE_X = SCREEN_W >> 1;
+export let CENTRE_X = SCREEN_W >> 1;
+
+// Whoever derives something from the width and keeps it registers here, and
+// is told when it changes. See landscape.js.
+const shapeListeners = [];
+export function onScreenShape(fn) {
+  shapeListeners.push(fn);
+}
+
+// Measure the window again. True if the game's width changed.
+function reshape() {
+  const w = widthFor(displayAspect());
+  if (w === SCREEN_W) return false;
+  SCREEN_W = w;
+  CENTRE_X = w >> 1;
+  for (const fn of shapeListeners) fn();
+  return true;
+}
 export const CENTRE_Y = 64;
 
 // Focal length, in pixels. It is deliberately NOT adjusted for the wider
@@ -233,7 +263,8 @@ export class Renderer {
 
     this.aPos = gl.getAttribLocation(prog, 'aPos');
     this.aCol = gl.getAttribLocation(prog, 'aCol');
-    gl.uniform2f(gl.getUniformLocation(prog, 'uScale'), 2 / SCREEN_W, 2 / SCREEN_H);
+    this.uScale = gl.getUniformLocation(prog, 'uScale');
+    gl.uniform2f(this.uScale, 2 / SCREEN_W, 2 / SCREEN_H);
 
     // One interleaved buffer: two floats of position plus four bytes of
     // colour per vertex, 12 bytes in all.
@@ -293,12 +324,24 @@ export class Renderer {
     document.documentElement.style.setProperty('--screen-aspect', String(SCREEN_W / SCREEN_H));
 
     this.resize();
+    // A change of size is noted here and made at the top of the next frame
+    // (see begin), for the same reason the adaptor's are: resizing a canvas
+    // empties it, and one that is emptied after it was drawn is shown
+    // blank. The window is watched as well as the canvas, because a window
+    // that only gets wider may not change the canvas at all -- it is held
+    // to the game's shape -- and that is exactly the case where the shape
+    // wants changing.
+    this.stale = false;
+    const note = () => { this.stale = true; };
     if (typeof ResizeObserver !== 'undefined') {
-      this.ro = new ResizeObserver(() => this.resize());
+      this.ro = new ResizeObserver(note);
       this.ro.observe(canvas);
-    } else if (typeof window !== 'undefined') {
-      window.addEventListener('resize', () => this.resize());
-      window.addEventListener('orientationchange', () => this.resize());
+    }
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', note);
+      window.addEventListener('orientationchange', note);
+      document.addEventListener('fullscreenchange', note);
+      window.visualViewport?.addEventListener('resize', note);
     }
   }
 
@@ -397,10 +440,24 @@ export class Renderer {
     // between one being drawn and being shown. Resizing a canvas throws its
     // contents away, so a resize after the drawing hands the compositor an
     // empty buffer -- one white frame, which is the flicker.
+    let size = false;
     if (this.want !== undefined && this.want !== this.scaleAt) {
       this.scaleAt = this.want;
-      this.resize();
+      size = true;
     }
+    // The window has changed. If the game's shape has too, the projection
+    // and the stylesheet need telling before the canvas is measured, so
+    // that the measurement is of the new shape.
+    if (this.stale) {
+      this.stale = false;
+      if (reshape()) {
+        gl.useProgram(this.prog);
+        gl.uniform2f(this.uScale, 2 / SCREEN_W, 2 / SCREEN_H);
+        document.documentElement.style.setProperty('--screen-aspect', String(SCREEN_W / SCREEN_H));
+      }
+      size = true;
+    }
+    if (size) this.resize();
     gl.clearColor(clear[0] / 255, clear[1] / 255, clear[2] / 255, 1);
     // Depth writes have to be on for a depth clear to happen at all.
     gl.depthMask(true);

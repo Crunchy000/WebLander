@@ -33,8 +33,9 @@ const COUNT = 11;
 const TOP = 4, BOTTOM = SKY_BAND_2 - 36;
 
 // They wrap through a span wider than the screen, so they have somewhere to
-// come from and somewhere to go.
-const SPAN = SCREEN_W + 200;
+// come from and somewhere to go. It follows the width, which follows the
+// window (see renderer.js).
+const span = () => SCREEN_W + 200;
 
 // Soft casts to hold them apart from one another. Kept faint on purpose:
 // these are meant to be noticed as variety, not as coloured clouds.
@@ -81,7 +82,7 @@ function makeClouds() {
     heights[cols - 1] = 1;
 
     out.push({
-      x: rnd() * SPAN,
+      x: rnd() * span(),
       // Higher clouds are smaller and drift slower: the only depth cue going
       // when everything is painted on the same flat sky.
       depth: 0.35 + rnd() * 0.65,
@@ -130,6 +131,7 @@ export function drawClouds(rd) {
 
   for (const c of CLOUDS) {
     const speed = (0.055 + murk * 0.10) * c.depth;
+    const SPAN = span();
     let x = (c.x + sky.tick * speed) % SPAN;
     if (x < 0) x += SPAN;
     x -= 100;

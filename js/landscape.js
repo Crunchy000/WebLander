@@ -7,7 +7,7 @@
 // it as you fly, which is why the horizon never moves.
 
 import { TILE, sinLookup } from './maths.js';
-import { SCREEN_W, FOCAL_X } from './renderer.js';
+import { SCREEN_W, SCREEN_W_MAX, FOCAL_X, onScreenShape } from './renderer.js';
 import { sky, litColour, silhouetteDark } from './daylight.js';
 import { groundBase, tintFor, tintLevel, TINT_STEPS } from './biome.js';
 import { serene } from './style.js';
@@ -48,10 +48,19 @@ export const LANDSCAPE_Z = LANDSCAPE_Z_DEPTH + 10 * TILE;       // 34 tiles out
 // used to be written as a count measured at one screen width and scaled; as
 // a formula it also tracks the depth, which matters because pushing the far
 // row further out makes every tile of width buy fewer pixels.
-const HALF_TILES = Math.ceil(((SCREEN_W / 2) * (LANDSCAPE_Z / TILE)) / FOCAL_X);
-export const TILES_X = 2 + 2 * HALF_TILES;
-
-export const LANDSCAPE_X = (TILE * (TILES_X - 2)) / 2;
+//
+// It follows the width, which follows the window (see renderer.js), so it is
+// worked out again whenever that changes. Anything that holds a row of the
+// grid in memory sizes it by TILES_X_MAX, the grid at the widest shape the
+// game allows, and never has to be reallocated.
+const tilesFor = (w) => 2 + 2 * Math.ceil(((w / 2) * (LANDSCAPE_Z / TILE)) / FOCAL_X);
+export const TILES_X_MAX = tilesFor(SCREEN_W_MAX);
+export let TILES_X = tilesFor(SCREEN_W);
+export let LANDSCAPE_X = (TILE * (TILES_X - 2)) / 2;
+onScreenShape(() => {
+  TILES_X = tilesFor(SCREEN_W);
+  LANDSCAPE_X = (TILE * (TILES_X - 2)) / 2;
+});
 
 // Every ramp that shades the ground by distance -- the haze, the brightness
 // lift, the near-and-steep silhouette -- was written against a sixteen-tile

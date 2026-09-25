@@ -65,7 +65,8 @@ const FAR_HAZE = 46 * TILE;
 // wedge at that depth. SPREAD reaches a little past the edge of the frame,
 // which is what lets one drift in from the side instead of every one of them
 // being born already in shot.
-const HALF_WEDGE = CENTRE_X / FOCAL_X;
+// Half the frame's width, as a slope; it follows the window.
+const halfWedge = () => CENTRE_X / FOCAL_X;
 const SPAWN_SPREAD = 1.2;
 // How far behind the craft the eye sits, in tiles -- the constant itself is
 // fixed point, and everything here is counting tiles.
@@ -398,7 +399,7 @@ function place(g, px, pz) {
   const r = SPAWN_MIN + rnd() * (SPAWN_MAX - SPAWN_MIN);
   // The wedge is measured from the camera, which trails the craft, so the
   // depth that decides how wide it is out here is the one the camera sees.
-  const wedge = (r / TILE + CAM_BACK) * HALF_WEDGE * SPAWN_SPREAD;
+  const wedge = (r / TILE + CAM_BACK) * halfWedge() * SPAWN_SPREAD;
   let x = (px + rndSigned() * wedge * TILE) | 0;
   let z = (pz + r) | 0;
   const ground = Math.min(landAltitude(x, z), SEA_LEVEL);
@@ -455,7 +456,7 @@ export function updateBalloons(player) {
     // an int32 -- which is exactly the wrap. Without it, a group sitting
     // across the seam looks four thousand million units away.
     const dx = ((head.x - player.x) | 0) / TILE, dz = ((head.z - player.z) | 0) / TILE;
-    const wedge = (dz + CAM_BACK) * HALF_WEDGE * RETIRE_SPREAD + 6;
+    const wedge = (dz + CAM_BACK) * halfWedge() * RETIRE_SPREAD + 6;
     if (Math.hypot(dx, dz) * TILE > RETIRE ||
         dz < -CAM_BACK - 4 ||
         Math.abs(dx) > wedge) g.live = false;

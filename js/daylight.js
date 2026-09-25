@@ -212,7 +212,7 @@ function makeStars() {
     // which leaves the horizon band clear for the sun and the landscape.
     const v = rnd();
     out.push({
-      x: Math.round(rnd() * SCREEN_W),
+      x: rnd(),          // across the sky, as a fraction of its width
       y: Math.round(v * v * (SKY_BAND_2 - 6)),
       mag: 0.3 + rnd() * 0.7,
       big: rnd() > 0.93,

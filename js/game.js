@@ -3,7 +3,7 @@
 import { TILE, rndInt, rnd } from './maths.js';
 import {
   landAltitude, tileColour, fogForRow, SEA_LEVEL, LAUNCHPAD_ALT,
-  TILES_X, TILES_Z, LANDSCAPE_X, LANDSCAPE_Z, LANDSCAPE_Z_MID,
+  TILES_X, TILES_X_MAX, TILES_Z, LANDSCAPE_X, LANDSCAPE_Z, LANDSCAPE_Z_MID,
   UNDERCARRIAGE_Y,
 } from './landscape.js';
 import {
@@ -130,13 +130,13 @@ export class Game {
     this.state = STATE.TITLE;
 
     // Scratch buffers for the landscape scan, allocated once.
-    this.rowX = new Float64Array(TILES_X);
-    this.rowY = new Float64Array(TILES_X);
-    this.rowOk = new Uint8Array(TILES_X);
-    this.rowAlt = new Int32Array(TILES_X);
-    this.prevX = new Float64Array(TILES_X);
-    this.prevY = new Float64Array(TILES_X);
-    this.prevOk = new Uint8Array(TILES_X);
+    this.rowX = new Float64Array(TILES_X_MAX);
+    this.rowY = new Float64Array(TILES_X_MAX);
+    this.rowOk = new Uint8Array(TILES_X_MAX);
+    this.rowAlt = new Int32Array(TILES_X_MAX);
+    this.prevX = new Float64Array(TILES_X_MAX);
+    this.prevY = new Float64Array(TILES_X_MAX);
+    this.prevOk = new Uint8Array(TILES_X_MAX);
 
     // Objects waiting to be drawn, staggered behind the landscape.
     this.rowWorldZ = new Int32Array(TILES_Z + 2);
@@ -602,7 +602,7 @@ export class Game {
         Math.round(back[1] + (242 - back[1]) * m),
         Math.round(back[2] + (255 - back[2]) * m),
       ];
-      rd.rect(st.x, st.y, st.big ? 2 : 1, st.big ? 2 : 1, col);
+      rd.rect(Math.round(st.x * SCREEN_W), st.y, st.big ? 2 : 1, st.big ? 2 : 1, col);
     }
   }
 
