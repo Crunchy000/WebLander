@@ -167,6 +167,7 @@ export class Game {
     resetWeather();
     resetFlowers();
     this.player.reset();
+    this.input.newFlight();
     this.state = STATE.PLAYING;
   }
 
@@ -420,6 +421,7 @@ export class Game {
     resetParticles();
     resetRibbon();
     this.player.reset();
+    this.input.newFlight();
     this.state = STATE.PLAYING;
     this.setMessage(null, 0);
   }

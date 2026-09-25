@@ -215,6 +215,11 @@ export class Input {
     addEventListener('mousemove', (e) => {
       this._buttons(this._held &= e.buttons);
       if (this.touchUi && this.tiltEnabled) return;
+      // ... but only the play area steers. Over the title card the pointer
+      // is on its way to a button, and wherever that button is must not
+      // become the stick: pointer lock kept it, and the bird leaned hard
+      // towards the start button the moment it left the pad.
+      if (!this.locked && e.target !== c && e.target !== stage) return;
       const R = radius();
       if (!R) return;
 
@@ -710,6 +715,16 @@ export class Input {
       || k.has('KeyC') || k.has('ShiftLeft');
 
     return this;
+  }
+
+  // A new bird starts with the sticks it steers by in the middle. Locked,
+  // the mouse's stick is kept here rather than read off the screen, so
+  // wherever the last flight left it -- or wherever the pointer was on the
+  // way to the start button -- would otherwise be the first thing the craft
+  // does once it lifts off.
+  newFlight() {
+    this.mouseStick = { x: 0, y: 0 };
+    this.keyStick.x = this.keyStick.y = 0;
   }
 
   consumeStart() {
