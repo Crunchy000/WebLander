@@ -2,7 +2,7 @@
   "name": "weblander",
   "version": "1.0.0",
   "private": true,
-  "description": "Fly a drone over an endless landscape. A tribute to the 1987 Archimedes classic.",
+  "description": "Twilight Hover Web Game",
   "type": "module",
   "scripts": {
     "assemble": "node scripts/assemble-web.mjs _site"

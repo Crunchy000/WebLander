@@ -16,7 +16,7 @@ let renderer;
 try {
   renderer = new Renderer(canvas);
 } catch (err) {
-  overlay.innerHTML = '<div id="panel"><h1>WEBLANDER</h1><p>' + err.message + '</p></div>';
+  overlay.innerHTML = '<div id="panel"><h1>TWILIGHT HOVER</h1><p>' + err.message + '</p></div>';
   throw err;
 }
 

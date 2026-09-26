@@ -975,7 +975,7 @@ export class Game {
     }
 
     if (this.state === STATE.TITLE) {
-      drawTextCentred(rd, 'weblander', CENTRE_X, 78, [238, 232, 216], 3);
+      drawTextCentred(rd, 'twilight hover', CENTRE_X, 78, [238, 232, 216], 3);
       drawTextCentred(rd, 'press start to fly', CENTRE_X, 122, WHITE);
     } else if (this.state === STATE.GAMEOVER) {
       // Not GAME OVER. Nothing has been failed here -- the birds are simply

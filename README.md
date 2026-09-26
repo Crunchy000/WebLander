@@ -1,4 +1,6 @@
-# WebLander
+# Twilight Hover
+
+*Twilight Hover Web Game* — the project that started as WebLander.
 
 **[▶ Play it](https://crunchy000.github.io/WebLander/)**
 
