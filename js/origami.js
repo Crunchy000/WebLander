@@ -47,7 +47,7 @@ const GRAIN = 0.11;
 // easier to fold on paper than a table of numbers. A name ending in R has a
 // twin ending in L, the same point mirrored across the bird's middle, so each
 // side is only written once.
-function build(points, tris, dy, seed, alpha) {
+function build(points, tris, dy, seed, alpha, lit = false) {
   const m = new Model();
   const at = {};
   for (const [name, [x, y, z]] of Object.entries(points)) {
@@ -66,17 +66,19 @@ function build(points, tris, dy, seed, alpha) {
       e1[0] * e2[1] - e1[1] * e2[0],
     ];
     const len = Math.hypot(n[0], n[1], n[2]) || 1;
-    const lit = Math.abs((n[0] * LIGHT[0] + n[1] * LIGHT[1] + n[2] * LIGHT[2]) / len);
+    const lit_ = Math.abs((n[0] * LIGHT[0] + n[1] * LIGHT[1] + n[2] * LIGHT[2]) / len);
     const k = ((hash2(m.faces.length, seed) & 255) / 255 - 0.5) * 2 * MOTTLE;
     // A facet that makes its own light keeps its colour: it is not shaded
     // here, and the renderer does not dim it for the evening either.
     if (alpha) {
-      // Fire: lit from within, and see-through by how far out along the
-      // flame each corner is (the twin's corners read the same as its own).
-      m.faces.push({ idx: [a, b, c], col: shade(col, 1 + k * 0.5), glow: true,
-                     alpha: from.map((n) => alpha[n]) });
+      // Fire: lit from within, and see-through by how far out along it each
+      // corner is (the twin's corners read the same as its own). Paper that
+      // has caught keeps its folds' shading, so it still reads as folded.
+      const f = lit ? (SHADE_FLOOR + SHADE_RANGE * lit_) * (1 + k) : 1 + k * 0.5;
+      m.faces.push({ idx: [a, b, c], col: shade(col, f), glow: true,
+                     alpha: from.map((n) => (typeof alpha === 'function' ? alpha(points[n]) : alpha[n])) });
     } else if (glow) m.faces.push({ idx: [a, b, c], col, glow: true });
-    else m.face([a, b, c], shade(col, (SHADE_FLOOR + SHADE_RANGE * lit) * (1 + k)));
+    else m.face([a, b, c], shade(col, (SHADE_FLOOR + SHADE_RANGE * lit_) * (1 + k)));
   };
   for (const [names, col, both, glow] of tris) {
     add(names, col, glow, names);
@@ -295,11 +297,21 @@ const LIFT = LOWEST - UNDERCARRIAGE_Y / TILE;
 const SHOULDER_A = [-0.10, -0.14 - LIFT, 0.04];
 const SHOULDER_B = [0.10, -0.14 - LIFT, 0.04];
 
-export const ORIGAMI_BODY = build(BODY_P, BODY_T, LIFT, 1);
+// The whole bird burns. The body and the wings are paper that has caught:
+// lit from within like the fire, see-through -- the body nearly solid, the
+// wings thinning towards their feather tips -- and flickering, more gently
+// than the tail and crest, so the bird shimmers rather than strobes. `flame`
+// is how hard it flickers (see modelpass.js).
+const BODY_ALPHA = () => 0.8;
+const WING_ALPHA = ([x, y, z]) => 0.86 - 0.52 * Math.min(1, Math.hypot(x, y, z) / 0.6);
+
+export const ORIGAMI_BODY = build(BODY_P, BODY_T, LIFT, 1, BODY_ALPHA, true);
+ORIGAMI_BODY.flame = 0.4;
 export const ORIGAMI_FIRE = build(FLAME_P, FLAME_T, LIFT, 4, FLAME_A);
-ORIGAMI_FIRE.flame = true;
-const WING_A = build(mirror(WING_P), WING_T, 0, 2);
-const WING_B = build(WING_P, WING_T, 0, 3);
+ORIGAMI_FIRE.flame = 1;
+const WING_A = build(mirror(WING_P), WING_T, 0, 2, WING_ALPHA, true);
+const WING_B = build(WING_P, WING_T, 0, 3, WING_ALPHA, true);
+WING_A.flame = WING_B.flame = 0.4;
 
 // The two wings, each with the shoulder it turns about and the sign that
 // makes a rotation about the craft's forward axis take it downwards.
@@ -351,7 +363,7 @@ export function drawOrigami(rd, p, camX, camY, camZ) {
         (p.x - camX) | 0, (p.y - camY) | 0, (p.z - camZ) | 0, fresh)) {
     fresh = false;
   } else {
-    drawModel(rd, ORIGAMI_BODY, p.matrix, p.x, p.y, p.z, camX, camY, camZ);
+    drawModel(rd, ORIGAMI_BODY, p.matrix, p.x, p.y, p.z, camX, camY, camZ, 0, 0, BIRD_CPU_FADE);
   }
 
   const angle = Math.sin(p.rotorSpin || 0) * beat * (1 - fold) + FOLD_RISE * fold;
@@ -372,7 +384,7 @@ export function drawOrigami(rd, p, camX, camY, camZ) {
           (wx - camX) | 0, (wy - camY) | 0, (wz - camZ) | 0, fresh)) {
       fresh = false;
     } else {
-      drawModel(rd, wing.model, wingMat, wx, wy, wz, camX, camY, camZ);
+      drawModel(rd, wing.model, wingMat, wx, wy, wz, camX, camY, camZ, 0, 0, BIRD_CPU_FADE);
     }
   }
 
@@ -385,3 +397,4 @@ export function drawOrigami(rd, p, camX, camY, camZ) {
 // Without the GPU there is no flicker and no per-corner see-through, so the
 // fire is drawn as one steady translucent glow.
 const FIRE_CPU_FADE = 0.72;
+const BIRD_CPU_FADE = 0.85;

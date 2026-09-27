@@ -70,7 +70,9 @@ void main() {
     // wisp at the tip -- flickering, each corner on a beat of its own.
     c = mix(aCol.rgb, uFog, iLook.z);
     float t = uTime * 11.0 + dot(aLocal, vec3(23.0, 31.0, 17.0));
-    a = aCol.a * (0.74 + 0.16 * sin(t) + 0.10 * sin(t * 2.3 + 1.7));
+    // uFlame is how hard it flickers: 1 for the tail and crest, less for
+    // the body and wings.
+    a = aCol.a * (1.0 - 0.26 * uFlame + uFlame * (0.16 * sin(t) + 0.10 * sin(t * 2.3 + 1.7)));
   } else if (aCol.a < 0.5) {
     // A face that makes its own light (alpha 0 in the shape): emissive(),
     // which is the row's haze and nothing else -- no tint, no silhouette,
@@ -355,7 +357,7 @@ export class ModelPass {
     r[0] = m[0]; r[1] = m[3]; r[2] = m[6];
     r[3] = m[1]; r[4] = m[4]; r[5] = m[7];
     r[6] = m[2]; r[7] = m[5]; r[8] = m[8];
-    this.uniforms(0, r, model.grain || 0, model.flame ? 1 : 0);
+    this.uniforms(0, r, model.grain || 0, model.flame ? +model.flame : 0);
     gl.vertexAttrib3f(this.iAt, vx / TILE, vy / TILE, vz / TILE);
     gl.vertexAttrib4f(this.iLook, 0, 0, 0, 1);
     rd.depthMode('test');
