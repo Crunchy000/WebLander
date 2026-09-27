@@ -6,10 +6,10 @@
 //
 // Remember that +y points DOWN, so the top of a model has a negative y.
 
-import { TILE, matApply } from './maths.js';
+import { TILE } from './maths.js';
 import { landAltitude, SEA_LEVEL } from './landscape.js';
 import { sky, litColour, emissive, skyColourAt, silhouetteDark } from './daylight.js';
-import { project, projScale, depthOf } from './renderer.js';
+import { project, projScale, depthOf, CENTRE_X, CENTRE_Y, FOCAL_X, FOCAL_Y, DEPTH } from './renderer.js';
 
 // --- model construction ----------------------------------------------------
 
@@ -389,10 +389,10 @@ const fadeCol = [0, 0, 0, 255];
 const FRONT_FACE = -1;
 
 let faceOrder = [];             // face indices, sorted far to near
+const byDepth = (a, b) => faceDepth[b] - faceDepth[a];
+const SMALL_SORT = 32;          // at or below this, sort by insertion
 let depthZ = new Float32Array(256);   // each vertex's depth, when it is wanted
 let faceDepth = new Float64Array(64);
-const matOut = [0, 0, 0];       // ... and one output for matApply, not one a vertex
-const byDepth = (a, b) => faceDepth[b] - faceDepth[a];
 
 // `fade` draws the model translucent, which is only ever used for one thing:
 // laying a second, glowing copy of something over the plain one so it can
@@ -422,18 +422,24 @@ export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ,
   const wantZ = rd.depthState !== undefined && rd.depthState !== 'off';
   if (wantZ && depthZ.length < n) depthZ = new Float32Array(n * 2);
   let anyVisible = false;
+  // matApply and project, written out: two calls a vertex are real cost with
+  // the JavaScript JIT off, as the Xbox's sandboxed browser runs it. Their
+  // arithmetic exactly, so the picture is the same.
+  const m = matrix;
   for (let i = 0; i < n; i++) {
     let px = verts[i * 3], py = verts[i * 3 + 1], pz = verts[i * 3 + 2];
-    if (matrix) {
-      const r = matApply(matrix, px, py, pz, matOut);
-      px = r[0]; py = r[1]; pz = r[2];
+    if (m) {
+      const qx = m[0] * px + m[1] * py + m[2] * pz;
+      const qy = m[3] * px + m[4] * py + m[5] * pz;
+      const qz = m[6] * px + m[7] * py + m[8] * pz;
+      px = qx; py = qy; pz = qz;
     }
     const vx = (wx + px - camX) | 0;
     const vy = (wy + py - camY) | 0;
     const vz = (wz + pz - camZ) | 0;
-    if (project(vx, vy, vz, pt)) {
-      scratch[i * 3] = pt.x;
-      scratch[i * 3 + 1] = pt.y;
+    if (vz >= DEPTH.NEAR) {
+      scratch[i * 3] = CENTRE_X + (vx * FOCAL_X) / vz;
+      scratch[i * 3 + 1] = CENTRE_Y + (vy * FOCAL_Y) / vz;
       scratch[i * 3 + 2] = vz;
       if (wantZ) depthZ[i] = depthOf(vz);
       anyVisible = true;
@@ -479,7 +485,24 @@ export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ,
     faceDepth[f] = depth / idx.length;
     faceOrder.push(f);
   }
-  faceOrder.sort(byDepth);
+  // Far to near. Small models -- almost everything -- by a stable insertion
+  // sort, because with the JIT off every call to a sort comparator is a
+  // function call; large ones (the bird has 424 faces) by Array.sort, whose
+  // cost does not grow with the square of the count. Both are stable and
+  // compare the same way, so the order -- and the picture -- is identical.
+  if (faceOrder.length <= SMALL_SORT) {
+    for (let a = 1; a < faceOrder.length; a++) {
+      const f = faceOrder[a], d = faceDepth[f];
+      let b = a - 1;
+      while (b >= 0 && faceDepth[faceOrder[b]] < d) {
+        faceOrder[b + 1] = faceOrder[b];
+        b--;
+      }
+      faceOrder[b + 1] = f;
+    }
+  } else {
+    faceOrder.sort(byDepth);
+  }
 
   if (sil > 0.01) {
     silhouetteDark(silDark);

@@ -6,7 +6,9 @@
 // (12x10 tiles) that stays anchored to the camera; the world slides through
 // it as you fly, which is why the horizon never moves.
 
-import { TILE, sinLookup } from './maths.js';
+import { TILE, SIN_TABLE } from './maths.js';
+
+const SIN_MASK = SIN_TABLE.length - 1;
 import { SCREEN_W, SCREEN_W_MAX, FOCAL_X, onScreenShape } from './renderer.js';
 import { sky, litColour, silhouetteDark } from './daylight.js';
 import { groundBase, tintFor, tintLevel, TINT_STEPS } from './biome.js';
@@ -117,12 +119,17 @@ export function landAltitude(x, z) {
   const f = (c + (z << 3)) | 0;              // 5x + 11z
   const g = (z + (c << 1)) | 0;              // 10x + 7z
 
-  let sum = sinLookup(a) >> 7;
-  sum = (sum + (sinLookup(b) >> 7)) | 0;
-  sum = (sum + (sinLookup(d) >> 7)) | 0;
-  sum = (sum + (sinLookup(e) >> 7)) | 0;
-  sum = (sum + (sinLookup(f) >> 8)) | 0;
-  sum = (sum + (sinLookup(g) >> 8)) | 0;
+  // sinLookup, written out: six calls a sample was half the cost of a
+  // sample with the JavaScript JIT off, and this is sampled thousands of
+  // times a frame. The same table and the same index, so the same heights
+  // -- checked over a million random points.
+  const T = SIN_TABLE;
+  let sum = T[(a >>> 22) & SIN_MASK] >> 7;
+  sum = (sum + (T[(b >>> 22) & SIN_MASK] >> 7)) | 0;
+  sum = (sum + (T[(d >>> 22) & SIN_MASK] >> 7)) | 0;
+  sum = (sum + (T[(e >>> 22) & SIN_MASK] >> 7)) | 0;
+  sum = (sum + (T[(f >>> 22) & SIN_MASK] >> 8)) | 0;
+  sum = (sum + (T[(g >>> 22) & SIN_MASK] >> 8)) | 0;
 
   let alt = (LAND_MID_HEIGHT - sum) | 0;
 
@@ -161,12 +168,17 @@ export function seabedAltitude(x, z) {
   const f = (c + (z << 3)) | 0;
   const g = (z + (c << 1)) | 0;
 
-  let sum = sinLookup(a) >> 7;
-  sum = (sum + (sinLookup(b) >> 7)) | 0;
-  sum = (sum + (sinLookup(d) >> 7)) | 0;
-  sum = (sum + (sinLookup(e) >> 7)) | 0;
-  sum = (sum + (sinLookup(f) >> 8)) | 0;
-  sum = (sum + (sinLookup(g) >> 8)) | 0;
+  // sinLookup, written out: six calls a sample was half the cost of a
+  // sample with the JavaScript JIT off, and this is sampled thousands of
+  // times a frame. The same table and the same index, so the same heights
+  // -- checked over a million random points.
+  const T = SIN_TABLE;
+  let sum = T[(a >>> 22) & SIN_MASK] >> 7;
+  sum = (sum + (T[(b >>> 22) & SIN_MASK] >> 7)) | 0;
+  sum = (sum + (T[(d >>> 22) & SIN_MASK] >> 7)) | 0;
+  sum = (sum + (T[(e >>> 22) & SIN_MASK] >> 7)) | 0;
+  sum = (sum + (T[(f >>> 22) & SIN_MASK] >> 8)) | 0;
+  sum = (sum + (T[(g >>> 22) & SIN_MASK] >> 8)) | 0;
   return (LAND_MID_HEIGHT - sum) | 0;
 }
 
