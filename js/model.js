@@ -664,6 +664,8 @@ const LEAN_MAX = 1.2;
 // A contact shadow. It leans away from whichever body is up and softens right
 // down overnight, when only the moon is casting.
 export function drawShadow(rd, wx, wz, radius, strength, camX, camY, camZ, row, fog = 0, height = 0) {
+  // Switched off from the debug panel, to see what they cost.
+  if (typeof window !== 'undefined' && window.__layers && window.__layers.shadows === false) return;
   const s = strength * sky.sunStrength;
   if (s <= 0.02) return;
   let lean = sky.sunOffX * (height / TILE) * LEAN;

@@ -605,10 +605,15 @@ export class Input {
     // Right trigger or A for full power, left trigger or X to hover. They win
     // over the height stick while they are held.
     this.padThrust = (btn(7) || btn(0)) ? 2 : (btn(6) || btn(2)) ? 1 : 0;
-    this.padFire = btn(5) || btn(1) || btn(4);
+    // B is not a trigger: it opens the debug panel (see debugpanel.js).
+    this.padFire = btn(5) || btn(4);
 
     let any = false;
-    for (const b of pad.buttons) if (b && (b.pressed || b.value > 0.5)) { any = true; break; }
+    // Any button but B, which belongs to the debug panel.
+    for (let i = 0; i < pad.buttons.length; i++) {
+      const b = pad.buttons[i];
+      if (i !== 1 && b && (b.pressed || b.value > 0.5)) { any = true; break; }
+    }
     this.padAnyButton = any;
 
     // Menu starts a game, on the press rather than while it is held.

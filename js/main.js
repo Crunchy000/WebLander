@@ -6,6 +6,7 @@ import { Audio } from './audio.js';
 import { startMusic, musicWanted } from './music.js';
 import { Game, STEP_MS } from './game.js';
 import { perf, perfInit, perfFrame, perfFrameStat, perfDescribe } from './perf.js';
+import { DebugPanel } from './debugpanel.js';
 
 const canvas = document.getElementById('screen');
 const overlay = document.getElementById('overlay');
@@ -23,6 +24,8 @@ try {
 const input = new Input(canvas);
 const audio = new Audio();
 const game = new Game(renderer, input, audio);
+// B on the pad: the frame's figures as a QR code, and switches. See debugpanel.js.
+const debug = new DebugPanel({ renderer, game, canvas });
 
 // Show the right control help for this device, and redo it if a pad turns up
 // later: on a console the pad exists before the page does, but the browser
@@ -190,12 +193,16 @@ function frame(now) {
   last = now;
   if (paused) return;
 
+  // The debug panel reads the pad itself, every frame, so that B opens it
+  // from anywhere and its controls work while the flight is paused.
+  debug.poll(now);
+
   // On a console the title screen has to be dismissable from the pad. Edge on
   // Xbox does give you a cursor you can drive to the button, but nobody picks
   // up a controller expecting to point at things, so any button starts the
   // game. Going through the button's own handler rather than beginPlay keeps
   // the audio unlock and the touch branches on one path.
-  if (!overlay.hidden) {
+  if (!overlay.hidden && !debug.open) {
     input.sample();
     if (input.padAnyButton) { startBtn.click(); return; }
   }
@@ -204,6 +211,10 @@ function frame(now) {
   // background for a minute, just carry on from here.
   if (dt > 250) dt = STEP_MS;
   acc += dt;
+
+  // With the debug panel open the flight holds still, but every frame is
+  // still drawn: the figures it shows are what drawing costs.
+  if (debug.open) acc = 0;
 
   const t0 = performance.now();
   let steps = 0;
@@ -230,7 +241,7 @@ function frame(now) {
 
 // Expose for debugging from the console -- and before the first perf line,
 // which reads the renderer's state off it.
-window.lander = { game, input, audio, renderer, perf };
+window.lander = { game, input, audio, renderer, perf, debug };
 
 perfInit();
 perfDescribe(canvas, renderer.gl);

@@ -397,6 +397,12 @@ export class Renderer {
   // same 586x256 coordinate space; only the number of real pixels it lands
   // in moves, so a step down costs sharpness and nothing else.
   adapt(stat) {
+    // Pinned by hand, from the debug panel: hold that size and decide
+    // nothing. The point of pinning is to see what one size costs.
+    if (this.fixed != null) {
+      this.want = this.fixed;
+      return;
+    }
     // A backgrounded tab reports frames seconds long; that is not a machine
     // struggling, it is a machine not being asked.
     if (!stat || !stat.ready || stat.median > 250) return;
@@ -430,6 +436,11 @@ export class Renderer {
   }
 
   // What the adaptor has settled on, for the readout.
+  // How many render scales there are, and what each is: for the debug panel.
+  get scales() {
+    return SCALES;
+  }
+
   get scale() {
     return SCALES[this.scaleAt || 0];
   }

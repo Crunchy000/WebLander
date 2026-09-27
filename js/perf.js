@@ -153,6 +153,23 @@ export function perfFrameStat() {
   return frameStat;
 }
 
+// Everything the console line says, and a little more, as lines of text:
+// for the debug panel, which turns it into a QR code so that a machine whose
+// console nobody can reach -- a console, a television -- can still hand its
+// figures over to a phone. See debugpanel.js.
+export function perfReport(canvas, gl) {
+  const lines = [
+    'twilight hover perf',
+    fps().toFixed(0) + ' fps  frame ' + pct(interval, 0.5).toFixed(1) + '/' +
+      pct(interval, 0.95).toFixed(1) + 'ms  best ' + pct(interval, 0.05).toFixed(1),
+    'draw ' + pct(drawMs, 0.5).toFixed(2) + '/' + pct(drawMs, 0.95).toFixed(2) +
+      'ms  step ' + pct(stepMs, 0.5).toFixed(2) + 'ms  ' + Math.round(pct(trisAt, 0.5)) + ' tris',
+    describe(canvas, gl),
+  ];
+  if (typeof navigator !== 'undefined' && navigator.userAgent) lines.push(navigator.userAgent);
+  return lines;
+}
+
 function fps() {
   const ms = pct(interval, 0.5);
   return ms > 0 ? 1000 / ms : 0;
