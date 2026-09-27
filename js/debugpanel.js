@@ -87,6 +87,13 @@ export class DebugPanel {
         act: () => { rd.probe = !rd.probe; },
       },
       {
+        // The GPU's own clock, where the browser lends one. Off until asked
+        // for: see Renderer.setTiming.
+        label: 'gpu timer',
+        value: () => (rd.timing ? 'measuring' : this.timerRefused ? 'n/a' : 'off '),
+        act: () => { this.timerRefused = !rd.setTiming(!rd.timing) && !rd.timing && !rd.timer; },
+      },
+      {
         label: 'resolution',
         value: () => (rd.fixed == null ? 'auto ' : 'fixed ') + Math.round(rd.scale * 100) + '%',
         // auto, then each scale from the largest down, then auto again.
@@ -144,7 +151,9 @@ export class DebugPanel {
       }
       this.was = now_;
     }
-    const mem = typeof performance !== 'undefined' && performance.memory;
+    // Only while the panel is open: nothing it adds runs during a normal
+    // flight.
+    const mem = this.open && typeof performance !== 'undefined' && performance.memory;
     if (mem) {
       const used = mem.usedJSHeapSize;
       if (used < this.heapWas - 256 * 1024) this.gcs.push(now);
@@ -197,7 +206,7 @@ export class DebugPanel {
 
     // The GPU.
     const timer = rd.gpuMs;
-    lines.push('gpu: timer ' + (timer === null ? 'not available' : f2(timer) + 'ms') +
+    lines.push('gpu: timer ' + (timer === null ? (this.timerRefused ? 'not available' : 'off') : f2(timer) + 'ms') +
       '  wait probe ' + (rd.probe ? f2(prof.median('gpu wait (probe)')) + 'ms' : 'off') +
       '  calls ' + Math.round(prof.median('draw calls')) +
       '  upload ' + Math.round(prof.median('upload KB')) + 'KB/frame' +
@@ -216,6 +225,11 @@ export class DebugPanel {
     lines.push(...base.slice(3));
     const changed = this.changes();
     lines.push('changed: ' + (changed.length ? changed.join(', ') : 'nothing'));
+    // Anything that has gone wrong: a diagnostic that switched itself off,
+    // a script error, the GPU context being lost. See main.js.
+    if (rd.diagError) lines.push('diagnostics stopped: ' + rd.diagError);
+    const trouble = (typeof window !== 'undefined' && window.__trouble) || [];
+    for (const t of trouble.slice(-3)) lines.push('error: ' + t);
     return lines;
   }
 

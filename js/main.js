@@ -14,6 +14,44 @@ const overlay = document.getElementById('overlay');
 const startBtn = document.getElementById('start');
 const touchPad = document.getElementById('touch');
 
+// Trouble, where it can be seen. A console browser on a television has no
+// developer tools anyone can open, so a script error there was invisible --
+// the game simply stopped, or went white. Errors are shown in a line at the
+// foot of the screen instead, and kept for the debug panel's report (B).
+window.__trouble = [];
+let troubleBox = null;
+function trouble(msg) {
+  window.__trouble.push(msg);
+  if (window.__trouble.length > 10) window.__trouble.shift();
+  if (!troubleBox) {
+    troubleBox = document.createElement('div');
+    troubleBox.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:70;' +
+      'font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;color:#ffd7c9;' +
+      'background:rgba(60,12,8,0.82);padding:4px 8px;border-radius:4px;pointer-events:none';
+    document.body.appendChild(troubleBox);
+  }
+  troubleBox.textContent = msg;
+}
+addEventListener('error', (e) => {
+  const where = (e.filename || '').split('/').pop();
+  trouble((e.message || 'error') + (where ? ' @ ' + where + ':' + e.lineno : ''));
+});
+addEventListener('unhandledrejection', (e) => {
+  const r = e.reason;
+  trouble('promise: ' + ((r && r.message) || r));
+});
+
+// The GPU can take the drawing surface away -- a driver reset, the system
+// reclaiming memory -- and a canvas whose context is lost shows nothing at
+// all. Say so, and start again once it comes back (or after a few seconds
+// if it does not): a restart is a better answer than a blank screen.
+canvas.addEventListener('webglcontextlost', (e) => {
+  e.preventDefault();
+  trouble('the graphics were reset by the browser -- restarting');
+  setTimeout(() => location.reload(), 4000);
+});
+canvas.addEventListener('webglcontextrestored', () => location.reload());
+
 let renderer;
 try {
   renderer = new Renderer(canvas);

@@ -295,11 +295,19 @@ export class Renderer {
     gl.bufferData(gl.ARRAY_BUFFER, this.buffer.byteLength, gl.DYNAMIC_DRAW);
 
     // The GPU's own clock, where the browser will lend it. Most withhold it
-    // (it is a timing side channel); where it is there, each frame is
+    // (it is a timing side channel); where it is there, each frame can be
     // wrapped in a query and the results collected as they come back, a few
     // frames late. See endFrame().
-    this.timer = this.gl2 ? gl.getExtension('EXT_disjoint_timer_query_webgl2') : null;
+    //
+    // Off unless asked for, from the debug panel, and the extension is not
+    // even requested until then. It used to be on for every frame wherever
+    // it existed -- which was nowhere this was tested, and on the Xbox the
+    // first flight after that went white. Diagnostics must not be able to
+    // break the thing they are diagnosing.
+    this.timer = null;
+    this.timing = false;
     this.queries = [];
+    this.diagError = null;
     this.gpuTimes = [];
     this.probe = false;
     this.probePx = new Uint8Array(4);
@@ -497,10 +505,33 @@ export class Renderer {
     this.count = 0;
     this.drawn = 0;
     this.blend('over');
-    if (this.timer && !this.query && this.queries.length < 4) {
-      this.query = gl.createQuery();
-      gl.beginQuery(this.timer.TIME_ELAPSED_EXT, this.query);
+    if (this.timing && this.timer && !this.query && this.queries.length < 4) {
+      try {
+        this.query = gl.createQuery();
+        gl.beginQuery(this.timer.TIME_ELAPSED_EXT, this.query);
+      } catch (err) {
+        this._diagFailed(err);
+      }
     }
+  }
+
+  // Turn the GPU timer on or off. False if the browser has none to lend.
+  setTiming(on) {
+    if (on && !this.timer && this.gl2) {
+      try { this.timer = this.gl.getExtension('EXT_disjoint_timer_query_webgl2'); } catch { this.timer = null; }
+    }
+    this.timing = !!(on && this.timer);
+    return this.timing;
+  }
+
+  // Something in the diagnostics went wrong: switch them off and say so,
+  // rather than let them take the frame down with them.
+  _diagFailed(err) {
+    this.timing = false;
+    this.probe = false;
+    this.query = null;
+    this.queries.length = 0;
+    this.diagError = String(err && err.message || err);
   }
 
   // After the frame has been drawn: close its GPU timer query and collect
@@ -514,6 +545,15 @@ export class Renderer {
   // so it costs frame rate while it is on: it is for finding out, not for
   // flying.
   endFrame() {
+    if (!this.query && !this.queries.length && !this.probe) return;
+    try {
+      this._endFrame();
+    } catch (err) {
+      this._diagFailed(err);
+    }
+  }
+
+  _endFrame() {
     const gl = this.gl;
     if (this.query) {
       gl.endQuery(this.timer.TIME_ELAPSED_EXT);
@@ -541,7 +581,7 @@ export class Renderer {
   // The GPU timer's median over the last couple of seconds, or null where
   // the browser has none to lend.
   get gpuMs() {
-    if (!this.timer) return null;
+    if (!this.timing) return null;
     if (!this.gpuTimes.length) return 0;
     const s = [...this.gpuTimes].sort((a, b) => a - b);
     return s[s.length >> 1];
