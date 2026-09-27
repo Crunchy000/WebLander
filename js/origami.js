@@ -1,13 +1,13 @@
 // origami.js -- the paper phoenix, and how it flies.
 //
 // Folded rather than modelled: every piece is a flat facet of paper, all of
-// it in the oranges of a fire -- ember at the roots, flame, amber, gold at
-// the tips. A hooked beak and a crest of three swept-back feathers; a neck
-// that rises to the head; wings raised in a V, each an arm folded once and
-// a hand cut into six long flight feathers with three shorter ones behind;
-// legs hanging with their talons; and a tail of five tongues of flame, each
-// drooping and then curling up at its tip -- and the tips burning, lit from
-// within, so they glow when the evening has dimmed everything else.
+// it in the oranges of a fire -- ember, rust, flame, amber, gold. A hooked
+// beak; a neck that rises to the head; wings raised in a V, each an arm
+// folded once and a hand cut into six long flight feathers with three
+// shorter ones behind; legs hanging with their talons. And the fire itself:
+// a crest of three swept-back flames and a tail of five tongues of flame,
+// each drooping and then curling up at its tip -- lit from within,
+// see-through towards their tips, and flickering.
 //
 // Paper, twice over. Every facet's tone is nudged a little lighter or darker
 // than its neighbours, the way a folded sheet catches the light unevenly,
@@ -32,9 +32,7 @@ const AMBER = [244, 142, 48];
 const GOLD = [250, 180, 80];
 const PALE = [252, 208, 126];
 const INK = [40, 18, 12];
-// The burning tips of the tail, which make their own light.
-const EMBERGLOW_A = [255, 196, 84];
-const EMBERGLOW_B = [255, 150, 46];
+
 
 // Paper has no inside, so a facet is lit by how it is inclined, not which
 // way it faces: both sides of a sheet take the same light.
@@ -49,7 +47,7 @@ const GRAIN = 0.11;
 // easier to fold on paper than a table of numbers. A name ending in R has a
 // twin ending in L, the same point mirrored across the bird's middle, so each
 // side is only written once.
-function build(points, tris, dy, seed) {
+function build(points, tris, dy, seed, alpha) {
   const m = new Model();
   const at = {};
   for (const [name, [x, y, z]] of Object.entries(points)) {
@@ -57,7 +55,7 @@ function build(points, tris, dy, seed) {
     if (name.endsWith('R')) at[name.slice(0, -1) + 'L'] = m.vert(-x, y - dy, z);
   }
   const v = m.verts;
-  const add = (names, col, glow) => {
+  const add = (names, col, glow, from) => {
     const [a, b, c] = names.map((n) => at[n]);
     const ax = v[a * 3], ay = v[a * 3 + 1], az = v[a * 3 + 2];
     const e1 = [v[b * 3] - ax, v[b * 3 + 1] - ay, v[b * 3 + 2] - az];
@@ -72,13 +70,18 @@ function build(points, tris, dy, seed) {
     const k = ((hash2(m.faces.length, seed) & 255) / 255 - 0.5) * 2 * MOTTLE;
     // A facet that makes its own light keeps its colour: it is not shaded
     // here, and the renderer does not dim it for the evening either.
-    if (glow) m.faces.push({ idx: [a, b, c], col, glow: true });
+    if (alpha) {
+      // Fire: lit from within, and see-through by how far out along the
+      // flame each corner is (the twin's corners read the same as its own).
+      m.faces.push({ idx: [a, b, c], col: shade(col, 1 + k * 0.5), glow: true,
+                     alpha: from.map((n) => alpha[n]) });
+    } else if (glow) m.faces.push({ idx: [a, b, c], col, glow: true });
     else m.face([a, b, c], shade(col, (SHADE_FLOOR + SHADE_RANGE * lit) * (1 + k)));
   };
   for (const [names, col, both, glow] of tris) {
-    add(names, col, glow);
+    add(names, col, glow, names);
     // ... and its twin on the other side, if it has one.
-    if (both) add(names.map((n) => (n.endsWith('R') ? n.slice(0, -1) + 'L' : n)), col, glow);
+    if (both) add(names.map((n) => (n.endsWith('R') ? n.slice(0, -1) + 'L' : n)), col, glow, names);
   }
   m.grain = GRAIN;
   return m;
@@ -134,39 +137,53 @@ const BODY_T = [
   [['ankleR', 'talonBR', 'talonCR'], EMBER, true],
 ];
 
+// --- the fire --------------------------------------------------------------
+//
+// The tail and the crest are not paper but flame: a piece of their own, drawn
+// after the rest of the bird, every facet lit from within so the evening does
+// not dim it, and see-through -- nearly solid at the root, a wisp at the tip.
+// On the GPU it also flickers (see modelpass.js); the CPU path draws it as a
+// steady translucent glow.
+const FIRE_ROOT = [238, 92, 22];
+const FIRE_MID = [250, 136, 36];
+const FIRE_HOT = [255, 176, 64];
+const FIRE_TIP = [255, 214, 120];
+const FLAME_P = {};
+const FLAME_T = [];
+const FLAME_A = {};           // how solid each point is, 0 to 1
+
 // The tail: five tongues of flame from the vent, fanned, each drooping and
 // then curling up at its tip, and each folded down its length so the two
-// halves take the light differently. Written out point by point, as the rest
-// is, by a function rather than by hand.
+// halves take the light differently.
 function tongue(name, spread, reach, side) {
   const R = side ? 'R' : '';
   const line = [
-    [spread * 0.06, -0.06, -0.32, 0.06],
-    [spread * 0.28, 0.08, -0.32 - 0.30 * reach, 0.09],
-    [spread * 0.50, 0.16, -0.32 - 0.62 * reach, 0.07],
-    [spread * 0.66, 0.02, -0.32 - 0.90 * reach, 0],
+    [spread * 0.06, -0.06, -0.32, 0.06, 0.92],
+    [spread * 0.28, 0.08, -0.32 - 0.30 * reach, 0.09, 0.78],
+    [spread * 0.50, 0.16, -0.32 - 0.62 * reach, 0.07, 0.55],
+    [spread * 0.66, 0.02, -0.32 - 0.90 * reach, 0, 0.16],
   ];
-  const cols = [RUST, FLAME, AMBER];
-  line.forEach(([x, y, z, w], j) => {
-    BODY_P[`${name}c${j}${R}`] = [x, y - 0.03, z];                 // the fold, raised
+  const cols = [FIRE_ROOT, FIRE_MID, FIRE_HOT];
+  line.forEach(([x, y, z, w, a], j) => {
+    const put = (k, p) => { FLAME_P[`${name}${k}${j}${R}`] = p; FLAME_A[`${name}${k}${j}${R}`] = a; };
+    put('c', [x, y - 0.03, z]);                                     // the fold, raised
     if (w) {
-      BODY_P[`${name}a${j}${R}`] = [x - w, y + 0.01, z];
-      BODY_P[`${name}b${j}${R}`] = [x + w, y + 0.01, z];
+      put('a', [x - w, y + 0.01, z]);
+      put('b', [x + w, y + 0.01, z]);
     }
   });
   const both = !!side;
-  for (let j = 0; j < 2; j++) {
-    const n = (k, e) => `${name}${k}${e}${R}`;
-    BODY_T.push([[n('a', j), n('a', j + 1), n('c', j)], cols[j], both]);
-    BODY_T.push([[n('c', j), n('a', j + 1), n('c', j + 1)], cols[j + 1], both]);
-    BODY_T.push([[n('c', j), n('c', j + 1), n('b', j + 1)], cols[j], both]);
-    BODY_T.push([[n('c', j), n('b', j + 1), n('b', j)], cols[j + 1], both]);
-  }
   const n = (k, e) => `${name}${k}${e}${R}`;
-  // The tip burns: lit from within, so it glows after dark.
-  BODY_T.push([[n('a', 2), n('c', 3), n('c', 2)], EMBERGLOW_A, both, true]);
-  BODY_T.push([[n('c', 2), n('c', 3), n('b', 2)], EMBERGLOW_B, both, true]);
+  for (let j = 0; j < 2; j++) {
+    FLAME_T.push([[n('a', j), n('a', j + 1), n('c', j)], cols[j], both]);
+    FLAME_T.push([[n('c', j), n('a', j + 1), n('c', j + 1)], cols[j + 1], both]);
+    FLAME_T.push([[n('c', j), n('c', j + 1), n('b', j + 1)], cols[j], both]);
+    FLAME_T.push([[n('c', j), n('b', j + 1), n('b', j)], cols[j + 1], both]);
+  }
+  FLAME_T.push([[n('a', 2), n('c', 3), n('c', 2)], FIRE_TIP, both]);
+  FLAME_T.push([[n('c', 2), n('c', 3), n('b', 2)], FIRE_HOT, both]);
 }
+
 // The eyes, laid flat on the face just behind the beak -- in the plane of
 // that facet and a hair proud of it, so they are there from the side and
 // the front and gone from behind, as a bird's are. (Standing out from the
@@ -185,25 +202,26 @@ function tongue(name, spread, reach, side) {
   BODY_T.push([['eyeAR', 'eyeBR', 'eyeCR'], INK, true]);
 }
 
-// The crest: three feathers swept back along the top of the head, each
+// The crest: three flames swept back along the top of the head, each
 // folded down its middle into a shallow V, so it has width from every side
 // rather than being a blade that is a line from behind.
 function plume(name, front, back, tip, col) {
   const mid = front.map((v, i) => (v + back[i]) / 2);
   const flare = mid.map((v, i) => v + (tip[i] - v) * 0.4);
-  BODY_P[name + 'f'] = front;
-  BODY_P[name + 'b'] = back;
-  BODY_P[name + 't'] = tip;
-  BODY_P[name + 'R'] = [flare[0] + 0.04, flare[1] + 0.015, flare[2]];
-  BODY_T.push([[name + 'f', name + 't', name + 'R'], col, true]);
-  BODY_T.push([[name + 'R', name + 't', name + 'b'], col === RUST ? EMBER : RUST, true]);
+  const put = (k, p, a) => { FLAME_P[name + k] = p; FLAME_A[name + k] = a; };
+  put('f', front, 0.95);
+  put('b', back, 0.95);
+  put('t', tip, 0.2);
+  put('R', [flare[0] + 0.04, flare[1] + 0.015, flare[2]], 0.7);
+  FLAME_T.push([[name + 'f', name + 't', name + 'R'], col, true]);
+  FLAME_T.push([[name + 'R', name + 't', name + 'b'], col === FIRE_MID ? FIRE_ROOT : FIRE_MID, true]);
 }
 {
   const lerp = (p, q, t) => p.map((v, i) => v + (q[i] - v) * t);
   const top = lerp(BODY_P.crown, BODY_P.nape, 0.5);
-  plume('plumeA', BODY_P.crown, top, [0, -0.76, 0.16], FLAME);
-  plume('plumeB', top, BODY_P.nape, [0, -0.68, 0.01], RUST);
-  plume('plumeC', BODY_P.nape, lerp(BODY_P.nape, BODY_P.back, 0.35), [0, -0.57, -0.12], FLAME);
+  plume('plumeA', BODY_P.crown, top, [0, -0.76, 0.16], FIRE_HOT);
+  plume('plumeB', top, BODY_P.nape, [0, -0.68, 0.01], FIRE_MID);
+  plume('plumeC', BODY_P.nape, lerp(BODY_P.nape, BODY_P.back, 0.35), [0, -0.57, -0.12], FIRE_HOT);
 }
 
 tongue('t0', 0, 1.25, false);
@@ -278,6 +296,8 @@ const SHOULDER_A = [-0.10, -0.14 - LIFT, 0.04];
 const SHOULDER_B = [0.10, -0.14 - LIFT, 0.04];
 
 export const ORIGAMI_BODY = build(BODY_P, BODY_T, LIFT, 1);
+export const ORIGAMI_FIRE = build(FLAME_P, FLAME_T, LIFT, 4, FLAME_A);
+ORIGAMI_FIRE.flame = true;
 const WING_A = build(mirror(WING_P), WING_T, 0, 2);
 const WING_B = build(WING_P, WING_T, 0, 3);
 
@@ -355,4 +375,13 @@ export function drawOrigami(rd, p, camX, camY, camZ) {
       drawModel(rd, wing.model, wingMat, wx, wy, wz, camX, camY, camZ);
     }
   }
+
+  // The fire last, over the paper, blended.
+  if (!(gpu && gpu.drawTurned(ORIGAMI_FIRE, p.matrix,
+        (p.x - camX) | 0, (p.y - camY) | 0, (p.z - camZ) | 0, fresh))) {
+    drawModel(rd, ORIGAMI_FIRE, p.matrix, p.x, p.y, p.z, camX, camY, camZ, 0, 0, FIRE_CPU_FADE);
+  }
 }
+// Without the GPU there is no flicker and no per-corner see-through, so the
+// fire is drawn as one steady translucent glow.
+const FIRE_CPU_FADE = 0.72;

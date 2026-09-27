@@ -44,6 +44,8 @@ uniform vec3 uSil;
 uniform float uBlackAt;
 uniform float uPull;
 uniform mat3 uRot;
+uniform float uFlame;
+uniform float uTime;
 out vec4 vCol;
 out vec3 vLocal;
 void main() {
@@ -61,7 +63,15 @@ void main() {
   float zd = max(z - uPull, 0.016);
   gl_Position = vec4(xc, yc, (uDepth.x + uDepth.y / zd) * z, z);
   vec3 c;
-  if (aCol.a < 0.5) {
+  float a = iLook.w;
+  if (uFlame > 0.0) {
+    // Fire (the phoenix's tail and crest): lit from within like a lamp, and
+    // as solid as the shape says at each corner -- nearly at the root, a
+    // wisp at the tip -- flickering, each corner on a beat of its own.
+    c = mix(aCol.rgb, uFog, iLook.z);
+    float t = uTime * 11.0 + dot(aLocal, vec3(23.0, 31.0, 17.0));
+    a = aCol.a * (0.74 + 0.16 * sin(t) + 0.10 * sin(t * 2.3 + 1.7));
+  } else if (aCol.a < 0.5) {
     // A face that makes its own light (alpha 0 in the shape): emissive(),
     // which is the row's haze and nothing else -- no tint, no silhouette,
     // because a lamp that dims as it comes towards you is not a lamp.
@@ -76,7 +86,7 @@ void main() {
   }
   // How much of it shows: 1, except for a glowing copy laid over its plain
   // original (see drawModel's fade).
-  vCol = vec4(clamp(c, 0.0, 1.0), iLook.w);
+  vCol = vec4(clamp(c, 0.0, 1.0), a);
 }`;
 
 // The fragment side is a flat colour -- except for paper. A model that asks
@@ -90,6 +100,7 @@ precision highp float;
 in vec4 vCol;
 in vec3 vLocal;
 uniform float uGrain;
+uniform float uFlame;
 out vec4 oCol;
 float hash(vec3 p) {
   p = fract(p * 0.3183099 + 0.1);
@@ -110,6 +121,10 @@ void main() {
     float g = noise(vLocal * 48.0) * 0.55 + noise(vLocal * vec3(110.0, 110.0, 14.0)) * 0.45;
     c.rgb *= 1.0 + uGrain * (g - 0.5) * 2.0;
   }
+  // Fire goes on premultiplied and a little brighter than it covers, which
+  // is the glow: the colour behind is kept by less than the flame's own
+  // share, so the two add up to more than either. See drawTurned.
+  if (uFlame > 0.0) c = vec4(c.rgb * c.a * 1.25, c.a * 0.8);
   oCol = c;
 }`;
 
@@ -159,7 +174,7 @@ export class ModelPass {
     }
     this.prog = prog;
     this.u = {};
-    for (const name of ['uProj', 'uScreen', 'uDepth', 'uTint', 'uFog', 'uSil', 'uBlackAt', 'uPull', 'uRot', 'uGrain']) {
+    for (const name of ['uProj', 'uScreen', 'uDepth', 'uTint', 'uFog', 'uSil', 'uBlackAt', 'uPull', 'uRot', 'uGrain', 'uFlame', 'uTime']) {
       this.u[name] = gl.getUniformLocation(prog, name);
     }
     const aLocal = gl.getAttribLocation(prog, 'aLocal');
@@ -232,8 +247,8 @@ export class ModelPass {
     if (need > this.shapeBytes.byteLength) return null;   // full: the CPU path draws it
     const first = this.shapeVerts;
     let w = this.shapeVerts;
-    let glow = false;
-    const put = (i, col) => {
+    let glow = false, alpha = null;
+    const put = (i, col, k) => {
       const fi = w * 4;
       this.shapeF32[fi] = v[i * 3] / TILE;
       this.shapeF32[fi + 1] = v[i * 3 + 1] / TILE;
@@ -242,15 +257,18 @@ export class ModelPass {
       this.shapeU8[bi] = col[0];
       this.shapeU8[bi + 1] = col[1];
       this.shapeU8[bi + 2] = col[2];
-      this.shapeU8[bi + 3] = glow ? 0 : 255;
+      // Alpha carries one of two things: for a flame, how solid the corner
+      // is; otherwise whether the face makes its own light (0) or not.
+      this.shapeU8[bi + 3] = alpha ? Math.round(alpha[k] * 255) : glow ? 0 : 255;
       w++;
     };
     for (const f of model.faces) {
       glow = f.glow === true;
+      alpha = model.flame ? f.alpha : null;
       for (let k = 1; k + 1 < f.idx.length; k++) {
-        put(f.idx[0], f.col);
-        put(f.idx[k], f.col);
-        put(f.idx[k + 1], f.col);
+        put(f.idx[0], f.col, 0);
+        put(f.idx[k], f.col, k);
+        put(f.idx[k + 1], f.col, k + 1);
       }
     }
     this.shapeVerts = w;
@@ -294,7 +312,7 @@ export class ModelPass {
     this.shapeDirty = false;
   }
 
-  uniforms(pull, rot, grain = 0) {
+  uniforms(pull, rot, grain = 0, flame = 0) {
     const gl = this.gl;
     gl.uniform4f(this.u.uProj, CENTRE_X, CENTRE_Y, FOCAL_X, FOCAL_Y);
     gl.uniform2f(this.u.uScreen, SCREEN_W, SCREEN_H);
@@ -307,6 +325,8 @@ export class ModelPass {
     gl.uniform1f(this.u.uPull, pull);
     gl.uniformMatrix3fv(this.u.uRot, false, rot);
     gl.uniform1f(this.u.uGrain, grain);
+    gl.uniform1f(this.u.uFlame, flame);
+    gl.uniform1f(this.u.uTime, (sky.tick % 100000) / 50);
   }
 
   // One model, turned by `m` (row-major, as matFromAim and matMul make them)
@@ -335,7 +355,7 @@ export class ModelPass {
     r[0] = m[0]; r[1] = m[3]; r[2] = m[6];
     r[3] = m[1]; r[4] = m[4]; r[5] = m[7];
     r[6] = m[2]; r[7] = m[5]; r[8] = m[8];
-    this.uniforms(0, r, model.grain || 0);
+    this.uniforms(0, r, model.grain || 0, model.flame ? 1 : 0);
     gl.vertexAttrib3f(this.iAt, vx / TILE, vy / TILE, vz / TILE);
     gl.vertexAttrib4f(this.iLook, 0, 0, 0, 1);
     rd.depthMode('test');
@@ -343,8 +363,22 @@ export class ModelPass {
       gl.clearDepth(1);
       gl.clear(gl.DEPTH_BUFFER_BIT);
     }
-    gl.disable(gl.BLEND);
+    if (model.flame) {
+      // Over what is already there, premultiplied, tested against the bird's
+      // own depth but not written: it is see-through, and nothing behind it
+      // should be hidden by it.
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      gl.depthMask(false);
+    } else {
+      gl.disable(gl.BLEND);
+    }
     gl.drawArrays(gl.TRIANGLES, shape.first, shape.count);
+    if (model.flame) {
+      gl.depthMask(true);
+      if (rd.blendMode === 'add') gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+      else gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    }
     prof.count('draw calls', 1);
     rd.drawn = (rd.drawn || 0) + shape.count;
     gl.bindVertexArray(null);
