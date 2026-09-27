@@ -214,8 +214,11 @@ export const MODELS = solidify([
 
 // Score for shooting each type. Knocking over a structure pays the same as
 // blowing it up did -- the bigger the stack, the better.
+// A model that is already solid was sealed piece by piece (the block
+// structures, see assemble in blocks.js) and must not be sealed again as a
+// whole.
 function solidify(list) {
-  for (const m of list) m.seal();
+  for (const m of list) if (!m.solid) m.seal();
   return list;
 }
 

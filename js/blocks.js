@@ -581,10 +581,20 @@ export const PLANT_INDICES = Object.values(PLANT);
 
 // Build each recipe once: the block list for toppling, and the whole thing
 // merged into a single model for while it is standing.
+//
+// Each block is sealed -- its faces turned outward -- about its own middle
+// before it goes in, and the whole keeps that winding. Sealing the merged
+// model instead turns every face away from the middle of the whole stack,
+// which is wrong for any face below it that points up: the top of a wide
+// block with a narrower one standing on it came out facing down, and the GPU
+// pass, which drops faces that point away, never drew it. Every block shape
+// is convex about its own middle, so turned about that it is right, and a
+// turn (the yaw) or a move does not change which way round a face is.
 function assemble(blocks) {
   const whole = new Model();
   const yawMat = new Float64Array(9);
   for (const b of blocks) {
+    if (!b.model.solid) b.model.seal();
     matRotY(b.yaw, yawMat);
     const base = whole.verts.length / 3;
     const src = b.model.verts;
@@ -604,6 +614,7 @@ function assemble(blocks) {
     const reach = (Math.hypot(b.x, b.z) + Math.max(b.e[0], b.e[2])) * TILE;
     if (reach > whole.radius) whole.radius = reach | 0;
   }
+  whole.solid = true;
   return whole;
 }
 
