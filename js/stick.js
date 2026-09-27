@@ -170,13 +170,17 @@ export class TouchStick {
 // all climb.
 //
 // So the travel is laid out around the one landmark it has. Half way up
-// holds your height, the bottom half is every rate of descent from hovering
-// to letting go, and the top half is every rate of climb. Travel to power:
+// holds your height, the top half is every rate of climb, and the bottom half
+// is every rate of descent -- through letting go, about a quarter of the way
+// up, and on past it into reverse: the rotors pushing the craft down at
+// DOWN_PUSH of full power, which roughly doubles how fast it can come down
+// (about four tiles a second against a free fall's two). Travel to power:
+const DOWN_PUSH = 0.2;
 export function throttleCurve(u) {
-  if (u <= 0) return 0;
+  if (u <= 0) return -DOWN_PUSH;
   if (u >= 1) return 1;
   return u < 0.5
-    ? u * 2 * HOLD_THROTTLE
+    ? HOLD_THROTTLE - (0.5 - u) * 2 * (HOLD_THROTTLE + DOWN_PUSH)
     : HOLD_THROTTLE + (u - 0.5) * 2 * (1 - HOLD_THROTTLE);
 }
 

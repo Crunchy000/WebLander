@@ -92,14 +92,13 @@ each, and the bar glows as it lands). Below a fifth the meter turns red, the lab
 and the machine starts beeping, faster and higher the less there is left; it
 stops the moment you are on the ground taking charge.
 
-Running it flat is not the end of you. **Hold hover on an empty pack and the
-rotors autorotate**, capping the descent at 0.94 tiles/s against a free fall's
-2.0 — and the ground forgives anything under 1.56. Dropped onto the pad from
-2 tiles/s: no buttons, crashed; hover held, landed. Full thrust gets you
-nothing, because asking for everything is not how you ask for a glide. The
-HUD swaps `BATTERY FLAT` for `AUTOROTATE` while it is working. It saves the
-landing, not the route: a long glide over a forest can still put you into a
-tree, and you steer it with the stick like anything else. But a grounded craft is a stationary target, and tanks
+Running it flat is the end of flying: there is no glide, and the bird falls.
+Keep an eye on the bar. The height stick holds your height when it is left
+centred, all the way down to the surface -- over land or the sea it never
+sets you down by itself -- and landing is the stick pushed down, which at
+the bottom of its travel pushes the bird down at about twice a free fall's
+two tiles a second. The ground forgives anything under 1.56, so ease off
+before you arrive. But a grounded craft is a stationary target, and tanks
 will open fire on one the moment their turret comes to bear. Charging in the
 open is a decision, not a rest.
 

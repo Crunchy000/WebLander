@@ -1088,9 +1088,7 @@ export class Game {
       // the same information -- you are coming down, there is nothing left,
       // there is no more air -- said the way you would say it to someone
       // sitting next to you.
-      if (p.autorotating) {
-        drawText(rd, 'gliding down', SCREEN_W - 4 - textWidth('gliding down'), 36, WARM);
-      } else if (p.flat) {
+      if (p.flat) {
         drawText(rd, 'out of energy', SCREEN_W - 4 - textWidth('out of energy'), 36, CLAY);
       } else if (p.ceiling > 0.12) {
         drawText(rd, 'thin air up here', SCREEN_W - 4 - textWidth('thin air up here'), 36, WARM);

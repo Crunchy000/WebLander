@@ -143,13 +143,12 @@ const HOVER_SETTLE = 0.80;
 // hillside: ground rising under you eats the clearance, and hover goes back
 // to being a throttle until it has the room again.
 const HOVER_CLEAR = TILE * 0.6;
-// The descent hover allows on a flat battery. Comfortably inside
-// LANDING_SPEED, which is the fastest arrival the ground will forgive, so a
-// craft that comes down under it and level will walk away.
-const AUTO_DESCENT = (LANDING_SPEED * 0.6) | 0;
-// The descent a centred height stick settles into near the ground: gentle
-// enough that a craft let go of there arrives with room to spare.
-const HOLD_SETTLE = (LANDING_SPEED * 0.4) | 0;
+// A centred height stick holds the height all the way down -- it never sets
+// the craft down by itself, over land or over the sea -- but it will not
+// hold it into rising ground either: within this much of the surface it
+// lifts the craft clear at HOLD_RISE, about half a tile a second.
+const HOLD_FLOOR = TILE * 0.3;
+const HOLD_RISE = (LANDING_SPEED * 0.32) | 0;
 // How quickly a craft told to stay where it is comes to rest across the
 // ground, per step: a tenth of its speed left after three quarters of a
 // second. See `stay` in update().
@@ -331,7 +330,6 @@ export class Player {
     // pilot asked for and stays there when the trigger is let go, so the
     // craft handles the same whether you are holding power or coasting.
     // Full range until told otherwise.
-    this.autorotating = false;
     this.hits = 0;
     this.hitFlash = 0;
     this.grace = LAUNCH_GRACE;
@@ -423,21 +421,14 @@ export class Player {
 
     // A hold only holds something in the air. Sat on the ground it asks for
     // nothing, so a centred stick neither lifts the craft off the pad nor
-    // runs its battery there. Above the hover's clearance it is the hover.
+    // runs its battery there. In the air it holds the height it is at, as
+    // low as that is: landing is the stick pushed down, never a hold.
     //
-    // In between, close to the ground, it settles: whatever power brings the
-    // descent to a steady HOLD_SETTLE, so letting go of the stick near the
-    // ground sets the craft down. It was the power that exactly carries the
-    // craft's weight, which sounds the same and is not: drag bleeds the
-    // descent away, and the craft hung a hand's width off the ground
-    // indefinitely -- measured, eight seconds without arriving.
-    if (!hold || thrust || this.landed) {
-      hold = false;
-    } else if (!(this.altitude > HOVER_CLEAR)) {
-      hold = false;
-      thrust = 2;
-      throttle = clamp((gravity + (this.vy - HOLD_SETTLE) * 0.2) / THRUST_FULL, 0, 1);
-    }
+    // It used to settle instead, close to the ground: under the hover's
+    // clearance a centred stick brought the craft down at a gentle rate, so
+    // letting go near the ground set it down. Over the sea that set it down
+    // in the water.
+    if (!hold || thrust || this.landed) hold = false;
 
     // Reverse thrust cannot push a machine through the ground it is already
     // standing on, and letting it try is not harmless: one frame of full
@@ -543,18 +534,26 @@ export class Player {
     // holding: a machine on its skids needs lifting off them first, and a
     // hold cannot lift what is already resting. Below the clearance hover is
     // a throttle; above it, a brake.
-    const holding = thrust === 1 && !this.landed && this.altitude > HOVER_CLEAR;
+    // A height stick held centred is a hold at any height (see above).
+    const holding = thrust === 1 && !this.landed && (hold || this.altitude > HOVER_CLEAR);
 
     if (thrust) {
       const power = (thrust === 2 ? THRUST_FULL * t : THRUST_HOVER) * lift;
       // "Up" in ship space is -y, since y points down.
       const up = matApply(this.matrix, 0, -1, 0);
-      this.vx = (this.vx + up[0] * power) | 0;
-      this.vz = (this.vz + up[2] * power) | 0;
-      // A hovering craft spends the sky-facing share of its thrust standing
-      // still rather than climbing; that is dealt with below, where gravity
-      // is. Everything else pushes with all of it.
-      if (!holding) this.vy = (this.vy + up[1] * power) | 0;
+      if (power < 0) {
+        // Pushing down (the height stick below letting go): straight down,
+        // whatever the lean, so coming down faster does not also brake or
+        // shove the craft across the ground.
+        this.vy = (this.vy - power) | 0;
+      } else {
+        this.vx = (this.vx + up[0] * power) | 0;
+        this.vz = (this.vz + up[2] * power) | 0;
+        // A hovering craft spends the sky-facing share of its thrust
+        // standing still rather than climbing; that is dealt with below,
+        // where gravity is. Everything else pushes with all of it.
+        if (!holding) this.vy = (this.vy + up[1] * power) | 0;
+      }
 
       // Rotors turning still cost something, but pushing at a ceiling for no
       // lift should not drain the pack at the full rate.
@@ -590,6 +589,8 @@ export class Player {
     // ... and whatever vertical speed it still had is bled away, so it comes
     // to rest at the height it was given rather than drifting off it.
     if (holding) this.vy = (this.vy * HOVER_SETTLE) | 0;
+    // ... but not into the ground coming up under it.
+    if (holding && hold && this.altitude < HOLD_FLOOR && this.vy > -HOLD_RISE) this.vy = -HOLD_RISE;
     // ... and the same across the ground, when it has been told to stay.
     if (staying) {
       this.vx = (this.vx * STAY_SETTLE) | 0;
@@ -599,17 +600,6 @@ export class Player {
     const slideWant = !this.landed && thrust > 0 ? clamp(slide, -1, 1) * SLIDE_SPEED : 0;
     this.slideV += (slideWant - this.slideV) * SLIDE_EASE;
     if (Math.abs(this.slideV) < 1) this.slideV = 0;
-
-    // Autorotation. A flat pack is not a dead machine: the rotors are still
-    // turning, and holding hover feathers them into the airflow so they brake
-    // the fall rather than drive it. It buys no lift and no authority the
-    // craft did not already have -- the descent is capped, nothing more --
-    // but a capped descent is a survivable one, which is the difference
-    // between running the battery down being a mistake and being fatal. It
-    // is hover specifically: full thrust on an empty pack is still nothing,
-    // because asking for everything is not how you ask for a glide.
-    this.autorotating = this.flat && asked === 1 && !this.landed;
-    if (this.autorotating && this.vy > AUTO_DESCENT) this.vy = AUTO_DESCENT;
 
     // A damaged airframe trails smoke, and trails more of it the worse it is.
     // The HUD counts the hits, but the thing you are actually looking at is

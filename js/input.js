@@ -685,7 +685,8 @@ export class Input {
     // Centred -- or let go of, which is the same thing -- holds the height.
     // Either side of that the travel runs through throttleCurve from its
     // middle, which is the power that carries the craft's weight: up to all
-    // of it at the top, down to none at the bottom. So the stick is
+    // of it at the top, and down through none to a push downwards at the
+    // bottom. So the stick is
     // continuous through the middle, and a little either side of it is a
     // gentle climb or a gentle sink. A pad button held wins.
     const lift = this.padOwns ? this.padLift
@@ -695,8 +696,10 @@ export class Input {
       if (lift === 0) {
         hold = true;
       } else {
-        const power = throttleCurve(0.5 + lift / 2);
-        if (power > 0) { thrust = 2; throttle = power; }
+        // Below the middle it runs on into reverse, the rotors pushing
+        // the craft down (see throttleCurve).
+        thrust = 2;
+        throttle = throttleCurve(0.5 + lift / 2);
       }
     }
     // Under tilt on a handset, fingers: one is everything, two hover.
