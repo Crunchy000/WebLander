@@ -25,10 +25,9 @@
 // exactly the rate their distances say. Climb, and it sinks and opens out.
 // None of that needed writing: it falls out of asking the real ground.
 //
-// The cost is a height sample per column per band. Measured: 0.032ms for six
-// hundred and forty-four samples, against the 0.027ms the landscape already
-// spends on its own five hundred and ten. It is not the expensive part of
-// anything.
+// It is decoration, and priced as decoration: the height of each point of
+// the far country is worked out once, the first time it comes into view, and
+// kept (see heightAt).
 //
 // Colour comes from the sky the band stands against rather than from a
 // palette of its own, so the whole stack moves through sunrise, noon, dusk
@@ -69,38 +68,80 @@ const FLOOR = SEA_LEVEL / TILE;
 // landscape.
 const PLAIN = LAND_MID_HEIGHT / TILE;
 
-// The horizon in bands, near edge to far edge in tiles.
+// The far country, as rows of ground fixed in the world.
 //
-// One band would draw the true skyline and it would be a single line with
-// nothing behind it. Real distance reads as ranges standing behind ranges, so
-// the same question is asked of three slices of the world at once. Each is
-// the highest ground in its own slice, so a nearer band genuinely stands in
-// front of a farther one -- the overlap is real, not layered by hand -- and
-// each is hazed by how far away it is.
+// It used to be three bands, each the highest ground in a slice of the world
+// a set distance in front of the camera, asked along bearings fixed to the
+// screen. Both of those move with the camera, and that was the trouble: fly
+// towards a range and the slices slid over it, so a hill passed from one band
+// to the next -- changing colour and silhouette -- and the bearings slid
+// across the ground, so the outline shifted as well as grew. It arrived in
+// the right place, but getting there did not look like approaching anything.
 //
-// The far band stops well short of the world's period of two hundred and
+// Now the far country is rows of points on a grid fixed to the ground. Each
+// row is drawn as a curtain from its line of ground down to sea level, far
+// rows first, so nearer ones stand in front; the skyline is simply the
+// highest of them, as before. Flying towards them changes nothing but the
+// perspective. The grid is coarser with distance -- a point every two tiles
+// out to sixty, every four to a hundred, every eight beyond -- and nothing
+// pops where it changes: a row appearing fades in, and a point added between
+// two coarser ones rises from the line joining them to its true height as it
+// comes nearer. Colour runs with distance too, from nearly the sky at the
+// back to the darkest silhouette at the front.
+//
+// The rows stop well short of the world's period of two hundred and
 // fifty-six tiles, because past half of that you are looking at the ground
 // behind you coming round the other way.
-// The step along each bearing is finer for the near band and coarser for the
-// far one, because a step is a chance to walk over the top of a peak and a
-// peak missed near to hand costs more rows than one missed far off.
-//
-// Measured against a quarter-tile reference sweep over forty places and the
-// width of the screen, worst case and mean, in rows of error:
-//
-//   34-60 tiles   step 2.5 -> 4.8 / 1.01      step 1   -> 0.2 / 0.01
-//   60-100        step 5   -> 3.2 / 0.24      step 2.5 -> 0.8 / 0.07
-//   100-170       step 8   -> 8.0 / 1.05      step 5   -> 1.7 / 0.17
-//
-// None of that was the sun's problem -- that was the feet, below -- and at a
-// row or two of mean error the old steps were not visibly wrong either. They
-// are finer because a skyline that is within a fifth of a row of the truth
-// costs 0.05ms and removes a whole class of "why does that not line up".
-const BANDS = [
-  { near: 100, far: 170, step: 5, dark: 0.14 },
-  { near: 60, far: 100, step: 2.5, dark: 0.26 },
-  { near: DRAWN_TO, far: 60, step: 1, dark: 0.40 },
+const FAR_TO = 170;
+const RINGS = [
+  // Nearest edge, grid step in tiles. Each ring's rows and points are every
+  // other one of the ring in front of it, so a coarse point is always also
+  // a fine one.
+  { from: 100, step: 8, fade: 8 },
+  { from: 60, step: 4, fade: 6 },
+  { from: DRAWN_TO, step: 2, fade: 4 },
 ];
+const BACK_FADE = 12;       // tiles over which a row fades in at the back
+const FRONT_FADE = 2;       // ... and out again as the drawn tiles reach it
+
+// A row's colour, by distance alone: at the near edge, exactly the colour
+// the drawn landscape ends in, so the tiles run on into the far country
+// without a seam; at the back, the sky at the horizon. Haze gathers fastest
+// close to, as it does.
+const HAZE_K = 55;
+const HAZE_NORM = 1 - Math.exp(-(FAR_TO - DRAWN_TO) / HAZE_K);
+//
+// Haze alone leaves the ranges faint, so they are also taken a little towards
+// a dusk-coloured dark, the silhouette they always were: none at the seam,
+// coming in over the first dozen tiles, and thinning out into the distance.
+const SILHOUETTE = 0.24;
+function rowColour(d, out) {
+  const t = (1 - Math.exp(-Math.max(0, d - DRAWN_TO) / HAZE_K)) / HAZE_NORM;
+  let r = hazeFoot[0] + (hazeTop[0] - hazeFoot[0]) * t;
+  let g = hazeFoot[1] + (hazeTop[1] - hazeFoot[1]) * t;
+  let b = hazeFoot[2] + (hazeTop[2] - hazeFoot[2]) * t;
+  const k = SILHOUETTE * Math.min(1, (d - DRAWN_TO) / 12) * (1 - t);
+  const warm = sky.sunStrength;
+  r += (18 + 30 * warm - r) * k;
+  g += (16 + 18 * warm - g) * k;
+  b += (34 + 10 * warm - b) * k;
+  out[0] = Math.round(r); out[1] = Math.round(g); out[2] = Math.round(b);
+  return out;
+}
+
+// The height of every even tile corner in the world, worked out the first
+// time it is asked for. The world is two hundred and fifty-six tiles each
+// way, so at two-tile spacing that is 128 x 128 points and every one has a
+// slot of its own: nothing is ever evicted, and a hovering bird or one
+// flying back over the same country samples nothing at all.
+const UNKNOWN = 0x7fffffff;
+const heights = new Int32Array(128 * 128).fill(UNKNOWN);
+function heightAt(xt, zt) {
+  const i = ((xt >> 1) & 127) | (((zt >> 1) & 127) << 7);
+  let h = heights[i];
+  if (h === UNKNOWN) h = heights[i] = landAltitude((xt * TILE) | 0, (zt * TILE) | 0);
+  return h;
+}
 
 // The ground too close to have been drawn: from just in front of the camera
 // out to the near edge of the landscape band.
@@ -127,85 +168,19 @@ const NEAR_ROW = TILES_Z - 1;
 const STEP = 6;
 
 const col = [0, 0, 0, 255];
-const colB = [0, 0, 0, 255];
 const hazeTop = [0, 0, 0, 255];
 const hazeFoot = [0, 0, 0, 255];
-// Each band's skyline is kept from frame to frame, and worked out again only
-// once the camera has moved far enough to shift it by half a pixel.
-//
-// It was worked out every frame: 78 columns across the screen, each walked
-// out through its band -- some six and a half thousand height samples a
-// frame, all of them the same as last frame's while the bird hovered. With
-// the JavaScript JIT off, as the Xbox's sandboxed browser runs it, that was
-// 4ms of every frame. A band at least `near` tiles away moves on screen by
-// at most FOCAL / near pixels for every tile the camera moves, so below
-// half a pixel the old skyline is still the right one to within half a
-// pixel -- and a hovering bird never asks for it again.
+// The near ground's skyline is kept from frame to frame, and worked out
+// again only once the camera has moved far enough to shift it by half a
+// pixel: it is at least NEAR_FROM tiles away, so it moves on screen by at
+// most FOCAL / NEAR_FROM pixels for every tile the camera moves.
 const HALF_PIXEL = 0.5;
-function kept() {
-  return {
-    rows: [], xs: [], wx: [], wz: [], alt: [],
-    camX: 0, camY: 0, camZ: 0, width: -1,
-    // What is drawn this frame: the kept skyline, or the same points
-    // projected again from where the camera is now.
-    outX: [], outRows: [],
-  };
-}
-// A jump, rather than flight: a new game, a respawn. The old points are no
-// guide to anything from a tile away, so a band that far out of date is done
-// at once whatever the turn.
-const JUMP = 1;
-function staleness(k, near, camX, camY, camZ) {
-  if (k.width !== SCREEN_W) return Infinity;
+const nearKept = { rows: [], xs: [], camX: 0, camY: 0, camZ: 0, width: -1 };
+function nearStale(k, camX, camY, camZ) {
+  if (k.width !== SCREEN_W) return true;
   const moved = (Math.abs((camX - k.camX) | 0) + Math.abs((camY - k.camY) | 0) +
                  Math.abs((camZ - k.camZ) | 0)) / TILE;
-  return moved > JUMP ? Infinity : moved * FOCAL_X / near;
-}
-function refresh(k, near, far, step, camX, camY, camZ) {
-  skylineBetween(near, far, step, camX, camY, camZ, k);
-  k.camX = camX; k.camY = camY; k.camZ = camZ; k.width = SCREEN_W;
-}
-
-// While the camera moves, a kept skyline is not thrown away: each column
-// remembers the point of ground that won it, and that point is projected
-// again from where the camera is now. Where the hills are on screen is then
-// exact every frame; the only thing that goes out of date is which hill is
-// the highest along a bearing, and that changes slowly -- a band is at least
-// thirty-four tiles off. So the bands take turns: in flight, only the one
-// that has drifted furthest is sampled afresh each frame, which is a third
-// of the work, and a hovering bird still samples nothing.
-function project(k, camX, camY, camZ) {
-  const n = k.rows.length;
-  if (k.camX === camX && k.camY === camY && k.camZ === camZ) {
-    k.outX = k.xs; k.outRows = k.rows;
-    return;
-  }
-  const xs = k.outX === k.xs ? (k.outX = []) : k.outX;
-  const rows = k.outRows === k.rows ? (k.outRows = []) : k.outRows;
-  xs.length = n; rows.length = n;
-  for (let i = 0; i < n; i++) {
-    // Unsigned: the far band reaches past a hundred and twenty-eight tiles,
-    // half the world, where a signed difference would wrap round to behind
-    // the camera. Everything kept here is in front of it.
-    const vz = (k.wz[i] - camZ) >>> 0;
-    xs[i] = CENTRE_X + (((k.wx[i] - camX) | 0) * FOCAL_X) / vz;
-    rows[i] = CENTRE_Y + ((k.alt[i] - camY) * FOCAL_Y) / vz;
-  }
-}
-
-// A band's colour: the sky behind it, taken towards the dusk-coloured dark so
-// it reads as a silhouette rather than as paint.
-function tint(dark, y, out) {
-  const s = skyColourAt(y);
-  // Silhouettes go towards a cool dark at night and a warm one by day, which
-  // is what keeps a dusk frame from turning grey.
-  const warm = sky.sunStrength;
-  const tr = 18 + 30 * warm, tg = 16 + 18 * warm, tb = 34 + 10 * warm;
-  out[0] = Math.round(s[0] + (tr - s[0]) * dark);
-  out[1] = Math.round(s[1] + (tg - s[1]) * dark);
-  out[2] = Math.round(s[2] + (tb - s[2]) * dark);
-  out[3] = 255;
-  return out;
+  return moved * FOCAL_X / NEAR_FROM > HALF_PIXEL;
 }
 
 // The plain's colour at a given row, which is also what every band's foot is
@@ -214,13 +189,19 @@ function tint(dark, y, out) {
 // hard line across the picture where its skirt ends, and three of those read
 // as stripes rather than as distance. Ending each one in exactly the haze it
 // stands in leaves only the skyline, which is all a far range shows.
-let hazeY0 = 0, hazeY1 = 1, hazeReady = false;
+// Everything below the horizon that is not a hill is taken to be ground at
+// sea level, and a row of the screen is then a distance: the colour there is
+// the colour a row of hills at that distance is drawn in (rowColour). That
+// is what lets a row's foot vanish into the plain instead of standing out as
+// a step wherever the ground in front of it is low.
+let hazeCamY = 0, hazeReady = false;
+function distanceAt(y) {
+  const drop = (SEA_LEVEL - hazeCamY) / TILE;
+  if (y <= CENTRE_Y || drop <= 0) return Infinity;
+  return (drop * FOCAL_Y) / (y - CENTRE_Y);
+}
 function hazeAt(y, out) {
-  let t = (y - hazeY0) / (hazeY1 - hazeY0);
-  if (t < 0) t = 0; else if (t > 1) t = 1;
-  out[0] = Math.round(hazeTop[0] + (hazeFoot[0] - hazeTop[0]) * t);
-  out[1] = Math.round(hazeTop[1] + (hazeFoot[1] - hazeTop[1]) * t);
-  out[2] = Math.round(hazeTop[2] + (hazeFoot[2] - hazeTop[2]) * t);
+  rowColour(distanceAt(y), out);
   out[3] = 255;
   return out;
 }
@@ -238,26 +219,22 @@ function hazeAt(y, out) {
 // is exactly the range of a signed 32-bit integer, so arithmetic that
 // overflows has already gone round it.
 function skylineBetween(near, far, step, camX, camY, camZ, k) {
-  const rows = k.rows, xs = k.xs, bx = k.wx, bz = k.wz, ba = k.alt;
+  const rows = k.rows, xs = k.xs;
   let n = 0;
-  // One column to the left of the screen as well as one to the right, so a
-  // skyline projected again after the camera has slid sideways still reaches
-  // both edges.
-  for (let sx = -STEP; sx <= SCREEN_W + STEP; sx += STEP) {
+  for (let sx = 0; sx <= SCREEN_W + STEP; sx += STEP) {
     const bearing = (sx - CENTRE_X) / FOCAL_X;
-    let best = Infinity, wxBest = 0, wzBest = 0, altBest = 0;
+    let best = Infinity;
     for (let z = near; z <= far; z += step) {
       const zFix = z * TILE;
       const wx = (camX + bearing * zFix) | 0;
       const wz = (camZ + zFix) | 0;
-      const alt = landAltitude(wx, wz);
-      const row = CENTRE_Y + ((alt - camY) * FOCAL_Y) / zFix;
-      if (row < best) { best = row; wxBest = wx; wzBest = wz; altBest = alt; }
+      const row = CENTRE_Y + ((landAltitude(wx, wz) - camY) * FOCAL_Y) / zFix;
+      if (row < best) best = row;
     }
-    rows[n] = best; xs[n] = sx; bx[n] = wxBest; bz[n] = wzBest; ba[n] = altBest;
+    rows[n] = best; xs[n] = sx;
     n++;
   }
-  rows.length = n; xs.length = n; bx.length = n; bz.length = n; ba.length = n;
+  rows.length = n; xs.length = n;
 }
 
 // Fill from a skyline down to a flat foot, one quad per step.
@@ -309,19 +286,44 @@ function rowAt(z, camY, height = PLAIN) {
 // line. The bands cannot reach it -- the furthest stops at a hundred and
 // seventy tiles, whose flat ground lands sixteen rows lower -- so without the
 // plain there is a strip of bare sky under the true horizon.
+const footNow = [0, 0, 0];
+let footCamX = 0, footCamZ = 0;
+const FOOT_EASE = 0.03;         // a share a frame: a second or two to settle
 export function drawHorizonHaze(rd, camX, camY, camZ) {
-  const meet = Math.min(SCREEN_H, rowAt(DRAWN_TO, camY));
-  hazeY0 = CENTRE_Y; hazeY1 = Math.max(CENTRE_Y + 1, meet);
-  {
-    const s = skyColourAt(CENTRE_Y);
-    hazeTop[0] = s[0]; hazeTop[1] = s[1]; hazeTop[2] = s[2];
-    const g = tileColour(LAND_MID_HEIGHT, LAND_MID_HEIGHT, 1, camX, camZ);
-    hazeFoot[0] = g[0]; hazeFoot[1] = g[1]; hazeFoot[2] = g[2];
-    if (meet > CENTRE_Y) rd.gradientBand(CENTRE_Y, meet, hazeTop, hazeFoot);
-    if (meet < SCREEN_H) rd.gradientBand(Math.max(CENTRE_Y, meet), SCREEN_H, hazeFoot, hazeFoot);
+  hazeCamY = camY;
+  const s = skyColourAt(CENTRE_Y);
+  hazeTop[0] = s[0]; hazeTop[1] = s[1]; hazeTop[2] = s[2];
+  // The ground colour under the camera, eased towards rather than taken:
+  // it changes at a stroke where one biome meets the next, and taken
+  // straight it changed the whole of the far country in one frame. A jump
+  // of the camera (a new game, a respawn) takes it at once.
+  const g = tileColour(LAND_MID_HEIGHT, LAND_MID_HEIGHT, 1, camX, camZ);
+  const jumped = !hazeReady || Math.abs((camX - footCamX) | 0) + Math.abs((camZ - footCamZ) | 0) > 4 * TILE;
+  const ease = jumped ? 1 : FOOT_EASE;
+  for (let i = 0; i < 3; i++) {
+    footNow[i] += (g[i] - footNow[i]) * ease;
+    hazeFoot[i] = Math.round(footNow[i]);
   }
+  footCamX = camX; footCamZ = camZ;
   hazeReady = true;
+
+  // The plain, in bands evenly spaced in distance's reciprocal -- which is
+  // evenly spaced down the screen -- from the horizon to where the drawn
+  // tiles begin, then the tiles' own colour to the bottom.
+  const meet = Math.min(SCREEN_H, rowAt(DRAWN_TO, camY, FLOOR));
+  let y0 = CENTRE_Y;
+  hazeAt(y0, bandA);
+  for (let i = 1; i <= PLAIN_BANDS && y0 < meet; i++) {
+    const y1 = CENTRE_Y + ((meet - CENTRE_Y) * i) / PLAIN_BANDS;
+    hazeAt(y1, bandB);
+    rd.gradientBand(y0, y1, bandA, bandB);
+    bandA[0] = bandB[0]; bandA[1] = bandB[1]; bandA[2] = bandB[2];
+    y0 = y1;
+  }
+  if (meet < SCREEN_H) rd.gradientBand(Math.max(CENTRE_Y, meet), SCREEN_H, hazeFoot, hazeFoot);
 }
+const PLAIN_BANDS = 12;
+const bandA = [0, 0, 0, 255], bandB = [0, 0, 0, 255];
 
 // What is behind a given row, for anything drawn onto it: sky above the
 // horizon, and the haze of the plain below it.
@@ -340,32 +342,69 @@ export function backdropAt(y, out) {
 }
 
 // ... and then the hills, which are what actually hides anything.
+const rowX = new Float64Array(160), rowY = new Float64Array(160);
 export function drawRidges(rd, camX, camY, camZ) {
-  // The band to sample afresh this frame, if any: the one that has drifted
-  // furthest, once that is more than half a pixel. A band whose width no
-  // longer matches the screen, or that the camera has jumped away from, is
-  // always done at once.
-  let worst = null, worstBy = HALF_PIXEL;
-  for (const band of BANDS) {
-    if (!band.kept) band.kept = kept();
-    const by = staleness(band.kept, band.near, camX, camY, camZ);
-    if (by === Infinity) refresh(band.kept, band.near, band.far, band.step, camX, camY, camZ);
-    else if (by > worstBy) { worst = band; worstBy = by; }
-  }
-  if (worst) refresh(worst.kept, worst.near, worst.far, worst.step, camX, camY, camZ);
+  // Where the camera is, in tiles, for choosing which grid points are in
+  // view. Signed: the world wraps, and the arithmetic below wraps with it.
+  const cx = camX / TILE, cz = camZ / TILE;
+  const halfW = (CENTRE_X + 2) / FOCAL_X;          // half the view, per tile out
+  // Rows, far to near: every multiple of the step of the ring it is in.
+  for (let z = Math.ceil((cz + FAR_TO) / 2) * 2; ; z -= 2) {
+    const vz = (z * TILE - camZ) >>> 0;              // unsigned: past half the world
+    const d = vz / TILE;
+    if (d < DRAWN_TO) break;
+    if (d > FAR_TO) continue;
+    let ring = 0;
+    while (ring < RINGS.length - 1 && d < RINGS[ring].from) ring++;
+    const step = RINGS[ring].step;
+    if (z % step !== 0) continue;
+    // Fading in: at the back of the world, and where a ring starts showing
+    // rows the one behind it did not have. Fading out where the drawn tiles
+    // take over.
+    let alpha = Math.min(1, (FAR_TO - d) / BACK_FADE, (d - DRAWN_TO) / FRONT_FADE);
+    if (ring > 0 && (z % RINGS[ring - 1].step) !== 0) {
+      alpha = Math.min(alpha, (RINGS[ring - 1].from - d) / RINGS[ring].fade);
+    }
+    if (alpha <= 0.01) continue;
 
-  for (const band of BANDS) {
-    const footY = rowAt(band.near, camY, FLOOR);
+    const footY = CENTRE_Y + ((SEA_LEVEL - camY) * FOCAL_Y) / vz;
     if (footY <= 0) continue;
-    const k = band.kept;
-    project(k, camX, camY, camZ);
-    const rows = k.outRows;
-    let top = Infinity;
-    for (const y of rows) if (y < top) top = y;
-    if (top >= SCREEN_H) continue;
-    fillUnder(rd, k.outX, rows, footY,
-              tint(band.dark, (top + Math.min(footY, SCREEN_H)) / 2, col),
-              hazeAt(footY, colB));
+    // A point that is not on the coarser grid behind rises from the line
+    // between its neighbours to its own height as the row comes in.
+    const coarse = ring > 0 ? RINGS[ring - 1].step : 0;
+    const morph = ring > 0 ? Math.min(1, (RINGS[ring - 1].from - d) / RINGS[ring].fade) : 1;
+    const x0 = Math.floor((cx - halfW * d) / step) * step - step;
+    const x1 = Math.ceil((cx + halfW * d) / step) * step + step;
+    let n = 0, top = Infinity;
+    for (let xt = x0; xt <= x1; xt += step) {
+      let h = heightAt(xt, z);
+      if (coarse && morph < 1 && (xt % coarse) !== 0) {
+        const line = (heightAt(xt - step, z) + heightAt(xt + step, z)) / 2;
+        h = line + (h - line) * morph;
+      }
+      const vx = (xt * TILE - camX) | 0;
+      rowX[n] = CENTRE_X + (vx * FOCAL_X) / vz;
+      const y = CENTRE_Y + ((h - camY) * FOCAL_Y) / vz;
+      rowY[n] = y;
+      if (y < top) top = y;
+      n++;
+    }
+    if (top >= SCREEN_H || top >= footY) continue;
+
+    // One colour a row, and it depends on nothing but how far away the row
+    // is (rowColour). Rows next to each other come out nearly the same, so
+    // open country is a smooth wash, and a ridge stands out by exactly as
+    // much as the ground it hides is further away -- which is what distance
+    // looks like.
+    const base = Math.min(footY, SCREEN_H);
+    rowColour(d, col);
+    col[3] = Math.round(255 * Math.min(1, alpha));
+    for (let i = 0; i + 1 < n; i++) {
+      const y0 = rowY[i], y1 = rowY[i + 1];
+      if (y0 >= base && y1 >= base) continue;
+      const xa = rowX[i], xb = rowX[i + 1];
+      rd.quad(xa, y0, xb, y1, xb, base, xa, base, col);
+    }
   }
 }
 
@@ -379,12 +418,11 @@ export function drawRidges(rd, camX, camY, camZ) {
 // a black bar across the bottom of the frame is not what a hill in front of
 // you looks like, it is what a bug looks like.
 const DARKEN = 0.88;
-const nearKept = kept();
 export function drawNearGround(rd, camX, camY, camZ) {
-  // Near enough that it is sampled afresh whenever it has moved at all by
-  // half a pixel, rather than taking turns with the bands.
-  if (staleness(nearKept, NEAR_FROM, camX, camY, camZ) > HALF_PIXEL) {
-    refresh(nearKept, NEAR_FROM, NEAR_TO, NEAR_STEP, camX, camY, camZ);
+  if (nearStale(nearKept, camX, camY, camZ)) {
+    skylineBetween(NEAR_FROM, NEAR_TO, NEAR_STEP, camX, camY, camZ, nearKept);
+    nearKept.camX = camX; nearKept.camY = camY; nearKept.camZ = camZ;
+    nearKept.width = SCREEN_W;
   }
   const rows = nearKept.rows;
   let top = Infinity;
