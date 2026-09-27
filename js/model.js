@@ -336,19 +336,23 @@ const pt = { x: 0, y: 0 };
 // scanned from 26 tiles out down to 10, so the nearest row of ground sits
 // between 9 and 10.3 tiles from the camera once the row's own slide and an
 // object's jitter within its tile are counted. Nothing exists closer than
-// that. So the fade reaches its end at 11.8, which puts the whole of the two
-// nearest rows at flat black rather than merely nearly there, and it starts
-// far enough back -- seventeen and a half tiles, around five rows -- that
-// something is already on its way down by the time it is a third of the way
-// up the screen. A shorter run than that reads as a switch rather than as
-// depth, which is the thing it is meant to be describing.
+// that. So the fade reaches its end at ten, which puts the nearest row at
+// flat black rather than merely nearly there, and it runs over four tiles --
+// a shorter run than that reads as a switch rather than as depth, which is
+// the thing it is meant to be describing.
 //
-// So the fade runs from seventeen and a half tiles down to just under twelve:
-// by
-// anything reaches the edge of what is drawn it is already a flat shape, and
-// a shape leaving the bottom of the frame is a thing passing rather than a
-// thing vanishing. It also puts the dark exactly where the style wants it,
-// since the near ground behind it is going the same way at the same time.
+// So the fade runs from fourteen tiles down to ten: by the time anything
+// reaches the edge of what is drawn it is already a flat shape, and a shape
+// leaving the bottom of the frame is a thing passing rather than a thing
+// vanishing. It also puts the dark exactly where the style wants it, since
+// the near ground behind it is going the same way at the same time.
+//
+// It used to start at seventeen and a half, which is two and a half tiles
+// beyond the bird: the bird flew among things that were already going dark,
+// and whatever it was flying at was a silhouette before it got there. Now it
+// starts a tile on the camera's side of the bird, so everything level with
+// the bird or ahead of it is lit, and only what the bird has passed -- on
+// its way out under the camera -- turns into a shape.
 //
 // The last stretch of that fade goes somewhere the rest of the world does
 // not: to flat black. Everything else that turns into a silhouette here --
@@ -359,8 +363,8 @@ const pt = { x: 0, y: 0 };
 // where what you want is a shape. Black is also flat by definition, so the
 // facets stop existing and a tree passing the camera is one silhouette rather
 // than nine polygons agreeing with each other.
-const SIL_FAR = 17.5;
-const SIL_NEAR = 11.8;
+const SIL_FAR = 14;
+const SIL_NEAR = 10;
 
 // Where in that fade the target stops being the dusk dark and becomes black.
 // Below this the near objects match the hills behind them, above it they
