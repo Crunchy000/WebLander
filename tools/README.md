@@ -5,6 +5,11 @@ one-off scripts that turned `art/hummingbird.glb` into `js/origami-data.js`,
 kept so the conversion can be rerun or pointed at another model rather than
 being a thing that happened once on somebody's laptop.
 
+The hummingbird is no longer the player's bird: it was replaced by a folded
+bird of 32 triangles written directly in `js/origami.js`, and
+`js/origami-data.js` was removed with it. The scripts and notes below still
+describe how that conversion was done.
+
 `art/hummingbird.glb` is the decimated export the game's geometry comes from
 (546 triangles, Draco-compressed, 512px WebP texture). `art/hummingbird-full.glb`
 is the original it was decimated from: 139,450 triangles and a 1024px PNG,
