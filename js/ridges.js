@@ -84,10 +84,11 @@ const PLAIN = LAND_MID_HEIGHT / TILE;
 // highest of them, as before. Flying towards them changes nothing but the
 // perspective. The grid is coarser with distance -- a point every two tiles
 // out to sixty, every four to a hundred, every eight beyond -- and nothing
-// pops where it changes: a row appearing fades in, and a point added between
-// two coarser ones rises from the line joining them to its true height as it
-// comes nearer. Colour runs with distance too, from nearly the sky at the
-// back to the darkest silhouette at the front.
+// pops where it changes: a row appearing rises out of the plain, and a point
+// added between two coarser ones rises from the line joining them to its
+// true height as it comes nearer. Nothing is ever see-through, so the sun
+// and the moon, drawn before the hills, stay behind them. Colour runs with
+// distance, from the sky at the back to the ground's own at the front.
 //
 // The rows stop well short of the world's period of two hundred and
 // fifty-six tiles, because past half of that you are looking at the ground
@@ -101,8 +102,7 @@ const RINGS = [
   { from: 60, step: 4, fade: 6 },
   { from: DRAWN_TO, step: 2, fade: 4 },
 ];
-const BACK_FADE = 12;       // tiles over which a row fades in at the back
-const FRONT_FADE = 2;       // ... and out again as the drawn tiles reach it
+const BACK_FADE = 12;       // tiles over which a row rises in at the back
 
 // A row's colour, by distance alone: at the near edge, exactly the colour
 // the drawn landscape ends in, so the tiles run on into the far country
@@ -358,14 +358,17 @@ export function drawRidges(rd, camX, camY, camZ) {
     while (ring < RINGS.length - 1 && d < RINGS[ring].from) ring++;
     const step = RINGS[ring].step;
     if (z % step !== 0) continue;
-    // Fading in: at the back of the world, and where a ring starts showing
-    // rows the one behind it did not have. Fading out where the drawn tiles
-    // take over.
-    let alpha = Math.min(1, (FAR_TO - d) / BACK_FADE, (d - DRAWN_TO) / FRONT_FADE);
+    // Coming in: at the back of the world, and where a ring starts showing
+    // rows the one behind it did not have, a row rises out of the plain --
+    // from sea level, where it is exactly the plain's colour and so is not
+    // there to see, to its true height. It is never see-through. It used to
+    // fade in instead, and a sun or a moon behind a fading row showed
+    // through the mountain in front of it.
+    let rise = Math.min(1, (FAR_TO - d) / BACK_FADE);
     if (ring > 0 && (z % RINGS[ring - 1].step) !== 0) {
-      alpha = Math.min(alpha, (RINGS[ring - 1].from - d) / RINGS[ring].fade);
+      rise = Math.min(rise, (RINGS[ring - 1].from - d) / RINGS[ring].fade);
     }
-    if (alpha <= 0.01) continue;
+    if (rise <= 0.01) continue;
 
     const footY = CENTRE_Y + ((SEA_LEVEL - camY) * FOCAL_Y) / vz;
     if (footY <= 0) continue;
@@ -382,6 +385,7 @@ export function drawRidges(rd, camX, camY, camZ) {
         const line = (heightAt(xt - step, z) + heightAt(xt + step, z)) / 2;
         h = line + (h - line) * morph;
       }
+      if (rise < 1) h = SEA_LEVEL + (h - SEA_LEVEL) * rise;
       const vx = (xt * TILE - camX) | 0;
       rowX[n] = CENTRE_X + (vx * FOCAL_X) / vz;
       const y = CENTRE_Y + ((h - camY) * FOCAL_Y) / vz;
@@ -398,7 +402,7 @@ export function drawRidges(rd, camX, camY, camZ) {
     // looks like.
     const base = Math.min(footY, SCREEN_H);
     rowColour(d, col);
-    col[3] = Math.round(255 * Math.min(1, alpha));
+    col[3] = 255;
     for (let i = 0; i + 1 < n; i++) {
       const y0 = rowY[i], y1 = rowY[i + 1];
       if (y0 >= base && y1 >= base) continue;
