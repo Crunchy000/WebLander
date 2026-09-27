@@ -40,7 +40,7 @@ await pg.addInitScript(() => {
     return ((a + b) >>> 0) / 4294967296;
   };
 });
-await pg.goto('http://localhost:8123/' + (process.env.QUERY || ''), { waitUntil: 'load' });
+await pg.goto((process.env.BASE || 'http://localhost:8123/') + (process.env.QUERY || ''), { waitUntil: 'load' });
 await pg.waitForFunction(() => !!window.lander);
 await pg.click('#start');
 

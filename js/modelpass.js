@@ -43,10 +43,13 @@ uniform vec3 uFog;
 uniform vec3 uSil;
 uniform float uBlackAt;
 uniform float uPull;
+uniform mat3 uRot;
 out vec4 vCol;
 void main() {
   // Camera-relative, in tiles, y down: the same space project() works in.
-  vec3 v = aLocal + iAt;
+  // uRot is the identity for scenery, which never turns; the one-off draws
+  // (the bird) are turned by it. See drawTurned.
+  vec3 v = uRot * aLocal + iAt;
   float z = v.z;
   // project() is screen = centre + position * focal / distance; this is the
   // same thing written in clip space, with the division left to the GPU.
@@ -117,7 +120,7 @@ export class ModelPass {
     }
     this.prog = prog;
     this.u = {};
-    for (const name of ['uProj', 'uScreen', 'uDepth', 'uTint', 'uFog', 'uSil', 'uBlackAt', 'uPull']) {
+    for (const name of ['uProj', 'uScreen', 'uDepth', 'uTint', 'uFog', 'uSil', 'uBlackAt', 'uPull', 'uRot']) {
       this.u[name] = gl.getUniformLocation(prog, name);
     }
     const aLocal = gl.getAttribLocation(prog, 'aLocal');
@@ -154,8 +157,21 @@ export class ModelPass {
     gl.enableVertexAttribArray(this.iLook);
     gl.vertexAttribDivisor(this.iLook, 1);
 
+    // A second arrangement of the same shapes, for single draws that are
+    // turned by a matrix: no per-copy attributes, whose values are set as
+    // constants for each draw instead. See drawTurned.
+    this.vaoOne = gl.createVertexArray();
+    gl.bindVertexArray(this.vaoOne);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
+    gl.enableVertexAttribArray(aLocal);
+    gl.vertexAttribPointer(aLocal, 3, gl.FLOAT, false, MODEL_STRIDE, 0);
+    gl.enableVertexAttribArray(aCol);
+    gl.vertexAttribPointer(aCol, 4, gl.UNSIGNED_BYTE, true, MODEL_STRIDE, 12);
+
     gl.bindVertexArray(null);
     rd.restore();
+    this.rot = new Float32Array(9);
+    this.identity = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
 
     // This frame's copies, grouped by shape.
     this.groups = new Map();       // Model -> number[] of instance floats
@@ -219,6 +235,76 @@ export class ModelPass {
     return true;
   }
 
+  // Send up any shapes first asked for since the last draw.
+  upload() {
+    if (!this.shapeDirty) return;
+    const gl = this.gl;
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.shapeU8, 0, this.shapeVerts * MODEL_STRIDE);
+    prof.count('upload KB', this.shapeVerts * MODEL_STRIDE / 1024);
+    this.shapeDirty = false;
+  }
+
+  uniforms(pull, rot) {
+    const gl = this.gl;
+    gl.uniform4f(this.u.uProj, CENTRE_X, CENTRE_Y, FOCAL_X, FOCAL_Y);
+    gl.uniform2f(this.u.uScreen, SCREEN_W, SCREEN_H);
+    gl.uniform2f(this.u.uDepth, DEPTH.A, DEPTH.B / TILE);
+    gl.uniform3f(this.u.uTint, sky.tint[0], sky.tint[1], sky.tint[2]);
+    gl.uniform3f(this.u.uFog, sky.fog[0] / 255, sky.fog[1] / 255, sky.fog[2] / 255);
+    silhouetteDark(this.silOut);
+    gl.uniform3f(this.u.uSil, this.silOut[0] / 255, this.silOut[1] / 255, this.silOut[2] / 255);
+    gl.uniform1f(this.u.uBlackAt, SIL_BLACK_AT);
+    gl.uniform1f(this.u.uPull, pull);
+    gl.uniformMatrix3fv(this.u.uRot, false, rot);
+  }
+
+  // One model, turned by `m` (row-major, as matFromAim and matMul make them)
+  // and standing at a camera-relative fixed-point position: the bird, whose
+  // body and wings were the largest single cost left on the CPU with the
+  // JavaScript JIT off -- 424 faces rotated, projected, sorted and written
+  // out every frame.
+  //
+  // It is drawn over everything painted so far, as drawModel drew it, and
+  // sorts its own faces with the depth buffer rather than by hand: `fresh`
+  // clears the depth first, which the first of a set of pieces asks for so
+  // that the rest are tested against it and not against the landscape. The
+  // landscape's depth is finished with by the time the bird is drawn.
+  // Returns false when this path cannot take it, for the caller to fall back.
+  drawTurned(model, m, vx, vy, vz, fresh) {
+    if (!this.ok) return false;
+    if (model.glows === undefined) model.glows = model.faces.some((f) => f.glow);
+    if (model.glows) return false;
+    const shape = this.shape(model);
+    if (!shape) return false;
+    const rd = this.rd, gl = this.gl;
+    rd.flush();
+    gl.useProgram(this.prog);
+    gl.bindVertexArray(this.vaoOne);
+    this.upload();
+    // Column-major for GLSL, from the row-major matrix drawModel applies.
+    const r = this.rot;
+    r[0] = m[0]; r[1] = m[3]; r[2] = m[6];
+    r[3] = m[1]; r[4] = m[4]; r[5] = m[7];
+    r[6] = m[2]; r[7] = m[5]; r[8] = m[8];
+    this.uniforms(0, r);
+    gl.vertexAttrib3f(this.iAt, vx / TILE, vy / TILE, vz / TILE);
+    gl.vertexAttrib2f(this.iLook, 0, 0);
+    rd.depthMode('test');
+    if (fresh) {
+      gl.clearDepth(1);
+      gl.clear(gl.DEPTH_BUFFER_BIT);
+    }
+    gl.disable(gl.BLEND);
+    gl.drawArrays(gl.TRIANGLES, shape.first, shape.count);
+    prof.count('draw calls', 1);
+    rd.drawn = (rd.drawn || 0) + shape.count;
+    gl.bindVertexArray(null);
+    rd.restore();
+    rd.depthMode('off');
+    return true;
+  }
+
   // Draw everything added this frame, against the depth the landscape pass
   // left, and empty the list for the next one.
   flush() {
@@ -229,12 +315,7 @@ export class ModelPass {
 
     gl.useProgram(this.prog);
     gl.bindVertexArray(this.vao);
-    if (this.shapeDirty) {
-      gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
-      gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.shapeU8, 0, this.shapeVerts * MODEL_STRIDE);
-      prof.count('upload KB', this.shapeVerts * MODEL_STRIDE / 1024);
-      this.shapeDirty = false;
-    }
+    this.upload();
 
     // Lay every group's copies end to end and send them up once.
     let at = 0;
@@ -250,15 +331,7 @@ export class ModelPass {
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.inst, 0, at);
     prof.count('upload KB', at * 4 / 1024);
 
-    gl.uniform4f(this.u.uProj, CENTRE_X, CENTRE_Y, FOCAL_X, FOCAL_Y);
-    gl.uniform2f(this.u.uScreen, SCREEN_W, SCREEN_H);
-    gl.uniform2f(this.u.uDepth, DEPTH.A, DEPTH.B / TILE);
-    gl.uniform3f(this.u.uTint, sky.tint[0], sky.tint[1], sky.tint[2]);
-    gl.uniform3f(this.u.uFog, sky.fog[0] / 255, sky.fog[1] / 255, sky.fog[2] / 255);
-    silhouetteDark(this.silOut);
-    gl.uniform3f(this.u.uSil, this.silOut[0] / 255, this.silOut[1] / 255, this.silOut[2] / 255);
-    gl.uniform1f(this.u.uBlackAt, SIL_BLACK_AT);
-    gl.uniform1f(this.u.uPull, PULL);
+    this.uniforms(PULL, this.identity);
 
     // An opaque pass: nothing here is see-through.
     gl.disable(gl.BLEND);

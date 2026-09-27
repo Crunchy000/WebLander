@@ -130,7 +130,19 @@ export function drawOrigami(rd, p, camX, camY, camZ) {
   beat += (want - beat) * BEAT_EASE;
   fold += ((p.landed ? 1 : 0) - fold) * FOLD_EASE;
 
-  drawModel(rd, ORIGAMI_BODY, p.matrix, p.x, p.y, p.z, camX, camY, camZ);
+  // On the GPU where the scenery goes there (see ModelPass.drawTurned): the
+  // body clears the depth and the wings are tested against it, so the bird
+  // sorts its own faces without anything being sorted by hand. Otherwise,
+  // and for WebGL 1 or ?cpumodels, drawModel as before.
+  const gpu = rd.instancer;
+  // Whether the depth still needs clearing before the next GPU piece.
+  let fresh = true;
+  if (gpu && gpu.drawTurned(ORIGAMI_BODY, p.matrix,
+        (p.x - camX) | 0, (p.y - camY) | 0, (p.z - camZ) | 0, fresh)) {
+    fresh = false;
+  } else {
+    drawModel(rd, ORIGAMI_BODY, p.matrix, p.x, p.y, p.z, camX, camY, camZ);
+  }
 
   const angle = Math.sin(p.rotorSpin || 0) * beat * (1 - fold) + FOLD_RISE * fold;
   const sweep = FOLD_SWEEP * fold;
@@ -146,6 +158,11 @@ export function drawOrigami(rd, p, camX, camY, camZ) {
     matRotZ(angle * wing.side, flapMat);
     matMul(flapMat, sweepMat, poseMat);
     matMul(p.matrix, poseMat, wingMat);
-    drawModel(rd, wing.model, wingMat, wx, wy, wz, camX, camY, camZ);
+    if (gpu && gpu.drawTurned(wing.model, wingMat,
+          (wx - camX) | 0, (wy - camY) | 0, (wz - camZ) | 0, fresh)) {
+      fresh = false;
+    } else {
+      drawModel(rd, wing.model, wingMat, wx, wy, wz, camX, camY, camZ);
+    }
   }
 }

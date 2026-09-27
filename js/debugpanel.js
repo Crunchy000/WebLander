@@ -50,6 +50,37 @@ const QR_MAX = 0.62;         // ... unless that would be more of the window's he
 const QR_MARGIN = 4;         // modules of quiet zone, as the standard asks
 const MB = 1024 * 1024;
 
+// Can this browser run WebAssembly, and is it any faster than JavaScript
+// here? With the JIT off -- as the Xbox's sandboxed Edge runs -- JavaScript
+// is interpreted, and WebAssembly is the one way left to run precompiled
+// code; but a JIT-less V8 normally switches WebAssembly off altogether, so
+// only the machine itself can say. The same integer loop, a million turns,
+// both ways. The module was assembled with wabt from:
+//   (func (export "f") (param $n i32) (result i32) (local $i i32) (local $s i32)
+//     loop: s = s + ((i * i) ^ (s >> 1)); i++ while i < n; return s)
+const PROBE_WASM = [0, 97, 115, 109, 1, 0, 0, 0, 1, 6, 1, 96, 1, 127, 1, 127, 3, 2, 1, 0, 7, 5,
+  1, 1, 102, 0, 0, 10, 46, 1, 44, 1, 2, 127, 2, 64, 3, 64, 32, 1, 32, 0, 78, 13, 1, 32, 2, 32, 1,
+  32, 1, 108, 32, 2, 65, 1, 117, 115, 106, 33, 2, 32, 1, 65, 1, 106, 33, 1, 12, 0, 11, 11, 32, 2, 11];
+const PROBE_N = 1000000;
+function probeWasm() {
+  let t = performance.now();
+  let s = 0;
+  for (let i = 0; i < PROBE_N; i++) s = (s + (Math.imul(i, i) ^ (s >> 1))) | 0;
+  const js = performance.now() - t;
+  if (typeof WebAssembly === 'undefined') return 'wasm: not available (js loop ' + js.toFixed(1) + 'ms)';
+  try {
+    const f = new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array(PROBE_WASM))).exports.f;
+    t = performance.now();
+    const w = f(PROBE_N);
+    const wasm = performance.now() - t;
+    const same = w === s ? '' : ' (results differ!)';
+    return 'wasm: ' + wasm.toFixed(1) + 'ms vs js ' + js.toFixed(1) + 'ms for 1M turns -- ' +
+      (js / Math.max(wasm, 0.01)).toFixed(1) + 'x' + same;
+  } catch (err) {
+    return 'wasm: blocked (' + (err && err.message || err) + '), js loop ' + js.toFixed(1) + 'ms';
+  }
+}
+
 export class DebugPanel {
   constructor({ renderer, game, canvas }) {
     this.renderer = renderer;
@@ -126,6 +157,7 @@ export class DebugPanel {
     // The flight is paused while the panel is open, so from here on the
     // simulation's time reads nothing. Keep what it was.
     if (this.open) this.stepBefore = prof.median('step (simulation)');
+    if (this.open && !this.wasm) this.wasm = probeWasm();
     if (this.open) this._show(); else this._hide();
   }
 
@@ -222,6 +254,7 @@ export class DebugPanel {
       : 'js heap not reported') +
       '  gpu (ours) ~' + Math.round(rd.gpuBytes / MB) + 'MB');
 
+    if (this.wasm) lines.push(this.wasm);
     lines.push(...base.slice(3));
     const changed = this.changes();
     lines.push('changed: ' + (changed.length ? changed.join(', ') : 'nothing'));
