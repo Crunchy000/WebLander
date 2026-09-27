@@ -45,7 +45,9 @@ uniform float uBlackAt;
 uniform float uPull;
 uniform mat3 uRot;
 out vec4 vCol;
+out vec3 vLocal;
 void main() {
+  vLocal = aLocal;
   // Camera-relative, in tiles, y down: the same space project() works in.
   // uRot is the identity for scenery, which never turns; the one-off draws
   // (the bird) are turned by it. See drawTurned.
@@ -77,11 +79,39 @@ void main() {
   vCol = vec4(clamp(c, 0.0, 1.0), iLook.w);
 }`;
 
+// The fragment side is a flat colour -- except for paper. A model that asks
+// for it (uGrain above zero: the phoenix) takes a faint grain, worked out
+// from where the fragment is on the model rather than on the screen, so it
+// is fixed to the paper and moves with it instead of swimming over it. Two
+// scales of smooth noise: a fine tooth, and longer fibres laid along the
+// sheet. Everything else passes zero and skips it.
 const FS = `#version 300 es
-precision mediump float;
+precision highp float;
 in vec4 vCol;
+in vec3 vLocal;
+uniform float uGrain;
 out vec4 oCol;
-void main() { oCol = vCol; }`;
+float hash(vec3 p) {
+  p = fract(p * 0.3183099 + 0.1);
+  p *= 17.0;
+  return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+float noise(vec3 x) {
+  vec3 i = floor(x), f = fract(x);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(hash(i), hash(i + vec3(1, 0, 0)), f.x),
+                 mix(hash(i + vec3(0, 1, 0)), hash(i + vec3(1, 1, 0)), f.x), f.y),
+             mix(mix(hash(i + vec3(0, 0, 1)), hash(i + vec3(1, 0, 1)), f.x),
+                 mix(hash(i + vec3(0, 1, 1)), hash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}
+void main() {
+  vec4 c = vCol;
+  if (uGrain > 0.0) {
+    float g = noise(vLocal * 48.0) * 0.55 + noise(vLocal * vec3(110.0, 110.0, 14.0)) * 0.45;
+    c.rgb *= 1.0 + uGrain * (g - 0.5) * 2.0;
+  }
+  oCol = c;
+}`;
 
 // How much nearer a model is tested than it stands.
 //
@@ -129,7 +159,7 @@ export class ModelPass {
     }
     this.prog = prog;
     this.u = {};
-    for (const name of ['uProj', 'uScreen', 'uDepth', 'uTint', 'uFog', 'uSil', 'uBlackAt', 'uPull', 'uRot']) {
+    for (const name of ['uProj', 'uScreen', 'uDepth', 'uTint', 'uFog', 'uSil', 'uBlackAt', 'uPull', 'uRot', 'uGrain']) {
       this.u[name] = gl.getUniformLocation(prog, name);
     }
     const aLocal = gl.getAttribLocation(prog, 'aLocal');
@@ -264,7 +294,7 @@ export class ModelPass {
     this.shapeDirty = false;
   }
 
-  uniforms(pull, rot) {
+  uniforms(pull, rot, grain = 0) {
     const gl = this.gl;
     gl.uniform4f(this.u.uProj, CENTRE_X, CENTRE_Y, FOCAL_X, FOCAL_Y);
     gl.uniform2f(this.u.uScreen, SCREEN_W, SCREEN_H);
@@ -276,6 +306,7 @@ export class ModelPass {
     gl.uniform1f(this.u.uBlackAt, SIL_BLACK_AT);
     gl.uniform1f(this.u.uPull, pull);
     gl.uniformMatrix3fv(this.u.uRot, false, rot);
+    gl.uniform1f(this.u.uGrain, grain);
   }
 
   // One model, turned by `m` (row-major, as matFromAim and matMul make them)
@@ -304,7 +335,7 @@ export class ModelPass {
     r[0] = m[0]; r[1] = m[3]; r[2] = m[6];
     r[3] = m[1]; r[4] = m[4]; r[5] = m[7];
     r[6] = m[2]; r[7] = m[5]; r[8] = m[8];
-    this.uniforms(0, r);
+    this.uniforms(0, r, model.grain || 0);
     gl.vertexAttrib3f(this.iAt, vx / TILE, vy / TILE, vz / TILE);
     gl.vertexAttrib4f(this.iLook, 0, 0, 0, 1);
     rd.depthMode('test');
