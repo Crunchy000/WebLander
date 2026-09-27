@@ -607,8 +607,15 @@ export function drawLamp(rd, wx, wy, wz, camX, camY, camZ, size, col, fog = 0, g
 // Contact shadows
 // ---------------------------------------------------------------------------
 
-const shadowPt = { x: 0, y: 0 };
-const shadowRing = [];
+const shadowRing = new Array(16).fill(0);
+const patchCol = [0, 0, 0, 0];
+// The rim, as a table: the same eight angles every time.
+const PATCH_SEG = 8;
+const PATCH_COS = [], PATCH_SIN = [];
+for (let i = 0; i < PATCH_SEG; i++) {
+  const a = (i / PATCH_SEG) * Math.PI * 2;
+  PATCH_COS.push(Math.cos(a)); PATCH_SIN.push(Math.sin(a));
+}
 
 // A shadow blob on the ground.
 //
@@ -645,32 +652,36 @@ export function drawGroundPatch(rd, wx, wz, radius, strength, tint, camX, camY, 
   //
   // Distance thins it rather than tinting it: haze takes contrast away, and a
   // shadow you can still pick out at the horizon is a shadow that is too dark.
-  const col = [tint[0], tint[1], tint[2],
-               Math.max(0, Math.round(strength * 255 * (1 - 0.8 * fog)))];
+  const col = patchCol;
+  col[0] = tint[0]; col[1] = tint[1]; col[2] = tint[2];
+  col[3] = Math.max(0, Math.round(strength * 255 * (1 - 0.8 * fog)));
   if (col[3] <= 2) return;
 
-  const SEG = 8;
   const LIFT = TILE * 0.012;                // just clear of the ground
 
-  // Centre.
-  if (!project((wx - camX) | 0, (ground - LIFT - camY) | 0, (wz - camZ) | 0, shadowPt)) return;
-  const cx = shadowPt.x, cy = shadowPt.y;
+  // Centre. The projection is project()'s, written out: nine calls a patch
+  // and a patch under every tree is real money with the JIT off.
+  const NEAR = DEPTH.NEAR;
+  let vz = (wz - camZ) | 0;
+  if (vz < NEAR) return;
+  const cx = CENTRE_X + (((wx - camX) | 0) * FOCAL_X) / vz;
+  const cy = CENTRE_Y + (((ground - LIFT - camY) | 0) * FOCAL_Y) / vz;
 
-  shadowRing.length = 0;
-  for (let i = 0; i < SEG; i++) {
-    const a = (i / SEG) * Math.PI * 2;
-    const px = (wx + Math.cos(a) * radius) | 0;
-    const pz = (wz + Math.sin(a) * radius) | 0;
+  const ring = shadowRing;
+  for (let i = 0; i < PATCH_SEG; i++) {
+    const px = (wx + PATCH_COS[i] * radius) | 0;
+    const pz = (wz + PATCH_SIN[i] * radius) | 0;
     const py = landAltitude(px, pz);
     if (py >= SEA_LEVEL) return;            // straddling the shoreline
-    if (!project((px - camX) | 0, (py - LIFT - camY) | 0, (pz - camZ) | 0, shadowPt)) return;
-    shadowRing.push(shadowPt.x, shadowPt.y);
+    vz = (pz - camZ) | 0;
+    if (vz < NEAR) return;
+    ring[i * 2] = CENTRE_X + (((px - camX) | 0) * FOCAL_X) / vz;
+    ring[i * 2 + 1] = CENTRE_Y + (((py - LIFT - camY) | 0) * FOCAL_Y) / vz;
   }
 
-  for (let i = 0; i < SEG; i++) {
-    const j = (i + 1) % SEG;
-    rd.tri(cx, cy, shadowRing[i * 2], shadowRing[i * 2 + 1],
-           shadowRing[j * 2], shadowRing[j * 2 + 1], col);
+  for (let i = 0; i < PATCH_SEG; i++) {
+    const j = (i + 1) % PATCH_SEG;
+    rd.tri(cx, cy, ring[i * 2], ring[i * 2 + 1], ring[j * 2], ring[j * 2 + 1], col);
   }
 }
 

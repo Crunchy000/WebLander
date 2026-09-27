@@ -46,11 +46,31 @@ const TC = 64, TC_MASK = TC - 1;
 const tcX = new Int32Array(TC * TC).fill(0x7fffffff);
 const tcZ = new Int32Array(TC * TC);
 const tcAlt = new Int32Array(TC * TC);
-const tcObj = new Int16Array(TC * TC);
+const tcObj = new Int16Array(TC * TC + 1);
 const tcObjVer = new Int32Array(TC * TC).fill(-1);
 const tcRow = new Int16Array(TC * TC).fill(-1);
 const tcGen = new Int32Array(TC * TC).fill(-1);
 const tcCol = new Array(TC * TC).fill(null);
+// Where the tile's object stands and what it is drawn as: its offset within
+// the tile, the ground height there, and its model for the biome. All of
+// them follow from the tile and its type, so they are worked out with the
+// object and kept with it. One slot past the end is a spare, for flushObjects.
+const tcWx = new Int32Array(TC * TC + 1);
+const tcWz = new Int32Array(TC * TC + 1);
+const tcBase = new Int32Array(TC * TC + 1);
+const tcBiome = new Int8Array(TC * TC + 1);
+const tcModel = new Array(TC * TC + 1).fill(null);
+function placeObject(tci, tx, tz, type) {
+  const [jx, jz] = objectOffset(tx, tz);
+  const wx = ((tx * TILE) | 0) + jx;
+  const wz = ((tz * TILE) | 0) + jz;
+  const biome = biomeAt(tx, tz);
+  tcWx[tci] = wx; tcWz[tci] = wz;
+  tcBase[tci] = landAltitude(wx, wz);
+  tcBiome[tci] = biome;
+  tcModel[tci] = modelFor(type, biome);
+}
+
 const P_FLOWERS = prof.section('flowers');
 const P_LANTERNS = prof.section('lanterns');
 import { Player, GRAVITY_START, CHARGE_MAX, HULL_HITS } from './player.js';
@@ -821,11 +841,11 @@ export class Game {
         // later so the landscape behind it is already down.
         if (j > 0) {
           if (tcObjVer[tci] !== objectsVersion) {
-            tcObj[tci] = objectAt(tx, tz);
+            const type = tcObj[tci] = objectAt(tx, tz);
             tcObjVer[tci] = objectsVersion;
+            if (type >= 0) placeObject(tci, tx, tz, type);
           }
-          const type = tcObj[tci];
-          if (type >= 0) this.pending[j].push(tx, tz, type);
+          if (tcObj[tci] >= 0) this.pending[j].push(tx, tz, tci);
         }
       }
 
@@ -927,12 +947,20 @@ export class Game {
     if (window.__layers && window.__layers.objects === false) { list.length = 0; return; }
 
     for (let k = 0; k < list.length; k += 3) {
-      const tx = list[k], tz = list[k + 1], type = list[k + 2];
+      const tx = list[k], tz = list[k + 1];
+      let tci = list[k + 2];
+      // The cache entry noted two rows ago is still this tile's unless the
+      // grid is wider than the cache, in which case it is worked out again
+      // in a spare slot.
+      if (tcX[tci] !== tx || tcZ[tci] !== tz || tcObjVer[tci] !== objectsVersion) {
+        tci = TC * TC;
+        tcObj[tci] = objectAt(tx, tz);
+        if (tcObj[tci] < 0) continue;
+        placeObject(tci, tx, tz, tcObj[tci]);
+      }
+      const type = tcObj[tci];
       const model = MODELS[type];
-      const [jx, jz] = objectOffset(tx, tz);
-      const wx = ((tx * TILE) | 0) + jx;
-      const wz = ((tz * TILE) | 0) + jz;
-      const base = landAltitude(wx, wz);
+      const wx = tcWx[tci], wz = tcWz[tci], base = tcBase[tci];
       if (base >= SEA_LEVEL) continue;
 
       // Anything you are about to fly into stops being lit and becomes a
@@ -946,14 +974,14 @@ export class Game {
       if (pile) {
         // A fallen tree keeps its own colours; only the painted blocks take
         // the biome's.
-        const dress = isNatural(type) ? -1 : biomeAt(tx, tz);
+        const dress = isNatural(type) ? -1 : tcBiome[tci];
         drawPile(this.rd, pile, eyeX, eyeY, eyeZ, haze, row, dress, sil);
         continue;
       }
 
       drawShadow(this.rd, wx, wz, model.radius * 0.85, 0.7,
                  eyeX, eyeY, eyeZ, row, haze, model.height * 0.5);
-      drawModel(this.rd, modelFor(type, biomeAt(tx, tz)), null,
+      drawModel(this.rd, tcModel[tci], null,
                 wx, base, wz, eyeX, eyeY, eyeZ, haze, sil);
 
       // Wrecks smoulder.
