@@ -796,6 +796,22 @@ export class Renderer {
   // quads being the only way to reach it.
   quadShaded(x0, y0, c0, x1, y1, c1, x2, y2, c2, x3, y3, c3) {
     if (this.full) return;
+    if (this.packs) {
+      const k0 = this._pack(c0[0], c0[1], c0[2], c0[3]);
+      const k1 = this._pack(c1[0], c1[1], c1[2], c1[3]);
+      const k2 = this._pack(c2[0], c2[1], c2[2], c2[3]);
+      const k3 = this._pack(c3[0], c3[1], c3[2], c3[3]);
+      const f = this.f32, u = this.u32, z = this.z;
+      let o = this.count * 4;
+      f[o] = x0; f[o + 1] = y0; f[o + 2] = z; u[o + 3] = k0; o += 4;
+      f[o] = x1; f[o + 1] = y1; f[o + 2] = z; u[o + 3] = k1; o += 4;
+      f[o] = x2; f[o + 1] = y2; f[o + 2] = z; u[o + 3] = k2; o += 4;
+      f[o] = x0; f[o + 1] = y0; f[o + 2] = z; u[o + 3] = k0; o += 4;
+      f[o] = x2; f[o + 1] = y2; f[o + 2] = z; u[o + 3] = k2; o += 4;
+      f[o] = x3; f[o + 1] = y3; f[o + 2] = z; u[o + 3] = k3;
+      this.count += 6;
+      return;
+    }
     this.vertex(x0, y0, c0[0], c0[1], c0[2], c0[3]);
     this.vertex(x1, y1, c1[0], c1[1], c1[2], c1[3]);
     this.vertex(x2, y2, c2[0], c2[1], c2[2], c2[3]);
