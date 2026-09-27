@@ -143,20 +143,54 @@ const hazeFoot = [0, 0, 0, 255];
 // pixel -- and a hovering bird never asks for it again.
 const HALF_PIXEL = 0.5;
 function kept() {
-  return { rows: [], camX: 0, camY: 0, camZ: 0, width: -1 };
+  return {
+    rows: [], xs: [], wx: [], wz: [], alt: [],
+    camX: 0, camY: 0, camZ: 0, width: -1,
+    // What is drawn this frame: the kept skyline, or the same points
+    // projected again from where the camera is now.
+    outX: [], outRows: [],
+  };
 }
-function stale(k, near, camX, camY, camZ) {
-  if (k.width !== SCREEN_W) return true;
+// A jump, rather than flight: a new game, a respawn. The old points are no
+// guide to anything from a tile away, so a band that far out of date is done
+// at once whatever the turn.
+const JUMP = 1;
+function staleness(k, near, camX, camY, camZ) {
+  if (k.width !== SCREEN_W) return Infinity;
   const moved = (Math.abs((camX - k.camX) | 0) + Math.abs((camY - k.camY) | 0) +
                  Math.abs((camZ - k.camZ) | 0)) / TILE;
-  return moved * FOCAL_X / near > HALF_PIXEL;
+  return moved > JUMP ? Infinity : moved * FOCAL_X / near;
 }
-function skylineKept(k, near, far, step, camX, camY, camZ) {
-  if (stale(k, near, camX, camY, camZ)) {
-    skylineBetween(near, far, step, camX, camY, camZ, k.rows);
-    k.camX = camX; k.camY = camY; k.camZ = camZ; k.width = SCREEN_W;
+function refresh(k, near, far, step, camX, camY, camZ) {
+  skylineBetween(near, far, step, camX, camY, camZ, k);
+  k.camX = camX; k.camY = camY; k.camZ = camZ; k.width = SCREEN_W;
+}
+
+// While the camera moves, a kept skyline is not thrown away: each column
+// remembers the point of ground that won it, and that point is projected
+// again from where the camera is now. Where the hills are on screen is then
+// exact every frame; the only thing that goes out of date is which hill is
+// the highest along a bearing, and that changes slowly -- a band is at least
+// thirty-four tiles off. So the bands take turns: in flight, only the one
+// that has drifted furthest is sampled afresh each frame, which is a third
+// of the work, and a hovering bird still samples nothing.
+function project(k, camX, camY, camZ) {
+  const n = k.rows.length;
+  if (k.camX === camX && k.camY === camY && k.camZ === camZ) {
+    k.outX = k.xs; k.outRows = k.rows;
+    return;
   }
-  return k.rows;
+  const xs = k.outX === k.xs ? (k.outX = []) : k.outX;
+  const rows = k.outRows === k.rows ? (k.outRows = []) : k.outRows;
+  xs.length = n; rows.length = n;
+  for (let i = 0; i < n; i++) {
+    // Unsigned: the far band reaches past a hundred and twenty-eight tiles,
+    // half the world, where a signed difference would wrap round to behind
+    // the camera. Everything kept here is in front of it.
+    const vz = (k.wz[i] - camZ) >>> 0;
+    xs[i] = CENTRE_X + (((k.wx[i] - camX) | 0) * FOCAL_X) / vz;
+    rows[i] = CENTRE_Y + ((k.alt[i] - camY) * FOCAL_Y) / vz;
+  }
 }
 
 // A band's colour: the sky behind it, taken towards the dusk-coloured dark so
@@ -203,31 +237,37 @@ function hazeAt(y, out) {
 // which is not a truncation but the wrap: the world is a torus whose period
 // is exactly the range of a signed 32-bit integer, so arithmetic that
 // overflows has already gone round it.
-function skylineBetween(near, far, step, camX, camY, camZ, out) {
-  out.length = 0;
-  for (let sx = 0; sx <= SCREEN_W + STEP; sx += STEP) {
+function skylineBetween(near, far, step, camX, camY, camZ, k) {
+  const rows = k.rows, xs = k.xs, bx = k.wx, bz = k.wz, ba = k.alt;
+  let n = 0;
+  // One column to the left of the screen as well as one to the right, so a
+  // skyline projected again after the camera has slid sideways still reaches
+  // both edges.
+  for (let sx = -STEP; sx <= SCREEN_W + STEP; sx += STEP) {
     const bearing = (sx - CENTRE_X) / FOCAL_X;
-    let best = Infinity;
+    let best = Infinity, wxBest = 0, wzBest = 0, altBest = 0;
     for (let z = near; z <= far; z += step) {
       const zFix = z * TILE;
       const wx = (camX + bearing * zFix) | 0;
       const wz = (camZ + zFix) | 0;
-      const row = CENTRE_Y + ((landAltitude(wx, wz) - camY) * FOCAL_Y) / zFix;
-      if (row < best) best = row;
+      const alt = landAltitude(wx, wz);
+      const row = CENTRE_Y + ((alt - camY) * FOCAL_Y) / zFix;
+      if (row < best) { best = row; wxBest = wx; wzBest = wz; altBest = alt; }
     }
-    out.push(best);
+    rows[n] = best; xs[n] = sx; bx[n] = wxBest; bz[n] = wzBest; ba[n] = altBest;
+    n++;
   }
-  return out;
+  rows.length = n; xs.length = n; bx.length = n; bz.length = n; ba.length = n;
 }
 
 // Fill from a skyline down to a flat foot, one quad per step.
-function fillUnder(rd, rows, footY, top, bottom) {
+function fillUnder(rd, xs, rows, footY, top, bottom) {
   const base = Math.min(footY, SCREEN_H);
   for (let i = 0; i + 1 < rows.length; i++) {
     const y0 = rows[i], y1 = rows[i + 1];
     if (y0 >= base && y1 >= base) continue;
-    rd.quadShaded(i * STEP, y0, top, (i + 1) * STEP, y1, top,
-                  (i + 1) * STEP, base, bottom, i * STEP, base, bottom);
+    const x0 = xs[i], x1 = xs[i + 1];
+    rd.quadShaded(x0, y0, top, x1, y1, top, x1, base, bottom, x0, base, bottom);
   }
 }
 
@@ -301,15 +341,29 @@ export function backdropAt(y, out) {
 
 // ... and then the hills, which are what actually hides anything.
 export function drawRidges(rd, camX, camY, camZ) {
+  // The band to sample afresh this frame, if any: the one that has drifted
+  // furthest, once that is more than half a pixel. A band whose width no
+  // longer matches the screen, or that the camera has jumped away from, is
+  // always done at once.
+  let worst = null, worstBy = HALF_PIXEL;
+  for (const band of BANDS) {
+    if (!band.kept) band.kept = kept();
+    const by = staleness(band.kept, band.near, camX, camY, camZ);
+    if (by === Infinity) refresh(band.kept, band.near, band.far, band.step, camX, camY, camZ);
+    else if (by > worstBy) { worst = band; worstBy = by; }
+  }
+  if (worst) refresh(worst.kept, worst.near, worst.far, worst.step, camX, camY, camZ);
+
   for (const band of BANDS) {
     const footY = rowAt(band.near, camY, FLOOR);
     if (footY <= 0) continue;
-    if (!band.kept) band.kept = kept();
-    const rows = skylineKept(band.kept, band.near, band.far, band.step, camX, camY, camZ);
+    const k = band.kept;
+    project(k, camX, camY, camZ);
+    const rows = k.outRows;
     let top = Infinity;
     for (const y of rows) if (y < top) top = y;
     if (top >= SCREEN_H) continue;
-    fillUnder(rd, rows, footY,
+    fillUnder(rd, k.outX, rows, footY,
               tint(band.dark, (top + Math.min(footY, SCREEN_H)) / 2, col),
               hazeAt(footY, colB));
   }
@@ -327,7 +381,12 @@ export function drawRidges(rd, camX, camY, camZ) {
 const DARKEN = 0.88;
 const nearKept = kept();
 export function drawNearGround(rd, camX, camY, camZ) {
-  const rows = skylineKept(nearKept, NEAR_FROM, NEAR_TO, NEAR_STEP, camX, camY, camZ);
+  // Near enough that it is sampled afresh whenever it has moved at all by
+  // half a pixel, rather than taking turns with the bands.
+  if (staleness(nearKept, NEAR_FROM, camX, camY, camZ) > HALF_PIXEL) {
+    refresh(nearKept, NEAR_FROM, NEAR_TO, NEAR_STEP, camX, camY, camZ);
+  }
+  const rows = nearKept.rows;
   let top = Infinity;
   for (const y of rows) if (y < top) top = y;
   if (top >= SCREEN_H) return;          // all of it below the frame: nothing to do
@@ -341,5 +400,5 @@ export function drawNearGround(rd, camX, camY, camZ) {
   col[1] = Math.round(g[1] * DARKEN);
   col[2] = Math.round(g[2] * DARKEN);
   col[3] = 255;
-  fillUnder(rd, rows, SCREEN_H, col, col);
+  fillUnder(rd, nearKept.xs, rows, SCREEN_H, col, col);
 }
