@@ -2,12 +2,12 @@
 //
 // Folded rather than modelled: every piece is a flat facet of paper, all of
 // it in the oranges of a fire -- ember at the roots, flame, amber, gold at
-// the tips. A hooked beak and a crest of three spikes; a neck that rises to
-// the head; wings raised in a V, each an arm folded once and a hand cut into
-// six long flight feathers with three shorter ones behind; legs hanging with
-// their talons; and a tail of five tongues of flame, each drooping and then
-// curling up at its tip -- and the tips burning, lit from within, so they
-// glow when the evening has dimmed everything else.
+// the tips. A hooked beak and a crest of three swept-back feathers; a neck
+// that rises to the head; wings raised in a V, each an arm folded once and
+// a hand cut into six long flight feathers with three shorter ones behind;
+// legs hanging with their talons; and a tail of five tongues of flame, each
+// drooping and then curling up at its tip -- and the tips burning, lit from
+// within, so they glow when the evening has dimmed everything else.
 //
 // Paper, twice over. Every facet's tone is nudged a little lighter or darker
 // than its neighbours, the way a folded sheet catches the light unevenly,
@@ -91,10 +91,8 @@ function build(points, tris, dy, seed) {
 const BODY_P = {
   beak: [0, -0.33, 0.64],
   billTop: [0, -0.47, 0.46], billR: [0.045, -0.39, 0.46], billUnder: [0, -0.33, 0.47],
-  crown: [0, -0.55, 0.34], cheekR: [0.10, -0.43, 0.33], chin: [0, -0.30, 0.36],
-  eyeAR: [0.098, -0.47, 0.36], eyeBR: [0.104, -0.445, 0.31], eyeCR: [0.094, -0.425, 0.36],
-  crestR: [0.035, -0.52, 0.25],
-  spike1: [0, -0.84, 0.20], spike2R: [0.09, -0.74, 0.08], spike3: [0, -0.70, -0.02],
+  crown: [0, -0.55, 0.34], cheekR: [0.115, -0.43, 0.32], chin: [0, -0.30, 0.36],
+  crestR: [0.05, -0.51, 0.25],
   nape: [0, -0.44, 0.17], neckR: [0.11, -0.26, 0.18], throat: [0, -0.10, 0.26],
   back: [0, -0.20, -0.02], shoulderR: [0.17, -0.05, -0.02], keel: [0, 0.17, 0.06],
   rump: [0, -0.12, -0.28], hipR: [0.10, 0.02, -0.26], belly: [0, 0.14, -0.16],
@@ -111,11 +109,6 @@ const BODY_T = [
   [['billTop', 'cheekR', 'billR'], AMBER, true],
   [['billR', 'cheekR', 'chin'], AMBER, true],
   [['billR', 'chin', 'billUnder'], GOLD, true],
-  [['eyeAR', 'eyeBR', 'eyeCR'], INK, true],
-  // The crest: three spikes swept back off the crown.
-  [['crown', 'spike1', 'crestR'], RUST, true],
-  [['crestR', 'spike2R', 'nape'], EMBER, true],
-  [['nape', 'spike3', 'crestR'], FLAME, true],
   [['crown', 'crestR', 'cheekR'], FLAME, true],
   [['crestR', 'nape', 'cheekR'], RUST, true],
   // Head to neck.
@@ -174,6 +167,45 @@ function tongue(name, spread, reach, side) {
   BODY_T.push([[n('a', 2), n('c', 3), n('c', 2)], EMBERGLOW_A, both, true]);
   BODY_T.push([[n('c', 2), n('c', 3), n('b', 2)], EMBERGLOW_B, both, true]);
 }
+// The eyes, laid flat on the face just behind the beak -- in the plane of
+// that facet and a hair proud of it, so they are there from the side and
+// the front and gone from behind, as a bird's are. (Standing out from the
+// head, they read from the chase camera as a crawfish's, on stalks.)
+{
+  const [A, B, C] = [BODY_P.billTop, BODY_P.cheekR, BODY_P.crown];
+  const e1 = A.map((v, i) => B[i] - v), e2 = A.map((v, i) => C[i] - v);
+  let n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+  const l = Math.hypot(...n);
+  n = n.map((v) => v / l);
+  if (n[0] < 0) n = n.map((v) => -v);                          // outward, to the right
+  const on = (a, b, c) => A.map((v, i) => v * a + B[i] * b + C[i] * c + n[i] * 0.004);
+  BODY_P.eyeAR = on(0.30, 0.46, 0.24);
+  BODY_P.eyeBR = on(0.18, 0.44, 0.38);
+  BODY_P.eyeCR = on(0.20, 0.60, 0.20);
+  BODY_T.push([['eyeAR', 'eyeBR', 'eyeCR'], INK, true]);
+}
+
+// The crest: three feathers swept back along the top of the head, each
+// folded down its middle into a shallow V, so it has width from every side
+// rather than being a blade that is a line from behind.
+function plume(name, front, back, tip, col) {
+  const mid = front.map((v, i) => (v + back[i]) / 2);
+  const flare = mid.map((v, i) => v + (tip[i] - v) * 0.4);
+  BODY_P[name + 'f'] = front;
+  BODY_P[name + 'b'] = back;
+  BODY_P[name + 't'] = tip;
+  BODY_P[name + 'R'] = [flare[0] + 0.04, flare[1] + 0.015, flare[2]];
+  BODY_T.push([[name + 'f', name + 't', name + 'R'], col, true]);
+  BODY_T.push([[name + 'R', name + 't', name + 'b'], col === RUST ? EMBER : RUST, true]);
+}
+{
+  const lerp = (p, q, t) => p.map((v, i) => v + (q[i] - v) * t);
+  const top = lerp(BODY_P.crown, BODY_P.nape, 0.5);
+  plume('plumeA', BODY_P.crown, top, [0, -0.76, 0.16], FLAME);
+  plume('plumeB', top, BODY_P.nape, [0, -0.68, 0.01], RUST);
+  plume('plumeC', BODY_P.nape, lerp(BODY_P.nape, BODY_P.back, 0.35), [0, -0.57, -0.12], FLAME);
+}
+
 tongue('t0', 0, 1.25, false);
 tongue('t1', 0.55, 1.05, true);
 tongue('t2', 1.15, 0.85, true);
