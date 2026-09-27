@@ -14,7 +14,7 @@ import { drawRidges, drawNearGround, drawHorizonHaze, backdropAt } from './ridge
 import { flowersInRow, nearestFlower, takeFlower, resetFlowers } from './flowers.js';
 import { sampleRibbon, drawRibbon, resetRibbon } from './ribbon.js';
 import { serene } from './style.js';
-import { depthAt, waveLift, seaShade } from './sea.js';
+import { seaShade } from './sea.js';
 import { updateWeather, drawWeather, resetWeather, weather, SNOW } from './weather.js';
 import { drawClouds } from './clouds.js';
 import { project, depthOf, SCREEN_W, SCREEN_H, CENTRE_X, CENTRE_Y, FOCAL_X, FOCAL_Y, DEPTH } from './renderer.js';
@@ -40,8 +40,8 @@ const P_SCENERY = prof.section('scenery');
 // Direct-mapped on the tile's world coordinates, 64 by 64, which is more
 // than the grid ever shows. An entry is good while its coordinates match;
 // its object while objectsVersion has not moved; its colour while the row
-// and lightGen are the ones it was worked out for. Open water is never
-// cached: its colour moves with the waves.
+// and lightGen are the ones it was worked out for. Water goes in with the
+// land: the sea is still, so its surf depends only on where the tile is.
 const TC = 64, TC_MASK = TC - 1;
 const tcX = new Int32Array(TC * TC).fill(0x7fffffff);
 const tcZ = new Int32Array(TC * TC);
@@ -783,17 +783,7 @@ export class Game {
           tcX[tci] = tx; tcZ[tci] = tz; tcAlt[tci] = alt;
           tcObjVer[tci] = -1; tcRow[tci] = -1;
         }
-        let viewY = (alt - eyeY) | 0;
-
-        // Water heaves, and brightens with swell, surf and glitter. Both come
-        // off the same depth, so it is worked out once per corner here rather
-        // than twice inside sea.js.
-        let seaLift = 0;
-        if (alt === SEA_LEVEL) {
-          const depth = depthAt(worldX, worldZ);
-          viewY = (viewY + waveLift(worldX, worldZ, depth)) | 0;
-          seaLift = seaShade(worldX, worldZ, viewX, viewZ, depth);
-        }
+        const viewY = (alt - eyeY) | 0;
 
         const ok = inFront;
         if (ok) {
@@ -808,14 +798,12 @@ export class Game {
           // The lift belongs to open water only. A tile with one corner
           // ashore is drawn as land, and brightening it would put surf on
           // the beach rather than in front of it.
-          const wet = alt === SEA_LEVEL && prevAlt === SEA_LEVEL;
           let col;
-          if (wet) {
-            col = tileColour(prevAlt, alt, j, worldX, worldZ, seaLift);
-          } else if (tcRow[tci] === j && tcGen[tci] === lightGen) {
+          if (tcRow[tci] === j && tcGen[tci] === lightGen) {
             col = tcCol[tci];
           } else {
-            col = tileColour(prevAlt, alt, j, worldX, worldZ, 0);
+            const wet = alt === SEA_LEVEL && prevAlt === SEA_LEVEL;
+            col = tileColour(prevAlt, alt, j, worldX, worldZ, wet ? seaShade(worldX, worldZ) : 0);
             tcCol[tci] = col; tcRow[tci] = j; tcGen[tci] = lightGen;
           }
           rd.quadZ(

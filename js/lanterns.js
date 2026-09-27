@@ -1,9 +1,8 @@
 // lanterns.js -- paper lanterns set adrift on the water.
 //
 // The sea had one canoe every few miles and nothing else. This puts a
-// ceremony on it: dozens of small paper boxes on floats, riding the same
-// swell the water is drawn with, lit from inside after dark and reflecting
-// down the surface underneath them.
+// ceremony on it: dozens of small paper boxes on floats, lit from inside
+// after dark and reflecting down the surface underneath them.
 //
 // They are the cheapest thing in the world to draw and the most numerous, so
 // the model is as small as it can be and still be a lantern: four paper
@@ -18,7 +17,6 @@ import { TILE, rnd, rndSigned } from './maths.js';
 import { Model, facet, shade, drawModel, recolour, silhouetteAmount } from './model.js';
 import { sky } from './daylight.js';
 import { landAltitude, SEA_LEVEL } from './landscape.js';
-import { depthAt, waveLift } from './sea.js';
 import { project, SCREEN_W, SCREEN_H } from './renderer.js';
 import { spawn, P_FADE } from './particles.js';
 
@@ -284,8 +282,7 @@ const pt = { x: 0, y: 0 };
 const reflectCol = [0, 0, 0, 0];
 
 export function drawLantern(rd, l, camX, camY, camZ, fog = 0) {
-  const heave = waveLift(l.x, l.z, depthAt(l.x, l.z));
-  const y = (SEA_LEVEL + heave - l.lift) | 0;
+  const y = (SEA_LEVEL - l.lift) | 0;
   const sil = silhouetteAmount((l.x - camX) / TILE, (l.z - camZ) / TILE);
 
   // How lit they are is the game's own measure of how dark it is, so they

@@ -320,9 +320,9 @@ export function tileColour(prevAlt, alt, row, wx, wz, lift = 0) {
       groundBase(wx, wz, alt | 12, false, base);
       r = (lo0 + base[0]) / 2; g = (lo1 + base[1]) / 2; b = (lo2 + base[2]) / 2;
     }
-    // Swell, surf and glitter all arrive as one brightness offset, worked out
-    // by sea.js where the camera is known. Adding it here, before the
-    // packing, means the quantisation dithers the wave for nothing.
+    // The surf arrives as one brightness offset, worked out by sea.js.
+    // Adding it here, before the packing, means the quantisation dithers the
+    // white water into the sea for nothing.
     if (lift !== 0) { r += lift; g += lift; b += lift; }
   }
 
