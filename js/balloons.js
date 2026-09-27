@@ -19,7 +19,7 @@ import {
   SEA_LEVEL, landAltitude, fogForRow, FOG_MAX, LANDSCAPE_Z_MID,
 } from './landscape.js';
 import { HIGHEST_ALTITUDE } from './player.js';
-import { project, SCREEN_W, SCREEN_H, CENTRE_X, FOCAL_X } from './renderer.js';
+import { project, depthOf, SCREEN_W, SCREEN_H, CENTRE_X, FOCAL_X } from './renderer.js';
 
 // Groups, not balloons: see GROUP_SIZES below. They average a shade over two
 // apiece, so three groups is about six balloons where four pairs was eight.
@@ -491,8 +491,17 @@ export function drawFarBalloons(rd, camX, camY, camZ) {
   }
   if (!far.length) return;
 
-  // Furthest first. There is no depth buffer, so submission order is the
-  // whole of what puts one balloon in front of another.
+  // Furthest first. Without the GPU model pass there is no depth buffer, so
+  // submission order is the whole of what puts one balloon in front of
+  // another.
+  //
+  // With it, the balloons go to the GPU like the scenery does, and the
+  // bunting is painted into the depth buffer at the depth of the balloon
+  // drawing it, so a balloon still goes behind a nearer one's flags. The
+  // depth is cleared again afterwards: the landscape pass that follows
+  // expects to start from nothing.
+  const gpu = rd.instancer;
+  if (gpu) rd.depthMode('paint');
   const n = far.length / 3;
   const order = [];
   for (let i = 0; i < n; i++) order.push(i);
@@ -507,6 +516,7 @@ export function drawFarBalloons(rd, camX, camY, camZ) {
     const t = Math.min(1, Math.max(0, (dz - FAR_MIN / TILE) /
                                       ((FAR_HAZE - FAR_MIN) / TILE)));
     const fog = Math.min(0.94, fogForRow(1) + (1 - FOG_MAX) * t * 0.8);
+    if (gpu) rd.z = depthOf((b.z - camZ) | 0);
     // The burner still shows out here. It is a lit face, so the haze does not
     // touch it, and a warm speck over the ranges after dark is most of the
     // reason for putting balloons that far away at all.
@@ -524,6 +534,12 @@ export function drawFarBalloons(rd, camX, camY, camZ) {
     if (k > 0 && ((g.bs[k - 1].z - camZ) | 0) > FAR_MIN) {
       drawLink(rd, g, k - 1, camX, camY, camZ, 0, fog);
     }
+  }
+  if (gpu) {
+    gpu.flush();
+    rd.depthMode('off');
+    rd.gl.clear(rd.gl.DEPTH_BUFFER_BIT);
+    rd.z = 1;
   }
 }
 

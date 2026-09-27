@@ -34,7 +34,7 @@ const VS = `#version 300 es
 in vec3 aLocal;
 in vec4 aCol;
 in vec3 iAt;
-in vec2 iLook;
+in vec4 iLook;
 uniform vec4 uProj;
 uniform vec2 uScreen;
 uniform vec2 uDepth;
@@ -58,14 +58,23 @@ void main() {
   // Depth-tested as if it stood uPull tiles nearer than it does. See PULL.
   float zd = max(z - uPull, 0.016);
   gl_Position = vec4(xc, yc, (uDepth.x + uDepth.y / zd) * z, z);
-  // litColour(): the sky's tint, then the row's haze.
-  vec3 c = aCol.rgb * uTint;
-  c = mix(c, uFog, iLook.x);
-  // ... and the silhouette, which goes to black over the last of its range.
-  float sil = iLook.y;
-  float toBlack = sil <= uBlackAt ? 0.0 : (sil - uBlackAt) / (1.0 - uBlackAt);
-  c = mix(c, uSil * (1.0 - toBlack), sil);
-  vCol = vec4(clamp(c, 0.0, 1.0), 1.0);
+  vec3 c;
+  if (aCol.a < 0.5) {
+    // A face that makes its own light (alpha 0 in the shape): emissive(),
+    // which is the row's haze and nothing else -- no tint, no silhouette,
+    // because a lamp that dims as it comes towards you is not a lamp.
+    c = mix(aCol.rgb, uFog, iLook.z);
+  } else {
+    // litColour(): the sky's tint, then the row's haze.
+    c = mix(aCol.rgb * uTint, uFog, iLook.x);
+    // ... and the silhouette, which goes to black over the last of its range.
+    float sil = iLook.y;
+    float toBlack = sil <= uBlackAt ? 0.0 : (sil - uBlackAt) / (1.0 - uBlackAt);
+    c = mix(c, uSil * (1.0 - toBlack), sil);
+  }
+  // How much of it shows: 1, except for a glowing copy laid over its plain
+  // original (see drawModel's fade).
+  vCol = vec4(clamp(c, 0.0, 1.0), iLook.w);
 }`;
 
 const FS = `#version 300 es
@@ -91,7 +100,7 @@ void main() { oCol = vCol; }`;
 const PULL = 2;
 
 const MODEL_STRIDE = 16;          // three floats of position, four bytes of colour
-const INST_FLOATS = 5;            // x, y, z, haze, silhouette
+const INST_FLOATS = 7;            // x, y, z, haze, silhouette, haze unstepped, fade
 const MAX_INSTANCES = 4096;
 
 function compile(gl, type, src) {
@@ -173,8 +182,10 @@ export class ModelPass {
     this.rot = new Float32Array(9);
     this.identity = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
 
-    // This frame's copies, grouped by shape.
+    // This frame's copies, grouped by shape: the solid ones, and the glowing
+    // copies laid over them, which are drawn second and blended.
     this.groups = new Map();       // Model -> number[] of instance floats
+    this.overlays = new Map();
     this.silOut = [0, 0, 0];
     this.count = 0;
   }
@@ -191,6 +202,7 @@ export class ModelPass {
     if (need > this.shapeBytes.byteLength) return null;   // full: the CPU path draws it
     const first = this.shapeVerts;
     let w = this.shapeVerts;
+    let glow = false;
     const put = (i, col) => {
       const fi = w * 4;
       this.shapeF32[fi] = v[i * 3] / TILE;
@@ -200,10 +212,11 @@ export class ModelPass {
       this.shapeU8[bi] = col[0];
       this.shapeU8[bi + 1] = col[1];
       this.shapeU8[bi + 2] = col[2];
-      this.shapeU8[bi + 3] = 255;
+      this.shapeU8[bi + 3] = glow ? 0 : 255;
       w++;
     };
     for (const f of model.faces) {
+      glow = f.glow === true;
       for (let k = 1; k + 1 < f.idx.length; k++) {
         put(f.idx[0], f.col);
         put(f.idx[k], f.col);
@@ -220,17 +233,23 @@ export class ModelPass {
   // One copy of a shape: camera-relative position in fixed point, the row's
   // haze and the silhouette amount, exactly as drawModel is handed them.
   // Returns false when this pass cannot take it, so the caller can fall back.
-  add(model, vx, vy, vz, fog, sil) {
+  add(model, vx, vy, vz, fog, sil, fade = 1) {
     if (!this.ok || this.count >= MAX_INSTANCES) return false;
-    // Anything glowing is a light, and lights are drawn by hand.
-    if (model.glows === undefined) model.glows = model.faces.some((f) => f.glow);
-    if (model.glows) return false;
     if (!this.shape(model)) return false;
-    let list = this.groups.get(model);
-    if (!list) this.groups.set(model, list = []);
-    // The haze in the same steps litColour() uses, so the two paths agree.
+    const groups = fade >= 0.999 ? this.groups : this.overlays;
+    let list = groups.get(model);
+    if (!list) groups.set(model, list = []);
+    // The haze in the same steps litColour() uses, so the two paths agree;
+    // a light takes it unstepped, as emissive() does.
     const q = fog > 0.01 ? Math.round(fog * FOG_STEPS) / FOG_STEPS : 0;
-    list.push(vx / TILE, vy / TILE, vz / TILE, q, sil > 0.01 ? sil : 0);
+    // A glowing copy of an open shape -- a balloon's envelope -- was laid on
+    // twice by the painter's order, far side and near, and a lit envelope is
+    // meant to look like that: light through paper. The depth test keeps
+    // only the near side here, so it carries both layers' worth.
+    let a = fade;
+    if (a < 0.999 && model.solid !== true) a = a * (2 - a);
+    list.push(vx / TILE, vy / TILE, vz / TILE, q, sil > 0.01 ? sil : 0,
+              fog > 0.01 ? fog : 0, a >= 0.999 ? 1 : a);
     this.count++;
     return true;
   }
@@ -273,8 +292,6 @@ export class ModelPass {
   // Returns false when this path cannot take it, for the caller to fall back.
   drawTurned(model, m, vx, vy, vz, fresh) {
     if (!this.ok) return false;
-    if (model.glows === undefined) model.glows = model.faces.some((f) => f.glow);
-    if (model.glows) return false;
     const shape = this.shape(model);
     if (!shape) return false;
     const rd = this.rd, gl = this.gl;
@@ -289,7 +306,7 @@ export class ModelPass {
     r[6] = m[2]; r[7] = m[5]; r[8] = m[8];
     this.uniforms(0, r);
     gl.vertexAttrib3f(this.iAt, vx / TILE, vy / TILE, vz / TILE);
-    gl.vertexAttrib2f(this.iLook, 0, 0);
+    gl.vertexAttrib4f(this.iLook, 0, 0, 0, 1);
     rd.depthMode('test');
     if (fresh) {
       gl.clearDepth(1);
@@ -320,12 +337,16 @@ export class ModelPass {
     // Lay every group's copies end to end and send them up once.
     let at = 0;
     const ranges = [];
-    for (const [model, list] of this.groups) {
-      if (!list.length) continue;
-      this.inst.set(list, at);
-      ranges.push(model, at, list.length / INST_FLOATS);
-      at += list.length;
-      list.length = 0;
+    let overlaysFrom = -1;
+    for (const groups of [this.groups, this.overlays]) {
+      if (groups === this.overlays) overlaysFrom = ranges.length;
+      for (const [model, list] of groups) {
+        if (!list.length) continue;
+        this.inst.set(list, at);
+        ranges.push(model, at, list.length / INST_FLOATS);
+        at += list.length;
+        list.length = 0;
+      }
     }
     gl.bindBuffer(gl.ARRAY_BUFFER, this.ibo);
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.inst, 0, at);
@@ -333,7 +354,7 @@ export class ModelPass {
 
     this.uniforms(PULL, this.identity);
 
-    // An opaque pass: nothing here is see-through.
+    // An opaque pass first: nothing in it is see-through.
     gl.disable(gl.BLEND);
     // And a closed one. Every shape in it has been through Model.seal(), so
     // its faces all point outward, and the ones pointing away from the camera
@@ -345,6 +366,15 @@ export class ModelPass {
     gl.frontFace(gl.CCW);
     let culling = false;
     for (let r = 0; r < ranges.length; r += 3) {
+      // Then the glowing copies, over the solid shapes they copy: blended,
+      // and tested but not written, so each lands exactly on its original --
+      // the same corners through the same arithmetic come out at the same
+      // depth -- and not on anything nearer.
+      if (r === overlaysFrom) {
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.depthMask(false);
+      }
       const model = ranges[r];
       const shape = this.shapes.get(model);
       // Only a closed shell may lose its far side. A flower's petals and
@@ -356,10 +386,14 @@ export class ModelPass {
       }
       const byte = ranges[r + 1] * 4;
       gl.vertexAttribPointer(this.iAt, 3, gl.FLOAT, false, INST_FLOATS * 4, byte);
-      gl.vertexAttribPointer(this.iLook, 2, gl.FLOAT, false, INST_FLOATS * 4, byte + 12);
+      gl.vertexAttribPointer(this.iLook, 4, gl.FLOAT, false, INST_FLOATS * 4, byte + 12);
       gl.drawArraysInstanced(gl.TRIANGLES, shape.first, shape.count, ranges[r + 2]);
       prof.count('draw calls', 1);
       rd.drawn = (rd.drawn || 0) + shape.count * ranges[r + 2];
+    }
+    if (overlaysFrom >= 0 && overlaysFrom < ranges.length) {
+      gl.depthMask(true);
+      if (rd.blendMode === 'add') gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
     }
     this.count = 0;
 

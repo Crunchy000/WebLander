@@ -402,13 +402,15 @@ let faceDepth = new Float64Array(64);
 // blend -- no extra blend mode, no extra draw call.
 export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ,
                           fog = 0, sil = 0, fade = 1) {
-  // Inside the landscape pass, anything that stands still, is opaque and does
-  // not glow can go to the GPU instead (see modelpass.js): it is tested
-  // against the depth the pass is laying down, so it no longer needs to be
-  // drawn at exactly the right moment in the painter's order. Anything that
-  // is turned by a matrix, fading, or lit from inside stays on this path.
-  if (!matrix && fade >= 0.999 && rd.instancer && rd.depthState === 'paint' &&
-      rd.instancer.add(model, (wx - camX) | 0, (wy - camY) | 0, (wz - camZ) | 0, fog, sil)) {
+  // Inside the landscape pass, anything that stands still can go to the GPU
+  // instead (see modelpass.js): it is tested against the depth the pass is
+  // laying down, so it no longer needs to be drawn at exactly the right
+  // moment in the painter's order. Lights go too -- the lanterns, a burner --
+  // and so does a glowing copy laid over its original, which the GPU pass
+  // blends on after the solid shapes. Only what is turned by a matrix stays
+  // on this path.
+  if (!matrix && rd.instancer && rd.depthState === 'paint' &&
+      rd.instancer.add(model, (wx - camX) | 0, (wy - camY) | 0, (wz - camZ) | 0, fog, sil, fade)) {
     return;
   }
   const verts = model.verts;
