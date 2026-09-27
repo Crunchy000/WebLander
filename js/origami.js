@@ -1,10 +1,10 @@
 // origami.js -- the folded-paper bird, and how it flies.
 //
 // Folded rather than modelled: every piece is a flat facet of paper in one
-// flat colour, the way a real one is -- a yellow beak, a red crown, orange
-// flanks and a yellow breast, a split paper tail, and two green wings, each
-// a single sheet with one crease across it so it catches the light in two
-// tones. Thirty-two triangles in all.
+// flat colour, the way a real one is -- a yellow beak, a red crown and crest,
+// orange flanks and a yellow breast, a tail of three feathers, thin legs to
+// stand on, and two green wings, each a folded arm and a hand cut into three
+// flight feathers. Seventy-six triangles in all.
 //
 // It replaced a bird decoded from a downloaded model: 546 triangles, whose
 // colours had been sampled off a texture, and whose wings had no joints and
@@ -28,6 +28,9 @@ const OCHRE = [202, 124, 4];
 const MAROON = [148, 22, 12];
 const LEAF = [22, 122, 34];
 const PINE = [4, 100, 22];
+const LIME = [112, 164, 28];
+const INK = [34, 22, 26];
+const TWIG = [92, 56, 30];
 
 // Paper has no inside, so a facet is lit by how it is inclined, not which
 // way it faces: both sides of a sheet take the same light. Enough of it that
@@ -36,11 +39,20 @@ const PINE = [4, 100, 22];
 const SHADE_FLOOR = 0.74;
 const SHADE_RANGE = 0.36;
 
-function build(points, faces, dy) {
+// A piece is written as named points and triangles between them, which is
+// easier to fold on paper than a table of numbers. A name ending in R has a
+// twin ending in L, the same point mirrored across the bird's middle, so each
+// side is only written once.
+function build(points, tris, dy) {
   const m = new Model();
-  for (const [x, y, z] of points) m.vert(x, y - dy, z);
+  const at = {};
+  for (const [name, [x, y, z]] of Object.entries(points)) {
+    at[name] = m.vert(x, y - dy, z);
+    if (name.endsWith('R')) at[name.slice(0, -1) + 'L'] = m.vert(-x, y - dy, z);
+  }
   const v = m.verts;
-  for (const [a, b, c, col] of faces) {
+  const add = (names, col) => {
+    const [a, b, c] = names.map((n) => at[n]);
     const ax = v[a * 3], ay = v[a * 3 + 1], az = v[a * 3 + 2];
     const e1 = [v[b * 3] - ax, v[b * 3 + 1] - ay, v[b * 3 + 2] - az];
     const e2 = [v[c * 3] - ax, v[c * 3 + 1] - ay, v[c * 3 + 2] - az];
@@ -52,73 +64,115 @@ function build(points, faces, dy) {
     const len = Math.hypot(n[0], n[1], n[2]) || 1;
     const lit = Math.abs((n[0] * LIGHT[0] + n[1] * LIGHT[1] + n[2] * LIGHT[2]) / len);
     m.face([a, b, c], shade(col, SHADE_FLOOR + SHADE_RANGE * lit));
+  };
+  for (const [names, col, both] of tris) {
+    add(names, col);
+    // ... and its twin on the other side, if it has one.
+    if (both) add(names.map((n) => (n.endsWith('R') ? n.slice(0, -1) + 'L' : n)), col);
   }
   return m;
 }
 
 // --- the body --------------------------------------------------------------
 //
-// Four rings of points from beak to tail -- the head, the shoulders, the
-// hips -- joined by folds, closed at the back, with the tail as two loose
-// flaps of paper off the rump, raised in a V so it shows from behind.
-const BODY_P = [
-  [0, -0.20, 0.62],       // 0  beak tip
-  [0, -0.38, 0.30],       // 1  crown
-  [0.09, -0.22, 0.30],    // 2  right cheek
-  [0, -0.08, 0.34],       // 3  throat
-  [-0.09, -0.22, 0.30],   // 4  left cheek
-  [0, -0.18, 0.02],       // 5  back
-  [0.16, -0.02, 0.0],     // 6  right flank
-  [0, 0.14, 0.10],        // 7  breast
-  [-0.16, -0.02, 0.0],    // 8  left flank
-  [0, -0.08, -0.30],      // 9  rump
-  [0.07, -0.02, -0.28],   // 10 right hip
-  [0, 0.10, -0.20],       // 11 belly
-  [-0.07, -0.02, -0.28],  // 12 left hip
-  [0.18, -0.30, -0.66],   // 13 tail, right tip
-  [0, -0.16, -0.54],      // 14 tail, notch
-  [-0.18, -0.30, -0.66],  // 15 tail, left tip
-];
+// Rings of points from beak to tail -- the base of the beak, the head, the
+// neck, the shoulders, the hips -- joined by folds and closed at the rump.
+// On top of that: a folded crest, an eye either side, a tail of three
+// feathers fanned and raised so it shows from behind, and two thin legs with
+// toes, which are what it stands on.
+const BODY_P = {
+  beak: [0, -0.21, 0.66],
+  billTop: [0, -0.30, 0.42], billR: [0.055, -0.22, 0.42], billUnder: [0, -0.15, 0.42],
+  crown: [0, -0.41, 0.28], cheekR: [0.115, -0.26, 0.27], chin: [0, -0.10, 0.30],
+  crestTip: [0, -0.55, 0.12], crestR: [0.028, -0.43, 0.18],
+  eyeAR: [0.113, -0.30, 0.30], eyeBR: [0.118, -0.275, 0.26], eyeCR: [0.110, -0.25, 0.30],
+  nape: [0, -0.31, 0.10], neckR: [0.14, -0.14, 0.13], throat: [0, 0.03, 0.22],
+  back: [0, -0.21, -0.04], shoulderR: [0.175, -0.05, -0.04], keel: [0, 0.17, 0.04],
+  rump: [0, -0.13, -0.28], hipR: [0.10, 0.0, -0.26], belly: [0, 0.13, -0.17],
+  vent: [0, -0.03, -0.37],
+  fanR: [0.21, -0.35, -0.74], notchR: [0.08, -0.22, -0.64], fan: [0, -0.24, -0.84],
+  thighR: [0.05, 0.10, -0.13], kneeR: [0.05, 0.11, -0.03], ankleR: [0.055, 0.27, -0.07],
+  toeAR: [0.02, 0.28, 0.05], toeBR: [0.10, 0.28, 0.04],
+};
 const BODY_T = [
   // The beak, folded along its top and bottom.
-  [0, 1, 2, YELLOW], [0, 4, 1, YELLOW], [0, 2, 3, OCHRE], [0, 3, 4, OCHRE],
-  // Head to shoulders.
-  [1, 5, 6, RED], [1, 6, 2, SCARLET], [1, 8, 5, RED], [1, 4, 8, SCARLET],
-  [2, 6, 7, OCHRE], [2, 7, 3, YELLOW], [4, 3, 7, YELLOW], [4, 7, 8, OCHRE],
+  [['beak', 'billTop', 'billR'], YELLOW, true],
+  [['beak', 'billR', 'billUnder'], OCHRE, true],
+  // The base of the beak to the head.
+  [['billTop', 'crown', 'cheekR'], RED, true],
+  [['billTop', 'cheekR', 'billR'], SCARLET, true],
+  [['billR', 'cheekR', 'chin'], YELLOW, true],
+  [['billR', 'chin', 'billUnder'], OCHRE, true],
+  // The crest, a single strip of paper folded down its length.
+  [['crown', 'crestTip', 'crestR'], RED, true],
+  [['crestR', 'crestTip', 'nape'], MAROON, true],
+  // The eyes, standing just proud of the cheeks.
+  [['eyeAR', 'eyeBR', 'eyeCR'], INK, true],
+  // Head to neck.
+  [['crown', 'nape', 'neckR'], RED, true],
+  [['crown', 'neckR', 'cheekR'], SCARLET, true],
+  [['cheekR', 'neckR', 'throat'], OCHRE, true],
+  [['cheekR', 'throat', 'chin'], YELLOW, true],
+  // Neck to shoulders.
+  [['nape', 'back', 'shoulderR'], RED, true],
+  [['nape', 'shoulderR', 'neckR'], SCARLET, true],
+  [['neckR', 'shoulderR', 'keel'], OCHRE, true],
+  [['neckR', 'keel', 'throat'], YELLOW, true],
   // Shoulders to hips.
-  [5, 10, 6, SCARLET], [5, 9, 10, RED], [5, 8, 12, SCARLET], [5, 12, 9, RED],
-  [6, 10, 11, OCHRE], [6, 11, 7, MAROON], [8, 7, 11, MAROON], [8, 11, 12, OCHRE],
+  [['back', 'rump', 'hipR'], RED, true],
+  [['back', 'hipR', 'shoulderR'], SCARLET, true],
+  [['shoulderR', 'hipR', 'belly'], OCHRE, true],
+  [['shoulderR', 'belly', 'keel'], MAROON, true],
   // The rump, closed.
-  [9, 11, 10, MAROON], [9, 12, 11, MAROON],
-  // The tail.
-  [9, 13, 14, RED], [9, 14, 15, SCARLET],
+  [['rump', 'vent', 'hipR'], MAROON, true],
+  [['hipR', 'vent', 'belly'], MAROON, true],
+  // The tail: three feathers fanned from the rump.
+  [['rump', 'fanR', 'notchR'], SCARLET, true],
+  [['rump', 'notchR', 'fan'], RED, true],
+  // The legs, and the toes they stand on.
+  [['thighR', 'kneeR', 'ankleR'], TWIG, true],
+  [['ankleR', 'toeAR', 'toeBR'], TWIG, true],
 ];
 
 // --- the wings -------------------------------------------------------------
 //
-// One sheet each, about its own shoulder: a root along the back, a tip out
-// and up, and a crease from the root to the tip that the sheet is folded on,
-// light in front of the fold and dark behind. The back edge hangs lower than
-// the front, as a bird holds a wing, which is also what gives it some area
-// seen from the chase camera behind rather than a sheet seen edge on. The
-// pose is the top of the stroke, raised in a V, which is what the beat below
-// swings about.
-const WING_P = [
-  [0, 0, 0.14],           // 0  root, front
-  [0, 0.10, -0.16],       // 1  root, back
-  [0.30, -0.20, -0.02],   // 2  on the crease
-  [0.56, -0.36, -0.16],   // 3  tip
-  [0.26, 0.04, -0.30],    // 4  trailing edge
-];
+// One sheet each, about its own shoulder. The inner half -- the arm -- is
+// folded once across the middle, light in front and dark behind; the outer
+// half -- the hand -- is cut into three flight feathers fanned from the
+// wrist, with a lighter one between each. The back edge hangs lower than the
+// front, as a bird holds a wing, which is also what gives it some area seen
+// from the chase camera behind rather than a sheet seen edge on. The pose is
+// the top of the stroke, raised in a V, which is what the beat below swings
+// about.
+const WING_P = {
+  root: [0, 0, 0.14],
+  rootBack: [0, 0.10, -0.16],
+  fold: [0.15, -0.07, -0.02],
+  wrist: [0.30, -0.21, 0.05],
+  elbow: [0.25, 0.03, -0.27],
+  tip1: [0.62, -0.40, -0.08],
+  notch1: [0.47, -0.28, -0.14],
+  tip2: [0.56, -0.30, -0.24],
+  notch2: [0.41, -0.17, -0.23],
+  tip3: [0.45, -0.16, -0.34],
+};
 const WING_T = [
-  [0, 2, 1, LEAF], [0, 3, 2, LEAF],
-  [1, 2, 4, PINE], [2, 3, 4, PINE],
+  [['root', 'wrist', 'fold'], LEAF],
+  [['wrist', 'elbow', 'fold'], PINE],
+  [['elbow', 'rootBack', 'fold'], LEAF],
+  [['rootBack', 'root', 'fold'], PINE],
+  [['wrist', 'tip1', 'notch1'], PINE],
+  [['wrist', 'notch1', 'tip2'], LIME],
+  [['wrist', 'tip2', 'notch2'], PINE],
+  [['wrist', 'notch2', 'tip3'], LIME],
+  [['wrist', 'tip3', 'elbow'], PINE],
 ];
-const mirror = (pts) => pts.map(([x, y, z]) => [-x, y, z]);
+const mirror = (pts) => Object.fromEntries(
+  Object.entries(pts).map(([k, [x, y, z]]) => [k, [-x, y, z]]));
 
 // Its lowest point is set on exactly the height the flight model lands on:
 // otherwise the bird stands buried to the belly or hovering over the ground.
-const LOWEST = Math.max(...BODY_P.map((p) => p[1]));
+const LOWEST = Math.max(...Object.values(BODY_P).map((p) => p[1]));
 const LIFT = LOWEST - UNDERCARRIAGE_Y / TILE;
 
 // The shoulders, on the back either side, already lifted.
