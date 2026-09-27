@@ -130,7 +130,34 @@ const col = [0, 0, 0, 255];
 const colB = [0, 0, 0, 255];
 const hazeTop = [0, 0, 0, 255];
 const hazeFoot = [0, 0, 0, 255];
-const skyline = [];
+// Each band's skyline is kept from frame to frame, and worked out again only
+// once the camera has moved far enough to shift it by half a pixel.
+//
+// It was worked out every frame: 78 columns across the screen, each walked
+// out through its band -- some six and a half thousand height samples a
+// frame, all of them the same as last frame's while the bird hovered. With
+// the JavaScript JIT off, as the Xbox's sandboxed browser runs it, that was
+// 4ms of every frame. A band at least `near` tiles away moves on screen by
+// at most FOCAL / near pixels for every tile the camera moves, so below
+// half a pixel the old skyline is still the right one to within half a
+// pixel -- and a hovering bird never asks for it again.
+const HALF_PIXEL = 0.5;
+function kept() {
+  return { rows: [], camX: 0, camY: 0, camZ: 0, width: -1 };
+}
+function stale(k, near, camX, camY, camZ) {
+  if (k.width !== SCREEN_W) return true;
+  const moved = (Math.abs((camX - k.camX) | 0) + Math.abs((camY - k.camY) | 0) +
+                 Math.abs((camZ - k.camZ) | 0)) / TILE;
+  return moved * FOCAL_X / near > HALF_PIXEL;
+}
+function skylineKept(k, near, far, step, camX, camY, camZ) {
+  if (stale(k, near, camX, camY, camZ)) {
+    skylineBetween(near, far, step, camX, camY, camZ, k.rows);
+    k.camX = camX; k.camY = camY; k.camZ = camZ; k.width = SCREEN_W;
+  }
+  return k.rows;
+}
 
 // A band's colour: the sky behind it, taken towards the dusk-coloured dark so
 // it reads as a silhouette rather than as paint.
@@ -277,11 +304,12 @@ export function drawRidges(rd, camX, camY, camZ) {
   for (const band of BANDS) {
     const footY = rowAt(band.near, camY, FLOOR);
     if (footY <= 0) continue;
-    skylineBetween(band.near, band.far, band.step, camX, camY, camZ, skyline);
+    if (!band.kept) band.kept = kept();
+    const rows = skylineKept(band.kept, band.near, band.far, band.step, camX, camY, camZ);
     let top = Infinity;
-    for (const y of skyline) if (y < top) top = y;
+    for (const y of rows) if (y < top) top = y;
     if (top >= SCREEN_H) continue;
-    fillUnder(rd, skyline, footY,
+    fillUnder(rd, rows, footY,
               tint(band.dark, (top + Math.min(footY, SCREEN_H)) / 2, col),
               hazeAt(footY, colB));
   }
@@ -297,10 +325,11 @@ export function drawRidges(rd, camX, camY, camZ) {
 // a black bar across the bottom of the frame is not what a hill in front of
 // you looks like, it is what a bug looks like.
 const DARKEN = 0.88;
+const nearKept = kept();
 export function drawNearGround(rd, camX, camY, camZ) {
-  skylineBetween(NEAR_FROM, NEAR_TO, NEAR_STEP, camX, camY, camZ, skyline);
+  const rows = skylineKept(nearKept, NEAR_FROM, NEAR_TO, NEAR_STEP, camX, camY, camZ);
   let top = Infinity;
-  for (const y of skyline) if (y < top) top = y;
+  for (const y of rows) if (y < top) top = y;
   if (top >= SCREEN_H) return;          // all of it below the frame: nothing to do
 
   // Sampled where the two meet -- at the landscape's own near edge, not under
@@ -312,5 +341,5 @@ export function drawNearGround(rd, camX, camY, camZ) {
   col[1] = Math.round(g[1] * DARKEN);
   col[2] = Math.round(g[2] * DARKEN);
   col[3] = 255;
-  fillUnder(rd, skyline, SCREEN_H, col, col);
+  fillUnder(rd, rows, SCREEN_H, col, col);
 }

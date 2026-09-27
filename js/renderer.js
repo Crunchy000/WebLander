@@ -279,6 +279,11 @@ export class Renderer {
     this.buffer = new ArrayBuffer(MAX_TRIS * VERTS_PER_TRI * this.stride);
     this.f32 = new Float32Array(this.buffer);
     this.u8 = new Uint8Array(this.buffer);
+    // The colour as one 32-bit word, written in one store rather than four.
+    // Only where the machine lays bytes out little end first, which is every
+    // machine this runs on; anywhere else the byte-at-a-time path stays.
+    this.u32 = new Uint32Array(this.buffer);
+    this.packs = new Uint8Array(new Uint32Array([1]).buffer)[0] === 1;
     this.count = 0; // vertices written
 
     // On 2, the attribute layout below is recorded in a vertex array object,
@@ -686,8 +691,30 @@ export class Renderer {
     return this.count + 6 > MAX_TRIS * VERTS_PER_TRI;
   }
 
+  // The primitives below write their vertices directly rather than through
+  // vertex(), with the colour packed once. It is the same bytes -- `& 255`
+  // is exactly the conversion a Uint8Array store makes -- but without six
+  // function calls and twenty-four byte stores a quad. A JIT inlines all of
+  // that away, which is why it never showed; with the JIT off, as the Xbox's
+  // sandboxed browser runs, every triangle the CPU draws paid for it.
+  _pack(r, g, b, a) {
+    const al = a === undefined ? 255 : a;
+    if (al < 255) this.batchAlpha = true;
+    return ((al & 255) << 24 | (b & 255) << 16 | (g & 255) << 8 | (r & 255)) >>> 0;
+  }
+
   tri(x0, y0, x1, y1, x2, y2, col) {
-    if (this.full) return;
+    if (this.count + 6 > MAX_TRIS * VERTS_PER_TRI) return;
+    if (this.packs) {
+      const c = this._pack(col[0], col[1], col[2], col[3]);
+      const f = this.f32, u = this.u32, z = this.z;
+      let o = this.count * 4;
+      f[o] = x0; f[o + 1] = y0; f[o + 2] = z; u[o + 3] = c; o += 4;
+      f[o] = x1; f[o + 1] = y1; f[o + 2] = z; u[o + 3] = c; o += 4;
+      f[o] = x2; f[o + 1] = y2; f[o + 2] = z; u[o + 3] = c;
+      this.count += 3;
+      return;
+    }
     const r = col[0], g = col[1], b = col[2], a = col[3];
     this.vertex(x0, y0, r, g, b, a);
     this.vertex(x1, y1, r, g, b, a);
@@ -696,7 +723,20 @@ export class Renderer {
 
   // A quadrilateral, given in order around its perimeter.
   quad(x0, y0, x1, y1, x2, y2, x3, y3, col) {
-    if (this.full) return;
+    if (this.count + 6 > MAX_TRIS * VERTS_PER_TRI) return;
+    if (this.packs) {
+      const c = this._pack(col[0], col[1], col[2], col[3]);
+      const f = this.f32, u = this.u32, z = this.z;
+      let o = this.count * 4;
+      f[o] = x0; f[o + 1] = y0; f[o + 2] = z; u[o + 3] = c; o += 4;
+      f[o] = x1; f[o + 1] = y1; f[o + 2] = z; u[o + 3] = c; o += 4;
+      f[o] = x2; f[o + 1] = y2; f[o + 2] = z; u[o + 3] = c; o += 4;
+      f[o] = x0; f[o + 1] = y0; f[o + 2] = z; u[o + 3] = c; o += 4;
+      f[o] = x2; f[o + 1] = y2; f[o + 2] = z; u[o + 3] = c; o += 4;
+      f[o] = x3; f[o + 1] = y3; f[o + 2] = z; u[o + 3] = c;
+      this.count += 6;
+      return;
+    }
     const r = col[0], g = col[1], b = col[2], a = col[3];
     this.vertex(x0, y0, r, g, b, a);
     this.vertex(x1, y1, r, g, b, a);
@@ -710,7 +750,17 @@ export class Renderer {
   // renderer's current depth, `z`, which a caller sets once for a run of
   // flat things lying at one distance -- a shadow, a reflection, a row.
   triZ(x0, y0, z0, x1, y1, z1, x2, y2, z2, col) {
-    if (this.full) return;
+    if (this.count + 6 > MAX_TRIS * VERTS_PER_TRI) return;
+    if (this.packs) {
+      const c = this._pack(col[0], col[1], col[2], col[3]);
+      const f = this.f32, u = this.u32;
+      let o = this.count * 4;
+      f[o] = x0; f[o + 1] = y0; f[o + 2] = z0; u[o + 3] = c; o += 4;
+      f[o] = x1; f[o + 1] = y1; f[o + 2] = z1; u[o + 3] = c; o += 4;
+      f[o] = x2; f[o + 1] = y2; f[o + 2] = z2; u[o + 3] = c;
+      this.count += 3;
+      return;
+    }
     const r = col[0], g = col[1], b = col[2], a = col[3];
     this.vertex(x0, y0, r, g, b, a, z0);
     this.vertex(x1, y1, r, g, b, a, z1);
@@ -718,7 +768,20 @@ export class Renderer {
   }
 
   quadZ(x0, y0, z0, x1, y1, z1, x2, y2, z2, x3, y3, z3, col) {
-    if (this.full) return;
+    if (this.count + 6 > MAX_TRIS * VERTS_PER_TRI) return;
+    if (this.packs) {
+      const c = this._pack(col[0], col[1], col[2], col[3]);
+      const f = this.f32, u = this.u32;
+      let o = this.count * 4;
+      f[o] = x0; f[o + 1] = y0; f[o + 2] = z0; u[o + 3] = c; o += 4;
+      f[o] = x1; f[o + 1] = y1; f[o + 2] = z1; u[o + 3] = c; o += 4;
+      f[o] = x2; f[o + 1] = y2; f[o + 2] = z2; u[o + 3] = c; o += 4;
+      f[o] = x0; f[o + 1] = y0; f[o + 2] = z0; u[o + 3] = c; o += 4;
+      f[o] = x2; f[o + 1] = y2; f[o + 2] = z2; u[o + 3] = c; o += 4;
+      f[o] = x3; f[o + 1] = y3; f[o + 2] = z3; u[o + 3] = c;
+      this.count += 6;
+      return;
+    }
     const r = col[0], g = col[1], b = col[2], a = col[3];
     this.vertex(x0, y0, r, g, b, a, z0);
     this.vertex(x1, y1, r, g, b, a, z1);

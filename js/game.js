@@ -8,6 +8,7 @@ import {
 } from './landscape.js';
 import {
   sky, sun, moon, STARS, advanceDay, skyColourAt, SKY_BAND_1, SKY_BAND_2, beacon,
+  lightGen,
 } from './daylight.js';
 import { drawRidges, drawNearGround, drawHorizonHaze, backdropAt } from './ridges.js';
 import { flowersInRow, nearestFlower, takeFlower, resetFlowers } from './flowers.js';
@@ -16,13 +17,40 @@ import { serene } from './style.js';
 import { depthAt, waveLift, seaShade } from './sea.js';
 import { updateWeather, drawWeather, resetWeather, weather, SNOW } from './weather.js';
 import { drawClouds } from './clouds.js';
-import { project, depthOf, SCREEN_W, SCREEN_H, CENTRE_X } from './renderer.js';
+import { project, depthOf, SCREEN_W, SCREEN_H, CENTRE_X, CENTRE_Y, FOCAL_X, FOCAL_Y, DEPTH } from './renderer.js';
 import { ModelPass } from './modelpass.js';
 import { drawTouchStick } from './stick.js';
 import { prof } from './profile.js';
 
 // Sections timed a row at a time, held rather than looked up by name.
 const P_SCENERY = prof.section('scenery');
+
+// What the landscape pass knows about each tile, kept from frame to frame.
+//
+// Everything the ground pass asked of a tile was worked out again every
+// frame: its height (six table lookups), whether anything stands on it (a
+// hash, a biome and a height), and its colour (the biome palette blended
+// three ways, a tint, the light). None of that changes while the tile is in
+// view -- the camera sliding along does not move the ground -- except the
+// colour, when the tile moves to another row or the light changes. Measured
+// with the JavaScript JIT off, as the Xbox's sandboxed browser runs it, the
+// colour alone was 4.5ms of every thousand tiles and the ground pass 8ms a
+// frame; a JIT hides nearly all of it, which is why it never showed before.
+//
+// Direct-mapped on the tile's world coordinates, 64 by 64, which is more
+// than the grid ever shows. An entry is good while its coordinates match;
+// its object while objectsVersion has not moved; its colour while the row
+// and lightGen are the ones it was worked out for. Open water is never
+// cached: its colour moves with the waves.
+const TC = 64, TC_MASK = TC - 1;
+const tcX = new Int32Array(TC * TC).fill(0x7fffffff);
+const tcZ = new Int32Array(TC * TC);
+const tcAlt = new Int32Array(TC * TC);
+const tcObj = new Int16Array(TC * TC);
+const tcObjVer = new Int32Array(TC * TC).fill(-1);
+const tcRow = new Int16Array(TC * TC).fill(-1);
+const tcGen = new Int32Array(TC * TC).fill(-1);
+const tcCol = new Array(TC * TC).fill(null);
 const P_FLOWERS = prof.section('flowers');
 const P_LANTERNS = prof.section('lanterns');
 import { Player, GRAVITY_START, CHARGE_MAX, HULL_HITS } from './player.js';
@@ -30,6 +58,7 @@ import { drawModel, drawShadow, drawLightPool, silhouetteAmount } from './model.
 import {
   MODELS, OBJ_SCORE, objectAt, objectOffset, destroyObject, isWreck,
   isBlocks, isNatural, structureIndex, resetObjects, modelFor, biomeAt,
+  objectsVersion,
 } from './objects.js';
 import { topple, updateBlocks, drawPile, pileAt } from './blocks.js';
 import {
@@ -700,8 +729,6 @@ export class Game {
     for (const list of this.pendingBalloons) list.length = 0;
     for (const list of this.pendingLanterns) list.length = 0;
 
-    const pt = { x: 0, y: 0 };
-
     // The landscape pass keeps depth: see Renderer.depthMode('paint'). The
     // picture is painter's order exactly as before; the depth buffer comes
     // out of it holding the nearest surface at every pixel.
@@ -733,11 +760,29 @@ export class Game {
 
       let prevAlt = 0;
 
+      // The row's arrays as locals, and the projection done here rather than
+      // through project(): every corner in a row is at the same distance, so
+      // whether it is in front of the camera is decided once per row, and a
+      // function call per corner is real money with the JIT off. The
+      // arithmetic is project()'s exactly, so the picture is unchanged.
+      const rowX = this.rowX, rowY = this.rowY, rowOk = this.rowOk, rowAlt = this.rowAlt;
+      const prevX = this.prevX, prevY = this.prevY, prevOk = this.prevOk;
+      const inFront = viewZ >= DEPTH.NEAR;
+
       for (let i = 0; i < TILES_X; i++) {
         const worldX = (xCameraTile - LANDSCAPE_X + i * TILE) | 0;
         const viewX = (-LANDSCAPE_X - fracX + i * TILE) | 0;
 
-        const alt = landAltitude(worldX, worldZ);
+        const tx = worldX >> 24;
+        const tci = ((tx & TC_MASK) << 6) | (tz & TC_MASK);
+        let alt;
+        if (tcX[tci] === tx && tcZ[tci] === tz) {
+          alt = tcAlt[tci];
+        } else {
+          alt = landAltitude(worldX, worldZ);
+          tcX[tci] = tx; tcZ[tci] = tz; tcAlt[tci] = alt;
+          tcObjVer[tci] = -1; tcRow[tci] = -1;
+        }
         let viewY = (alt - eyeY) | 0;
 
         // Water heaves, and brightens with swell, surf and glitter. Both come
@@ -750,24 +795,34 @@ export class Game {
           seaLift = seaShade(worldX, worldZ, viewX, viewZ, depth);
         }
 
-        const ok = project(viewX, viewY, viewZ, pt);
-        this.rowX[i] = pt.x;
-        this.rowY[i] = pt.y;
-        this.rowOk[i] = ok ? 1 : 0;
-        this.rowAlt[i] = alt;
+        const ok = inFront;
+        if (ok) {
+          rowX[i] = CENTRE_X + (viewX * FOCAL_X) / viewZ;
+          rowY[i] = CENTRE_Y + (viewY * FOCAL_Y) / viewZ;
+        }
+        rowOk[i] = ok ? 1 : 0;
+        rowAlt[i] = alt;
 
         // Fill the tile whose far-left corner we saw last row.
-        if (j > 0 && i > 0 && ok && this.rowOk[i - 1] && this.prevOk[i] && this.prevOk[i - 1]) {
+        if (j > 0 && i > 0 && ok && rowOk[i - 1] && prevOk[i] && prevOk[i - 1]) {
           // The lift belongs to open water only. A tile with one corner
           // ashore is drawn as land, and brightening it would put surf on
           // the beach rather than in front of it.
           const wet = alt === SEA_LEVEL && prevAlt === SEA_LEVEL;
-          const col = tileColour(prevAlt, alt, j, worldX, worldZ, wet ? seaLift : 0);
+          let col;
+          if (wet) {
+            col = tileColour(prevAlt, alt, j, worldX, worldZ, seaLift);
+          } else if (tcRow[tci] === j && tcGen[tci] === lightGen) {
+            col = tcCol[tci];
+          } else {
+            col = tileColour(prevAlt, alt, j, worldX, worldZ, 0);
+            tcCol[tci] = col; tcRow[tci] = j; tcGen[tci] = lightGen;
+          }
           rd.quadZ(
-            this.prevX[i - 1], this.prevY[i - 1], prevDepth,
-            this.prevX[i], this.prevY[i], prevDepth,
-            this.rowX[i], this.rowY[i], rowDepth,
-            this.rowX[i - 1], this.rowY[i - 1], rowDepth,
+            prevX[i - 1], prevY[i - 1], prevDepth,
+            prevX[i], prevY[i], prevDepth,
+            rowX[i], rowY[i], rowDepth,
+            rowX[i - 1], rowY[i - 1], rowDepth,
             col,
           );
         }
@@ -777,8 +832,11 @@ export class Game {
         // Note any object standing on this tile, to be drawn a couple of rows
         // later so the landscape behind it is already down.
         if (j > 0) {
-          const tx = worldX >> 24;
-          const type = objectAt(tx, tz);
+          if (tcObjVer[tci] !== objectsVersion) {
+            tcObj[tci] = objectAt(tx, tz);
+            tcObjVer[tci] = objectsVersion;
+          }
+          const type = tcObj[tci];
           if (type >= 0) this.pending[j].push(tx, tz, type);
         }
       }

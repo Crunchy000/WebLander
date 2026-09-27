@@ -111,6 +111,20 @@ the CPU one by 2015 / 232 / 5 / 158 pixels out of 378,000. Nearly all of
 that is the tiered firs, where a per-pixel depth test sorts the tiers better
 than sorting whole faces by their mean depth does.
 
+## The Xbox's CPU: the JIT switched off
+
+    node jitbench.mjs                   # the frame with the JavaScript JIT off
+    JIT=1 node jitbench.mjs             # ... and on, for comparison
+
+Edge on the Xbox runs this game without a JIT -- its sandboxed mode turns the
+optimising compiler off -- and a console report showed the frame's
+JavaScript at 26.5ms where a desktop spends about 2. Chromium's `--jitless`
+flag reproduces that shape: every section in the same order and within a
+third of the same size (the Xbox is about 1.3 times slower again). So this
+is the stand-in: four fixed scenes at the Xbox's 1280x720, drawn 60 times
+hovering and 60 times moving forward, with the median draw and the biggest
+sections from profile.js.
+
 ## The resolution adaptor
 
     node adapttest.mjs                  # the decision itself, no browser

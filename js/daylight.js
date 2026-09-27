@@ -117,6 +117,7 @@ export function setPhase(phase) {
   if (e !== sky.epoch) {
     sky.epoch = e;
     litCache.clear();
+    lightGen++;
   }
 }
 
@@ -230,7 +231,13 @@ export const STARS = makeStars();
 // lightning strike, so anything that changes the light out of band says so.
 export function invalidateLight() {
   litCache.clear();
+  lightGen++;
 }
+
+// Bumped every time the light's colours are thrown away, so anything that
+// remembers a lit colour knows when it has gone stale. See the tile cache in
+// game.js.
+export let lightGen = 0;
 
 // --- the light applied to everything solid ---------------------------------
 

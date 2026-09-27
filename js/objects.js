@@ -379,9 +379,13 @@ const SPAWN_TABLE = FLORA.map((flora, biome) => spawnTable(
 // tiles whose object has been destroyed.
 
 const destroyed = new Map(); // "x,z" -> wreck type
+// Bumped whenever that map changes, so anything remembering what objectAt
+// said knows to ask again. See the tile cache in game.js.
+export let objectsVersion = 0;
 
 export function resetObjects() {
   destroyed.clear();
+  objectsVersion++;
   resetBlocks();
 }
 
@@ -445,6 +449,7 @@ export function objectOffset(tx, tz) {
 export function destroyObject(tx, tz) {
   const wreck = hash2(tx, tz) & 1 ? OBJ.REMAINS_L : OBJ.REMAINS_R;
   destroyed.set(KEY(tx, tz), wreck);
+  objectsVersion++;
 }
 
 export function isWreck(type) {
