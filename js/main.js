@@ -7,6 +7,7 @@ import { startMusic, musicWanted } from './music.js';
 import { Game, STEP_MS } from './game.js';
 import { perf, perfInit, perfFrame, perfFrameStat, perfDescribe } from './perf.js';
 import { DebugPanel } from './debugpanel.js';
+import { prof } from './profile.js';
 
 const canvas = document.getElementById('screen');
 const overlay = document.getElementById('overlay');
@@ -226,6 +227,11 @@ function frame(now) {
   const t1 = performance.now();
   game.draw();
   const t2 = performance.now();
+  // Close the frame's GPU timer query, and the wait probe if it is on.
+  renderer.endFrame();
+  prof.add('step (simulation)', t1 - t0);
+  prof.add('draw (all)', t2 - t1);
+  prof.endFrame();
 
   // What the frame cost, kept and reported. The interval between callbacks is
   // measured inside perfFrame, so it takes in everything the browser does

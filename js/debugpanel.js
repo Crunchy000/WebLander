@@ -20,7 +20,8 @@
 // The switches last until the page is reloaded.
 
 import { qrcode } from './vendor/qrcode.mjs';
-import { perfReport } from './perf.js';
+import { perfReport, perfLate, perfFrameStat } from './perf.js';
+import { prof } from './profile.js';
 
 // window.__layers is what game.js reads to leave a layer out. The keys are
 // its names; the labels are what they are called on screen.
@@ -44,8 +45,10 @@ const LAYERS = [
 ];
 
 const REFRESH_MS = 1000;
-const QR_CELL = 4;           // CSS pixels per module: readable across a room
+const QR_CELL = 4;           // CSS pixels per module: readable across a room ...
+const QR_MAX = 0.62;         // ... unless that would be more of the window's height
 const QR_MARGIN = 4;         // modules of quiet zone, as the standard asks
+const MB = 1024 * 1024;
 
 export class DebugPanel {
   constructor({ renderer, game, canvas }) {
@@ -57,6 +60,10 @@ export class DebugPanel {
     this.was = {};             // pad buttons last frame, for edges
     this.lastRefresh = 0;
     this.box = null;
+    // Garbage collections, seen as the JS heap falling: the times of the last
+    // minute's worth. Only where the browser reports its heap (Chromium).
+    this.heapWas = 0;
+    this.gcs = [];
 
     if (typeof window !== 'undefined') {
       if (!window.__layers) window.__layers = {};
@@ -71,6 +78,13 @@ export class DebugPanel {
         label: 'gpu scenery',
         value: () => (!game.models.ok ? 'n/a' : rd.instancer ? 'on' : 'off'),
         act: () => { if (game.models.ok) rd.instancer = rd.instancer ? null : game.models; },
+      },
+      {
+        // See Renderer.endFrame: the GPU's share of the frame, measured by
+        // waiting for it. Costs frame rate while it is on.
+        label: 'gpu wait probe',
+        value: () => (rd.probe ? 'measuring' : 'off '),
+        act: () => { rd.probe = !rd.probe; },
       },
       {
         label: 'resolution',
@@ -95,13 +109,16 @@ export class DebugPanel {
     const out = [];
     for (const it of this.items) {
       const v = it.value();
-      if (v === 'off' || v.startsWith('fixed')) out.push(it.label + ' ' + v);
+      if (v === 'off' || v.startsWith('fixed') || v === 'measuring') out.push(it.label + ' ' + v);
     }
     return out;
   }
 
   toggle() {
     this.open = !this.open;
+    // The flight is paused while the panel is open, so from here on the
+    // simulation's time reads nothing. Keep what it was.
+    if (this.open) this.stepBefore = prof.median('step (simulation)');
     if (this.open) this._show(); else this._hide();
   }
 
@@ -127,7 +144,79 @@ export class DebugPanel {
       }
       this.was = now_;
     }
+    const mem = typeof performance !== 'undefined' && performance.memory;
+    if (mem) {
+      const used = mem.usedJSHeapSize;
+      if (used < this.heapWas - 256 * 1024) this.gcs.push(now);
+      this.heapWas = used;
+      while (this.gcs.length && now - this.gcs[0] > 60000) this.gcs.shift();
+    }
     if (this.open && now - this.lastRefresh > REFRESH_MS) this._render();
+  }
+
+  // The whole report, as lines: what perf.js says, where the time went
+  // section by section, what the GPU was given and how long it took, and
+  // memory. It is the text of the QR code.
+  report() {
+    const rd = this.renderer;
+    const base = perfReport(this.canvas, rd.gl);
+    const f2 = (v) => v.toFixed(2);
+    const lines = [base[0], base[1], base[2]];
+
+    // How much of each frame the main thread was busy with this game, and
+    // how many frames came late. The rest of the interval is the browser's.
+    const stat = perfFrameStat();
+    const busy = prof.median('step (simulation)') + prof.median('draw (all)') + prof.median('gpu wait (probe)');
+    const late = perfLate();
+    lines.push('busy ' + (stat.median > 0 ? Math.round(100 * busy / stat.median) : 0) + '% of the frame' +
+      '  late ' + late.late + '/' + late.count + '  hitches>50ms ' + late.hitch);
+
+    // Sections, slowest first. `scenery` holds flowers and lanterns and the
+    // rest is trees, buildings and the like; the totals are shown on their
+    // own line.
+    const rows = prof.table('ms').filter((r) =>
+      r.name !== 'draw (all)' && r.name !== 'step (simulation)' && r.name !== 'gpu wait (probe)');
+    const trees = prof.median('scenery') - prof.median('flowers') - prof.median('lanterns');
+    lines.push('cpu ms median/p95: draw ' + f2(prof.median('draw (all)')) +
+      '  step ' + f2(this.stepBefore || 0) + ' (before pausing)');
+    // Sections below what the clock can resolve are left out and counted:
+    // browsers round performance.now() to a tenth of a millisecond or worse.
+    const parts = [];
+    let quiet = 0;
+    for (const r of rows) {
+      if (r.name === 'scenery') {
+        if (trees >= 0.05) parts.push('trees+buildings ' + f2(trees));
+        else quiet++;
+        continue;
+      }
+      if (r.median < 0.05 && r.p95 < 0.3) { quiet++; continue; }
+      parts.push(r.name + ' ' + f2(r.median) + '/' + f2(r.p95));
+    }
+    for (let i = 0; i < parts.length; i += 3) lines.push('  ' + parts.slice(i, i + 3).join('  '));
+    if (quiet) lines.push('  ' + quiet + ' more under 0.05ms');
+
+    // The GPU.
+    const timer = rd.gpuMs;
+    lines.push('gpu: timer ' + (timer === null ? 'not available' : f2(timer) + 'ms') +
+      '  wait probe ' + (rd.probe ? f2(prof.median('gpu wait (probe)')) + 'ms' : 'off') +
+      '  calls ' + Math.round(prof.median('draw calls')) +
+      '  upload ' + Math.round(prof.median('upload KB')) + 'KB/frame' +
+      // The adaptor sees the probe's slower frames as a slow machine and
+      // shrinks the picture; pinned, the comparison is like for like.
+      (rd.probe && rd.fixed == null ? '  (pin the resolution to compare)' : ''));
+
+    // Memory.
+    const mem = typeof performance !== 'undefined' && performance.memory;
+    lines.push('memory: ' + (mem
+      ? 'js heap ' + Math.round(mem.usedJSHeapSize / MB) + '/' + Math.round(mem.totalJSHeapSize / MB) +
+        'MB of ' + Math.round(mem.jsHeapSizeLimit / MB) + ', gc ' + this.gcs.length + '/min'
+      : 'js heap not reported') +
+      '  gpu (ours) ~' + Math.round(rd.gpuBytes / MB) + 'MB');
+
+    lines.push(...base.slice(3));
+    const changed = this.changes();
+    lines.push('changed: ' + (changed.length ? changed.join(', ') : 'nothing'));
+    return lines;
   }
 
   _key(e) {
@@ -205,7 +294,7 @@ export class DebugPanel {
     let html = '<div style="color:#f0d9a8;margin-bottom:6px">debug &mdash; B or Esc closes</div>';
     this.items.forEach((it, i) => {
       const v = it.value();
-      const off = v === 'off' || v.startsWith('fixed');
+      const off = v === 'off' || v.startsWith('fixed') || v === 'measuring';
       html += '<div data-i="' + i + '" style="cursor:pointer;padding:1px 6px;border-radius:3px;' +
         (i === this.sel ? 'background:rgba(224,189,138,.28);' : '') + '">' +
         '<span style="display:inline-block;width:12em">' + it.label + '</span>' +
@@ -214,10 +303,7 @@ export class DebugPanel {
     html += '<div style="color:#8b98a8;margin-top:6px">d-pad / arrows move, A / Enter toggles</div>';
     this.list.innerHTML = html;
 
-    const lines = perfReport(this.canvas, this.renderer.gl);
-    const changed = this.changes();
-    lines.push('changed: ' + (changed.length ? changed.join(', ') : 'nothing'));
-    const report = lines.join('\n');
+    const report = this.report().join('\n');
     this.text.textContent = report;
     this._qr(report);
   }
@@ -233,7 +319,9 @@ export class DebugPanel {
       return;
     }
     const n = q.getModuleCount();
-    const size = (n + QR_MARGIN * 2) * QR_CELL;
+    const fit = Math.floor((window.innerHeight * QR_MAX) / (n + QR_MARGIN * 2));
+    const cell = Math.max(2, Math.min(QR_CELL, fit));
+    const size = (n + QR_MARGIN * 2) * cell;
     const c = this.qrCanvas;
     c.width = c.height = size;
     const g = c.getContext('2d');
@@ -242,7 +330,7 @@ export class DebugPanel {
     g.fillStyle = '#000';
     for (let r = 0; r < n; r++) {
       for (let k = 0; k < n; k++) {
-        if (q.isDark(r, k)) g.fillRect((k + QR_MARGIN) * QR_CELL, (r + QR_MARGIN) * QR_CELL, QR_CELL, QR_CELL);
+        if (q.isDark(r, k)) g.fillRect((k + QR_MARGIN) * cell, (r + QR_MARGIN) * cell, cell, cell);
       }
     }
     this.qr.width = this.qr.height = size;

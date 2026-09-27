@@ -6,10 +6,17 @@
 // it here keeps it identical to the original's), so the GPU's only job is to
 // fill triangles in the order it is handed them.
 //
-// There is no depth buffer, deliberately. The game already sorts back to
-// front, and OpenGL guarantees primitives are rasterised in submission order,
-// so painter's algorithm survives the port intact -- including the places
-// where it is technically wrong and the original just lived with it.
+// The landscape is still painted, back to front: OpenGL rasterises
+// primitives in submission order, so painter's algorithm survives the port
+// intact -- including the places where it is technically wrong and the
+// original just lived with it. There is a depth buffer, but the painting
+// never tests against it; it only lets scenery drawn on the GPU sit among
+// what was painted. See depthMode().
+
+import { prof } from './profile.js';
+
+const P_CALLS = prof.counter('draw calls');
+const P_UPLOAD = prof.counter('upload KB');
 
 // The buffer is 256 rows tall, always. Everything placed in pixels -- the
 // horizon line at 64, the parallax ranges, the HUD along the bottom -- is
@@ -287,6 +294,16 @@ export class Renderer {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
     gl.bufferData(gl.ARRAY_BUFFER, this.buffer.byteLength, gl.DYNAMIC_DRAW);
 
+    // The GPU's own clock, where the browser will lend it. Most withhold it
+    // (it is a timing side channel); where it is there, each frame is
+    // wrapped in a query and the results collected as they come back, a few
+    // frames late. See endFrame().
+    this.timer = this.gl2 ? gl.getExtension('EXT_disjoint_timer_query_webgl2') : null;
+    this.queries = [];
+    this.gpuTimes = [];
+    this.probe = false;
+    this.probePx = new Uint8Array(4);
+
     gl.enableVertexAttribArray(this.aPos);
     gl.vertexAttribPointer(this.aPos, 3, gl.FLOAT, false, this.stride, 0);
     gl.enableVertexAttribArray(this.aCol);
@@ -480,6 +497,65 @@ export class Renderer {
     this.count = 0;
     this.drawn = 0;
     this.blend('over');
+    if (this.timer && !this.query && this.queries.length < 4) {
+      this.query = gl.createQuery();
+      gl.beginQuery(this.timer.TIME_ELAPSED_EXT, this.query);
+    }
+  }
+
+  // After the frame has been drawn: close its GPU timer query and collect
+  // any that have come back, and, if the wait probe is on, time how long
+  // the GPU takes to finish the frame.
+  //
+  // The probe is the dependable measure where there is no timer. Reading a
+  // pixel back cannot happen until everything before it is drawn, so the
+  // time the read takes is the GPU work still outstanding when the CPU
+  // finished issuing it. It also stops the CPU and GPU working in parallel,
+  // so it costs frame rate while it is on: it is for finding out, not for
+  // flying.
+  endFrame() {
+    const gl = this.gl;
+    if (this.query) {
+      gl.endQuery(this.timer.TIME_ELAPSED_EXT);
+      this.queries.push(this.query);
+      this.query = null;
+    }
+    while (this.queries.length) {
+      const q = this.queries[0];
+      if (!gl.getQueryParameter(q, gl.QUERY_RESULT_AVAILABLE)) break;
+      const disjoint = gl.getParameter(this.timer.GPU_DISJOINT_EXT);
+      if (!disjoint) {
+        this.gpuTimes.push(gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6);
+        if (this.gpuTimes.length > 120) this.gpuTimes.shift();
+      }
+      gl.deleteQuery(q);
+      this.queries.shift();
+    }
+    if (this.probe) {
+      const t = performance.now();
+      gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, this.probePx);
+      prof.add('gpu wait (probe)', performance.now() - t);
+    }
+  }
+
+  // The GPU timer's median over the last couple of seconds, or null where
+  // the browser has none to lend.
+  get gpuMs() {
+    if (!this.timer) return null;
+    if (!this.gpuTimes.length) return 0;
+    const s = [...this.gpuTimes].sort((a, b) => a - b);
+    return s[s.length >> 1];
+  }
+
+  // What this game has asked the GPU to hold, roughly: the canvas's colour
+  // (front and back) and depth, and its own vertex buffers. The browser and
+  // the compositor hold more besides; this is only the part it controls.
+  get gpuBytes() {
+    const px = this.canvas.width * this.canvas.height;
+    let bytes = px * (4 + 4 + 4) + this.buffer.byteLength;
+    const m = this.modelPass;
+    if (m && m.shapeBytes) bytes += m.shapeBytes.byteLength + m.inst.byteLength;
+    return bytes;
   }
 
   // Switch how the next things drawn combine with what is under them.
@@ -661,6 +737,8 @@ export class Renderer {
     if (this.gl2) gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.f32, 0, floats);
     else gl.bufferSubData(gl.ARRAY_BUFFER, 0, new Float32Array(this.buffer, 0, floats));
     gl.drawArrays(gl.TRIANGLES, 0, this.count);
+    P_CALLS.cur += 1;
+    P_UPLOAD.cur += floats / 256;      // four bytes a float, in KB
     // Those vertices have been handed over, so the batch starts again from
     // empty. It used to be left standing and cleared by whoever called --
     // blend() did, begin() did, and the end-of-frame flush did not, so

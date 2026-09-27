@@ -19,6 +19,12 @@ import { drawClouds } from './clouds.js';
 import { project, depthOf, SCREEN_W, SCREEN_H, CENTRE_X } from './renderer.js';
 import { ModelPass } from './modelpass.js';
 import { drawTouchStick } from './stick.js';
+import { prof } from './profile.js';
+
+// Sections timed a row at a time, held rather than looked up by name.
+const P_SCENERY = prof.section('scenery');
+const P_FLOWERS = prof.section('flowers');
+const P_LANTERNS = prof.section('lanterns');
 import { Player, GRAVITY_START, CHARGE_MAX, HULL_HITS } from './player.js';
 import { drawModel, drawShadow, drawLightPool, silhouetteAmount } from './model.js';
 import {
@@ -122,6 +128,7 @@ export class Game {
     const gpu = !(typeof location !== 'undefined' && /[?&]cpumodels\b/.test(location.search));
     // drawModel looks for it here, and hands over what it can.
     renderer.instancer = gpu && this.models.ok ? this.models : null;
+    renderer.modelPass = this.models;
     this.input = input;
     this.audio = audio;
 
@@ -507,7 +514,11 @@ export class Game {
 
   draw() {
     const rd = this.rd;
+    // Each part of the frame is timed into a section of its own; see
+    // profile.js. `t` is where the current lap began.
+    let t = prof.now();
     rd.begin(sky.top);
+    t = prof.lap('begin', t);
 
     const p = this.player;
     const eyeX = p.camX, eyeY = p.camY, eyeZ = p.camZ;
@@ -528,10 +539,12 @@ export class Game {
     rd.gradientBand(SKY_BAND_1, SKY_BAND_2, sky.mid, sky.horizon);
     rd.gradientBand(SKY_BAND_2, SCREEN_H, sky.horizon, sky.horizon);
     }
+    t = prof.lap('sky', t);
 
     // Stars next, because a star below the horizon has set: the haze of the
     // far plain goes in after them and takes them with it.
     if (on('stars')) this.drawStars();
+    t = prof.lap('stars', t);
 
     // The plain beyond the drawn landscape, and then the sun or the moon
     // standing on it, and only then the hills.
@@ -542,8 +555,11 @@ export class Game {
     // front of it a setting sun disappeared forty rows above the skyline in
     // the middle of an empty sky.
     if (serene() && on('haze')) drawHorizonHaze(rd, eyeX, eyeY, eyeZ);
+    t = prof.lap('haze', t);
     if (on('celestial')) this.drawCelestial();
+    t = prof.lap('sun & moon', t);
     if (serene() && on('ridges')) drawRidges(rd, eyeX, eyeY, eyeZ);
+    t = prof.lap('far hills', t);
 
     // Balloons beyond the drawn landscape have no row to be bucketed into, so
     // they get a pass of their own -- here, after the ranges. They went in
@@ -554,20 +570,35 @@ export class Game {
     // a balloon disappearing behind a ridge read as the balloon being miles
     // further off than it is. In front, where they belong.
     if (on('farBalloons')) drawFarBalloons(rd, eyeX, eyeY, eyeZ);
+    t = prof.lap('far balloons', t);
 
     // Clouds go over the sun and under the landscape, which is the only
     // ordering that lets one drift across the other.
     if (on('clouds')) drawClouds(rd);
+    t = prof.lap('clouds', t);
 
     if (on('landscape')) this.drawLandscape(eyeX, eyeY, eyeZ);
+    // The landscape pass carries the scenery standing on it. What is left
+    // once that is taken out is the ground itself.
+    {
+      const n = prof.now();
+      prof.add('ground', (n - t) - prof.cur('scenery') - prof.cur('gpu scenery pass'));
+      t = n;
+    }
     // ... and the ground that is too close to have been drawn at all, which
     // goes in front of it because it is in front of it.
     if (serene() && on('nearGround')) drawNearGround(rd, eyeX, eyeY, eyeZ);
+    t = prof.lap('near ground', t);
     if (on('ribbon')) drawRibbon(rd, eyeX, eyeY, eyeZ);
+    t = prof.lap('streamer', t);
     if (on('particles')) drawParticles(rd, eyeX, eyeY, eyeZ);
+    t = prof.lap('particles', t);
     if (this.state === STATE.PLAYING && on('player')) p.draw(rd, eyeX, eyeY, eyeZ);
+    t = prof.lap('bird', t);
     if (on('weather')) drawWeather(rd, eyeX, eyeY, eyeZ);
+    t = prof.lap('rain & snow', t);
     if (on('hud')) this.drawHud();
+    t = prof.lap('hud', t);
 
     // The touch stick goes over everything, because it is the one thing on
     // screen that is not part of the world -- it is the player's own thumb,
@@ -579,6 +610,7 @@ export class Game {
     }
 
     rd.flush();
+    prof.lap('final flush', t);
   }
 
   // Stars. There is no alpha here, so "faint" has to mean "closer to the
@@ -756,16 +788,23 @@ export class Game {
       [this.prevY, this.rowY] = [this.rowY, this.prevY];
       [this.prevOk, this.rowOk] = [this.rowOk, this.prevOk];
 
-      if (j >= 2) this.flushObjects(j - 2, eyeX, eyeY, eyeZ);
+      if (j >= 2) {
+        const ts = prof.now();
+        this.flushObjects(j - 2, eyeX, eyeY, eyeZ);
+        prof.lapTo(P_SCENERY, ts);
+      }
       prevDepth = rowDepth;
     }
 
     // Anything left in the last couple of rows.
+    let ts = prof.now();
     this.flushObjects(TILES_Z - 2, eyeX, eyeY, eyeZ);
     this.flushObjects(TILES_Z - 1, eyeX, eyeY, eyeZ);
+    ts = prof.lap('scenery', ts);
     // The scenery that went to the GPU, all of it at once, tested against
     // the depth the pass above has just left behind.
     this.models.flush();
+    prof.lap('gpu scenery pass', ts);
     rd.depthMode('off');
     rd.z = 1;
   }
@@ -815,7 +854,11 @@ export class Game {
     const drift = this.pendingLanterns[row];
     if (drift && drift.length) {
       const __lanterns = !window.__layers || window.__layers.lanterns !== false;
-      if (__lanterns) for (const l of drift) drawLantern(this.rd, l, eyeX, eyeY, eyeZ, haze);
+      if (__lanterns && drift.length) {
+        const tl = prof.now();
+        for (const l of drift) drawLantern(this.rd, l, eyeX, eyeY, eyeZ, haze);
+        prof.lapTo(P_LANTERNS, tl);
+      }
       drift.length = 0;
     }
 
@@ -828,7 +871,9 @@ export class Game {
     // Flowers stand on the ground this row has just drawn, and under
     // anything else standing on it.
     if (serene() && (!window.__layers || window.__layers.flowers !== false)) {
+      const tf = prof.now();
       flowersInRow(this.rd, this.rowWorldZ[row], row, eyeX, eyeY, eyeZ, haze, sky.tick);
+      prof.lapTo(P_FLOWERS, tf);
     }
 
     const list = this.pending[row];

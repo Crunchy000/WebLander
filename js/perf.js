@@ -153,6 +153,19 @@ export function perfFrameStat() {
   return frameStat;
 }
 
+// How many of the recent frames came late: more than half as long again as
+// the median (a missed refresh), and longer than 50ms (a visible hitch).
+export function perfLate() {
+  const count = Math.min(n, WINDOW);
+  const med = pct(interval, 0.5);
+  let late = 0, hitch = 0;
+  for (let i = 0; i < count; i++) {
+    if (interval[i] > med * 1.5) late++;
+    if (interval[i] > 50) hitch++;
+  }
+  return { count, late, hitch };
+}
+
 // Everything the console line says, and a little more, as lines of text:
 // for the debug panel, which turns it into a QR code so that a machine whose
 // console nobody can reach -- a console, a television -- can still hand its

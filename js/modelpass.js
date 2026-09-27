@@ -26,6 +26,7 @@
 
 import { TILE } from './maths.js';
 import { SCREEN_W, SCREEN_H, CENTRE_X, CENTRE_Y, FOCAL_X, FOCAL_Y, DEPTH } from './renderer.js';
+import { prof } from './profile.js';
 import { sky, silhouetteDark, FOG_STEPS } from './daylight.js';
 import { SIL_BLACK_AT } from './model.js';
 
@@ -231,6 +232,7 @@ export class ModelPass {
     if (this.shapeDirty) {
       gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
       gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.shapeU8, 0, this.shapeVerts * MODEL_STRIDE);
+      prof.count('upload KB', this.shapeVerts * MODEL_STRIDE / 1024);
       this.shapeDirty = false;
     }
 
@@ -246,6 +248,7 @@ export class ModelPass {
     }
     gl.bindBuffer(gl.ARRAY_BUFFER, this.ibo);
     gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.inst, 0, at);
+    prof.count('upload KB', at * 4 / 1024);
 
     gl.uniform4f(this.u.uProj, CENTRE_X, CENTRE_Y, FOCAL_X, FOCAL_Y);
     gl.uniform2f(this.u.uScreen, SCREEN_W, SCREEN_H);
@@ -282,6 +285,7 @@ export class ModelPass {
       gl.vertexAttribPointer(this.iAt, 3, gl.FLOAT, false, INST_FLOATS * 4, byte);
       gl.vertexAttribPointer(this.iLook, 2, gl.FLOAT, false, INST_FLOATS * 4, byte + 12);
       gl.drawArraysInstanced(gl.TRIANGLES, shape.first, shape.count, ranges[r + 2]);
+      prof.count('draw calls', 1);
       rd.drawn = (rd.drawn || 0) + shape.count * ranges[r + 2];
     }
     this.count = 0;
