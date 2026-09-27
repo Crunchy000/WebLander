@@ -121,6 +121,11 @@ const DEATH_MESSAGE = {
 // Two seconds is long enough to line up the next one and short enough that
 // the run has to be flown rather than wandered.
 const LANTERN_SCORE = 10;
+// ... and what one gives the bird: a twenty-fourth of a full load, about six
+// seconds of hovering. Less than a flower's, because a lantern is flown
+// through rather than crept up on and held, and there are dozens on the
+// water -- a line of them is a real top-up, one is a sip.
+const LANTERN_ENERGY = CHARGE_MAX / 24;
 
 // Nectar. Half a second of holding station buys a fourteenth of the pack,
 // which is about ten seconds of hovering -- so a meadow pays for the time
@@ -348,6 +353,12 @@ export class Game {
     }
     this.audio.chime(this.lanternRun);
     this.addScore(LANTERN_SCORE * (1 + Math.min(this.lanternRun, 7)));
+    // A lamp is a top-up: its light goes into the bird.
+    const p = this.player;
+    if (!p.dead) {
+      p.charge = Math.min(CHARGE_MAX, p.charge + LANTERN_ENERGY);
+      this.energyFlash = 18;
+    }
     this.lanternRun++;
     this.lanternAt = sky.tick;
     this.lanternsTaken = (this.lanternsTaken || 0) + 1;
@@ -1021,13 +1032,18 @@ export class Game {
     // The label flashes on the same threshold the beeps use, so there is
     // something to see for anyone playing with the sound off.
     const low = !p.charging && frac < LOW_CHARGE;
-    drawText(rd, p.charging ? 'charging' : 'battery', bx, by - 10,
+    drawText(rd, p.charging ? 'charging' : 'energy', bx, by - 10,
              p.charging ? COOL
              : low && beacon(28, 16) ? CLAY : DIM);
     rd.rect(bx - 1, by - 1, BAR_W + 2, BAR_H + 2, [58, 66, 60]);
     let barCol = frac > 0.5 ? [138, 196, 150] : frac > LOW_CHARGE ? WARM : CLAY;
     // Pulse while taking on charge, so it is obviously happening.
     if (p.charging && ((this.chargeTick | 0) >> 2) % 2 === 0) barCol = COOL;
+    // ... and glow for a moment when a lamp tops it up.
+    if (this.energyFlash > 0) {
+      this.energyFlash--;
+      if ((this.energyFlash >> 2) % 2 === 0) barCol = [255, 206, 130];
+    }
     if (frac > 0) rd.rect(bx, by, Math.max(1, Math.round(BAR_W * frac)), BAR_H, barCol);
 
     // What is left of the airframe, shown only once some of it is not. An
@@ -1075,7 +1091,7 @@ export class Game {
       if (p.autorotating) {
         drawText(rd, 'gliding down', SCREEN_W - 4 - textWidth('gliding down'), 36, WARM);
       } else if (p.flat) {
-        drawText(rd, 'out of charge', SCREEN_W - 4 - textWidth('out of charge'), 36, CLAY);
+        drawText(rd, 'out of energy', SCREEN_W - 4 - textWidth('out of energy'), 36, CLAY);
       } else if (p.ceiling > 0.12) {
         drawText(rd, 'thin air up here', SCREEN_W - 4 - textWidth('thin air up here'), 36, WARM);
       }

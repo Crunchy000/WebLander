@@ -84,9 +84,11 @@ it built, so a bob up and straight back down still costs you.
 Sites are static, worth more than anything else on the map, and the rounds
 still on the rails go up with them.
 
-The craft runs on a **battery, not fuel**. Set down anywhere the ground is
+The bird runs on **energy**, not fuel. Set down anywhere the ground is
 level enough to sit square on and it charges — the launchpad is simply the
-best surface there is. Below a fifth the meter turns red, the label flashes
+best surface there is. Nectar from the paper tulips tops it up, and so does
+every paper lamp gathered off the water (a twenty-fourth of a full load
+each, and the bar glows as it lands). Below a fifth the meter turns red, the label flashes
 and the machine starts beeping, faster and higher the less there is left; it
 stops the moment you are on the ground taking charge.
 
