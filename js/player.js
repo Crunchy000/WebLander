@@ -326,7 +326,10 @@ export class Player {
     this.slideV = 0;
     this.looping = false;
     this.matrix = matFromAim(0, 0);
-    this.charge = CHARGE_MAX;
+    // How much it can hold, which grows as the phoenix gathers its flames
+    // (the game sets it; see Game.onFlameTaken). It starts each life full.
+    if (!this.chargeCap) this.chargeCap = CHARGE_MAX;
+    this.charge = this.chargeCap;
     this.charging = false;
     this.landed = true;
     this.dead = false;
@@ -789,10 +792,10 @@ export class Player {
     // simply the best surface there is -- but it is also the one place every
     // tank on the map knows how to find.
     const flat = onPad || groundRoughness(this.x, this.z) <= FLAT_ENOUGH;
-    this.charging = flat && this.charge < CHARGE_MAX;
+    this.charging = flat && this.charge < this.chargeCap;
 
     if (this.charging) {
-      this.charge = Math.min(CHARGE_MAX, this.charge + (onPad ? 80 : 52));
+      this.charge = Math.min(this.chargeCap, this.charge + (onPad ? 80 : 52));
       game.onCharging();
     }
   }

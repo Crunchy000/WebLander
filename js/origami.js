@@ -89,6 +89,9 @@ function build(points, tris, dy, seed, alpha, lit = false, heatFrom = null) {
   const nv = v.length / 3;
   for (let i = 0; i < nv; i++) { mx += v[i * 3]; my += v[i * 3 + 1]; mz += v[i * 3 + 2]; }
   mx /= nv; my /= nv; mz /= nv;
+  // A left-hand name written out explicitly reads its right-hand twin's
+  // alpha and heat: the two are the same distance from everything.
+  const key = (nm) => (points[nm] ? nm : nm.slice(0, -1) + 'R');
   const add = (names, col, glow, from) => {
     const [a, b, c] = names.map((n) => at[n]);
     const ax = v[a * 3], ay = v[a * 3 + 1], az = v[a * 3 + 2];
@@ -120,13 +123,13 @@ function build(points, tris, dy, seed, alpha, lit = false, heatFrom = null) {
       if (lit === 'shell' && (n[1] * outward) / len > 0.35) f *= UNDERSIDE;
       const face = {
         idx: [a, b, c], col: shade(col, f), glow: true,
-        alpha: from.map((nm) => (typeof alpha === 'function' ? alpha(points[nm]) : alpha[nm])),
+        alpha: from.map((nm) => (typeof alpha === 'function' ? alpha(points[key(nm)]) : alpha[key(nm)])),
       };
       if (heatFrom) {
         // Each corner its own heat, by how far it is from the core. A twin's
         // corners are the same distance out as its own.
         face.cols = from.map((nm) => {
-          const p = points[nm];
+          const p = points[key(nm)];
           const d = Math.hypot(p[0] + heatFrom[0] - CORE[0], p[1] + heatFrom[1] - CORE[1],
                                p[2] + heatFrom[2] - CORE[2]);
           const h = heatAt(d);
@@ -238,17 +241,26 @@ function tongue(name, spread, reach, side) {
       put('b', [x + w, y + 0.01, z]);
     }
   });
-  const both = !!side;
+  // Its faces, as a list of their own: the tail grows a tongue at a time
+  // (see setFireLevel), so each one -- and each side of a pair -- has to be
+  // separable. A side tongue is written on the right and copied to the left.
   const n = (k, e) => `${name}${k}${e}${R}`;
+  const faces = [];
   for (let j = 0; j < 2; j++) {
-    FLAME_T.push([[n('a', j), n('a', j + 1), n('c', j)], cols[j], both]);
-    FLAME_T.push([[n('c', j), n('a', j + 1), n('c', j + 1)], cols[j + 1], both]);
-    FLAME_T.push([[n('c', j), n('c', j + 1), n('b', j + 1)], cols[j], both]);
-    FLAME_T.push([[n('c', j), n('b', j + 1), n('b', j)], cols[j + 1], both]);
+    faces.push([[n('a', j), n('a', j + 1), n('c', j)], cols[j]]);
+    faces.push([[n('c', j), n('a', j + 1), n('c', j + 1)], cols[j + 1]]);
+    faces.push([[n('c', j), n('c', j + 1), n('b', j + 1)], cols[j]]);
+    faces.push([[n('c', j), n('b', j + 1), n('b', j)], cols[j + 1]]);
   }
-  FLAME_T.push([[n('a', 2), n('c', 3), n('c', 2)], FIRE_TIP, both]);
-  FLAME_T.push([[n('c', 2), n('c', 3), n('b', 2)], FIRE_HOT, both]);
+  faces.push([[n('a', 2), n('c', 3), n('c', 2)], FIRE_TIP]);
+  faces.push([[n('c', 2), n('c', 3), n('b', 2)], FIRE_HOT]);
+  TONGUES.push(faces);
+  if (side) {
+    TONGUES.push(faces.map(([names, col]) =>
+      [names.map((nm) => (nm.endsWith('R') ? nm.slice(0, -1) + 'L' : nm)), col]));
+  }
 }
+const TONGUES = [];
 
 // The eyes, laid flat on the face just behind the beak -- in the plane of
 // that facet and a hair proud of it, so they are there from the side and
@@ -395,8 +407,19 @@ const WING_ALPHA = ([x, y, z]) => 0.86 - 0.52 * Math.min(1, Math.hypot(x, y, z) 
 // shading, which means something for the closed body and nothing for a sheet.
 export const ORIGAMI_BODY = build(BODY_P, BODY_T, LIFT, 1, BODY_ALPHA, 'shell', [0, 0, 0]);
 ORIGAMI_BODY.flame = 0.4;
-export const ORIGAMI_FIRE = build(FLAME_P, FLAME_T, LIFT, 4, FLAME_A, false, [0, 0, 0]);
-ORIGAMI_FIRE.flame = 1;
+// The fire at each stage of the game: the crest always, and a tongue of the
+// tail for every flame gathered -- the middle one first, then the pairs
+// either side, one side at a time.
+const FIRE_BY_LEVEL = [0, 1, 2, 3, 4, 5].map((n) => {
+  const m = build(FLAME_P, [...FLAME_T, ...TONGUES.slice(0, n).flat()], LIFT, 4, FLAME_A, false, [0, 0, 0]);
+  m.flame = 1;
+  return m;
+});
+let fireLevel = 5;
+export function setFireLevel(n) {
+  fireLevel = Math.max(0, Math.min(5, n | 0));
+}
+export const ORIGAMI_FIRE = FIRE_BY_LEVEL[5];
 const WING_A = build(mirror(WING_P), WING_T, 0, 2, WING_ALPHA, true, [-0.10, -0.14, 0.04]);
 const WING_B = build(WING_P, WING_T, 0, 3, WING_ALPHA, true, [0.10, -0.14, 0.04]);
 WING_A.flame = WING_B.flame = 0.4;
@@ -477,9 +500,10 @@ export function drawOrigami(rd, p, camX, camY, camZ) {
   }
 
   // The fire last, over the paper, blended.
-  if (!(gpu && gpu.drawTurned(ORIGAMI_FIRE, p.matrix,
+  const fire = FIRE_BY_LEVEL[fireLevel];
+  if (!(gpu && gpu.drawTurned(fire, p.matrix,
         (p.x - camX) | 0, (p.y - camY) | 0, (p.z - camZ) | 0, fresh))) {
-    drawModel(rd, ORIGAMI_FIRE, p.matrix, p.x, p.y, p.z, camX, camY, camZ, 0, 0, FIRE_CPU_FADE);
+    drawModel(rd, fire, p.matrix, p.x, p.y, p.z, camX, camY, camZ, 0, 0, FIRE_CPU_FADE);
   }
 }
 // Embers: now and then a spark comes off the tail and drifts up, left behind

@@ -12,7 +12,10 @@ import {
 } from './daylight.js';
 import { drawRidges, drawNearGround, drawHorizonHaze, backdropAt } from './ridges.js';
 import { flowersInRow, nearestFlower, takeFlower, resetFlowers } from './flowers.js';
-import { sampleRibbon, drawRibbon, resetRibbon } from './ribbon.js';
+import { sampleRibbon, drawRibbon, resetRibbon, setRibbonLength } from './ribbon.js';
+import {
+  FLAME_COUNT, resetFlames, updateFlames, flamesInRow, drawFlame, drawBeacons,
+} from './flames.js';
 import { serene } from './style.js';
 import { seaShade } from './sea.js';
 import { updateWeather, drawWeather, resetWeather, weather, SNOW } from './weather.js';
@@ -75,6 +78,7 @@ const P_FLOWERS = prof.section('flowers');
 const P_LANTERNS = prof.section('lanterns');
 import { Player, GRAVITY_START, CHARGE_MAX, HULL_HITS, AIRFRAME } from './player.js';
 import { drawModel, drawShadow, drawLightPool, silhouetteAmount } from './model.js';
+import { setFireLevel } from './origami.js';
 import {
   MODELS, OBJ_SCORE, objectAt, objectOffset, destroyObject, isWreck,
   isBlocks, isNatural, structureIndex, resetObjects, modelFor, biomeAt,
@@ -121,6 +125,8 @@ const DEATH_MESSAGE = {
 // Two seconds is long enough to line up the next one and short enough that
 // the run has to be flown rather than wandered.
 const LANTERN_SCORE = 10;
+// A flame of the phoenix's.
+const FLAME_SCORE = 150;
 // ... and what one gives the bird: a twenty-fourth of a full load, about six
 // seconds of hovering. Less than a flower's, because a lantern is flown
 // through rather than crept up on and held, and there are dozens on the
@@ -206,6 +212,7 @@ export class Game {
     this.pendingBoats = Array.from({ length: TILES_Z + 2 }, () => []);
     this.pendingBalloons = Array.from({ length: TILES_Z + 2 }, () => []);
     this.pendingLanterns = Array.from({ length: TILES_Z + 2 }, () => []);
+    this.pendingFlames = Array.from({ length: TILES_Z + 2 }, () => []);
     this.warnTick = 0;
 
     this.newGame();
@@ -227,9 +234,39 @@ export class Game {
     resetLanterns();
     resetWeather();
     resetFlowers();
+    resetFlames();
+    this.flames = 0;
+    this.grow();
     this.player.reset();
     this.input.newFlight();
     this.state = STATE.PLAYING;
+  }
+
+  // --- the phoenix's flames ------------------------------------------------
+  //
+  // The bird starts small -- no tail, no streamer, half a load of energy --
+  // and every one of the five flames it gathers adds to all three: a tongue
+  // of the tail, a fifth of the streamer, a tenth of a full load of room for
+  // energy. All five is the whole bird. It keeps them across lives; a new
+  // game starts it small again.
+  grow() {
+    const n = this.flames;
+    setFireLevel(n);
+    setRibbonLength(n / FLAME_COUNT);
+    this.player.chargeCap = Math.round(CHARGE_MAX * (0.5 + 0.5 * n / FLAME_COUNT));
+  }
+
+  onFlameTaken(k) {
+    this.flames = Math.min(FLAME_COUNT, this.flames + 1);
+    this.grow();
+    // Taking a flame fills the bird to its new size.
+    this.player.charge = this.player.chargeCap;
+    this.energyFlash = 30;
+    this.addScore(FLAME_SCORE);
+    // A rising run of notes, one more for every flame held.
+    for (let i = 0; i <= this.flames + 1; i++) setTimeout(() => this.audio.chime(i + 2), i * 90);
+    this.setMessage(this.flames >= FLAME_COUNT ? 'the phoenix is whole  +' + FLAME_SCORE
+      : 'flame ' + this.flames + ' of ' + FLAME_COUNT + '  +' + FLAME_SCORE, 120);
   }
 
   // --- events from the player ---------------------------------------------
@@ -316,7 +353,7 @@ export class Game {
     this.sipAt = 0;
     takeFlower(near.id, sky.tick);
 
-    p.charge = Math.min(CHARGE_MAX, p.charge + NECTAR);
+    p.charge = Math.min(p.chargeCap, p.charge + NECTAR);
     spawnSparks(near.x, near.bloom, near.z, 8);
 
     // The same run the lanterns keep: a line of flowers taken without a
@@ -356,7 +393,7 @@ export class Game {
     // A lamp is a top-up: its light goes into the bird.
     const p = this.player;
     if (!p.dead) {
-      p.charge = Math.min(CHARGE_MAX, p.charge + LANTERN_ENERGY);
+      p.charge = Math.min(p.chargeCap, p.charge + LANTERN_ENERGY);
       this.energyFlash = 18;
     }
     this.lanternRun++;
@@ -450,6 +487,7 @@ export class Game {
     updateBoats(this.player, this);
     updateBalloons(this.player);
     updateLanterns(this.player, this);
+    updateFlames(this.player, this);
     updateBlocks();
     updateParticles(this.gravity, (i, bx, by, bz) => this.bulletHit(i, bx, by, bz));
 
@@ -458,7 +496,7 @@ export class Game {
     // says it faster the less there is left. Nothing while charging -- the
     // meter is low then too, and being nagged about a problem you are already
     // fixing is how a warning gets tuned out.
-    const charge = this.player.charge / CHARGE_MAX;
+    const charge = this.player.charge / this.player.chargeCap;
     if (!this.player.dead && !this.player.charging && charge > 0 && charge < LOW_CHARGE) {
       const left = charge / LOW_CHARGE;   // 1 as it turns red, 0 as it dies
       if (--this.warnTick <= 0) {
@@ -631,6 +669,9 @@ export class Game {
     // further off than it is. In front, where they belong.
     if (on('farBalloons')) drawFarBalloons(rd, eyeX, eyeY, eyeZ);
     t = prof.lap('far balloons', t);
+    // The columns of light over the flames too far off to be drawn with the
+    // landscape. The near ones go up with their flames, in their rows.
+    if (this.state === STATE.PLAYING || this.state === STATE.DYING) drawBeacons(rd, eyeX, eyeY, eyeZ, LANDSCAPE_Z);
 
     // Clouds go over the sun and under the landscape, which is the only
     // ordering that lets one drift across the other.
@@ -784,6 +825,7 @@ export class Game {
         boatsInRow(worldZ, (worldZ + TILE) | 0, this.pendingBoats[j]);
         balloonsInRow(worldZ, (worldZ + TILE) | 0, this.pendingBalloons[j]);
         lanternsInRow(worldZ, (worldZ + TILE) | 0, this.pendingLanterns[j]);
+        flamesInRow(worldZ, (worldZ + TILE) | 0, this.pendingFlames[j]);
         // The craft's shadow belongs to whichever row the ground under it
         // is in, so it is drawn with that row and hidden by hills in front.
         if (eyeShadowZ >= worldZ && eyeShadowZ < worldZ + TILE) this.shadowRow = j;
@@ -955,6 +997,13 @@ export class Game {
       drift.length = 0;
     }
 
+    // The phoenix's flames, over their ground, with their columns of light.
+    const fl = this.pendingFlames[row];
+    if (fl && fl.length) {
+      for (const f of fl) drawFlame(this.rd, f, eyeX, eyeY, eyeZ, haze);
+      fl.length = 0;
+    }
+
     const shipping = this.pendingBoats[row];
     if (shipping && shipping.length) {
       for (const b of shipping) drawBoat(this.rd, b, eyeX, eyeY, eyeZ, haze);
@@ -1038,13 +1087,27 @@ export class Game {
 
     drawText(rd, 'score', 4, 4, DIM);
     drawText(rd, pad(this.score, 6), 4 + textWidth('score '), 4, WHITE);
+    // The phoenix's flames: how many of the five it has gathered, and a mark
+    // for each, lit once taken.
+    if (this.state !== STATE.TITLE) {
+      drawText(rd, 'flames', 4, 14, DIM);
+      const fx = 4 + textWidth('flames ');
+      for (let i = 0; i < FLAME_COUNT; i++) {
+        const lit = i < (this.flames | 0);
+        const x = fx + i * 7, col = lit ? [255, 170, 60] : [96, 88, 84];
+        rd.tri(x + 2.5, 14, x + 5, 20, x, 20, col);
+        if (lit) rd.rect(x + 1.5, 17, 2, 2, [255, 236, 170]);
+      }
+    }
 
     const hi = 'best ' + pad(this.highScore, 6);
     drawText(rd, hi, SCREEN_W - 4 - textWidth(hi), 4, DIM);
 
     // Charge meter.
-    const BAR_W = 92, BAR_H = 6, bx = 4, by = SCREEN_H - 14;
-    const frac = Math.max(0, p.charge / CHARGE_MAX);
+    // As long as the bird's room for energy, which grows with its flames: a
+    // full load is the whole 92 pixels.
+    const BAR_W = Math.round(92 * p.chargeCap / CHARGE_MAX), BAR_H = 6, bx = 4, by = SCREEN_H - 14;
+    const frac = Math.max(0, p.charge / p.chargeCap);
     // The label flashes on the same threshold the beeps use, so there is
     // something to see for anyone playing with the sound off.
     const low = !p.charging && frac < LOW_CHARGE;

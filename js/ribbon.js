@@ -36,6 +36,17 @@ export function resetRibbon() {
   filled = 0;
 }
 
+// How much of it is shown, as a share of its full length: it grows as the
+// phoenix gathers its flames, from nothing to all of it. The ring keeps
+// recording the whole length either way, so a streamer that grows is already
+// laid out behind the bird rather than having to pay out.
+let span = LENGTH;
+export function setRibbonLength(share) {
+  span = Math.round(LENGTH * Math.max(0, Math.min(1, share)));
+}
+// The samples being drawn this frame: the newest `span` of them.
+let shown = 0;
+
 // Called once a frame with the craft, after it has moved.
 export function sampleRibbon(p) {
   if (p.dead) return;
@@ -121,7 +132,7 @@ function strip(rd, gain, wide, night, fade, step) {
   const dayG = Math.round(214 + 26 * warm);
   const dayB = Math.round(228 - 18 * warm);
 
-  for (let i = 0; i + step < filled; i += step) {
+  for (let i = 0; i + step < shown; i += step) {
     const k = i + step;
     if (!ok[i] || !ok[k]) continue;
     const x0 = pts[i * 2], y0 = pts[i * 2 + 1];
@@ -132,8 +143,8 @@ function strip(rd, gain, wide, night, fade, step) {
     if (len < 0.35 * step || len > 90 * step) continue;
 
     // How far along the strip, tail at 0 and head at 1.
-    const tA = i / (filled - 1);
-    const tB = k / (filled - 1);
+    const tA = i / (shown - 1);
+    const tB = k / (shown - 1);
     const wA = WIDTH * wide * (TAIL + (1 - TAIL) * tA);
     const wB = WIDTH * wide * (TAIL + (1 - TAIL) * tB);
     const ax = nrm[i * 2], ay = nrm[i * 2 + 1];
@@ -151,12 +162,13 @@ function strip(rd, gain, wide, night, fade, step) {
 }
 
 export function drawRibbon(rd, camX, camY, camZ) {
-  if (filled < 4) return;
+  shown = Math.min(filled, span);
+  if (shown < 4) return;
 
   // Oldest first, so the strip runs tail to head and the quads are emitted in
   // the order they stack.
-  for (let i = 0; i < filled; i++) {
-    const j = (head - filled + i + LENGTH * 2) % LENGTH;
+  for (let i = 0; i < shown; i++) {
+    const j = (head - shown + i + LENGTH * 2) % LENGTH;
     const good = project((x[j] - camX) | 0, (y[j] - camY) | 0, (z[j] - camZ) | 0, pt);
     ok[i] = good && pt.x > -60 && pt.x < SCREEN_W + 60 && pt.y > -60 && pt.y < SCREEN_H + 60 ? 1 : 0;
     pts[i * 2] = pt.x;
@@ -167,9 +179,9 @@ export function drawRibbon(rd, camX, camY, camZ) {
   // it, taken from the sample before to the sample after so a bend is shared
   // evenly between the two quads that meet there. The ends have only one
   // neighbour and use it.
-  for (let i = 0; i < filled; i++) {
+  for (let i = 0; i < shown; i++) {
     const a = i > 0 ? i - 1 : i;
-    const b = i + 1 < filled ? i + 1 : i;
+    const b = i + 1 < shown ? i + 1 : i;
     const dx = pts[b * 2] - pts[a * 2];
     const dy = pts[b * 2 + 1] - pts[a * 2 + 1];
     const len = Math.hypot(dx, dy) || 1;
