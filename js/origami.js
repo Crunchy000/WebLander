@@ -46,6 +46,14 @@ const HEAT_CORE = [255, 247, 194];
 const HEAT_MID = [255, 107, 0];
 const HEAT_TIP = [138, 18, 0];
 const CORE = [0, -0.06, 0.06];            // the middle of the chest, in body space
+// The paper -- the body and the wings -- is hottest at the head instead, and
+// coolest at the rump and the wing tips. From the chase camera, above and
+// behind, a bird is mostly its back whichever way it faces, and heated from
+// the chest it was the same shape both ways: a rounded end and a point, and
+// flying away the point was its rump hanging towards you, which read as a
+// beak -- the bird looked to be flying backwards. Bright at the head and
+// dark at the tail, which end is the front is the first thing you see.
+const HEAD_CORE = [0, -0.40, 0.34];
 const HEAT_MIX = 0.7;                     // how much of a corner is heat, not paper
 function heatAt(d) {
   const a = Math.min(1, d / 0.38), b = Math.max(0, Math.min(1, (d - 0.38) / 0.62));
@@ -74,7 +82,7 @@ const GRAIN = 0.11;
 // easier to fold on paper than a table of numbers. A name ending in R has a
 // twin ending in L, the same point mirrored across the bird's middle, so each
 // side is only written once.
-function build(points, tris, dy, seed, alpha, lit = false, heatFrom = null) {
+function build(points, tris, dy, seed, alpha, lit = false, heatFrom = null, core = CORE) {
   const m = new Model();
   const at = {};
   for (const [name, [x, y, z]] of Object.entries(points)) {
@@ -128,8 +136,8 @@ function build(points, tris, dy, seed, alpha, lit = false, heatFrom = null) {
         // corners are the same distance out as its own.
         face.cols = from.map((nm) => {
           const p = points[key(nm)];
-          const d = Math.hypot(p[0] + heatFrom[0] - CORE[0], p[1] + heatFrom[1] - CORE[1],
-                               p[2] + heatFrom[2] - CORE[2]);
+          const d = Math.hypot(p[0] + heatFrom[0] - core[0], p[1] + heatFrom[1] - core[1],
+                               p[2] + heatFrom[2] - core[2]);
           const h = heatAt(d);
           return shade(h.map((hv, j) => hv * HEAT_MIX + col[j] * (1 - HEAT_MIX)), f);
         });
@@ -166,7 +174,9 @@ const BODY_P = {
   nape: [0, -0.44, 0.17], neckR: [0.13, -0.24, 0.19], throat: [0, -0.07, 0.30],
   back: [0, -0.20, -0.02], shoulderR: [0.18, -0.05, -0.02], keel: [0, 0.20, 0.14],
   rump: [0, -0.12, -0.28], hipR: [0.10, 0.02, -0.26], belly: [0, 0.14, -0.16],
-  vent: [0, -0.02, -0.36],
+  // The tail end is square, a vent either side rather than one point: seen
+  // from behind a pointed rump read as a beak (see HEAD_CORE).
+  ventR: [0.075, -0.04, -0.35],
 };
 const BODY_T = [
   // The beak, folded along its top and bottom, hooked at the tip.
@@ -194,8 +204,10 @@ const BODY_T = [
   [['shoulderR', 'hipR', 'belly'], AMBER, true],
   [['shoulderR', 'belly', 'keel'], FLAME, true],
   // Closed at the vent.
-  [['rump', 'vent', 'hipR'], EMBER, true],
-  [['hipR', 'vent', 'belly'], RUST, true],
+  [['rump', 'ventR', 'hipR'], EMBER, true],
+  [['hipR', 'ventR', 'belly'], RUST, true],
+  [['rump', 'ventL', 'ventR'], EMBER, false],
+  [['belly', 'ventR', 'ventL'], RUST, false],
 ];
 
 // --- the fire --------------------------------------------------------------
@@ -360,7 +372,7 @@ const WING_ALPHA = ([x, y, z]) => 0.86 - 0.52 * Math.min(1, Math.hypot(x, y, z) 
 // `heatFrom` is where each piece's own origin sits in body space, so its
 // corners can be measured from the core; `'shell'` asks for the underside
 // shading, which means something for the closed body and nothing for a sheet.
-export const ORIGAMI_BODY = build(BODY_P, BODY_T, LIFT, 1, BODY_ALPHA, 'shell', [0, 0, 0]);
+export const ORIGAMI_BODY = build(BODY_P, BODY_T, LIFT, 1, BODY_ALPHA, 'shell', [0, 0, 0], HEAD_CORE);
 ORIGAMI_BODY.flame = 0.4;
 // The fire at each stage of the game: a tongue of the tail for each feather
 // -- the middle one first, then the pairs either side, one side at a time,
@@ -377,8 +389,8 @@ export function setFireLevel(n) {
   fireLevel = Math.max(1, Math.min(TAIL_FEATHERS, n | 0));
 }
 export const ORIGAMI_FIRE = FIRE_BY_LEVEL[TAIL_FEATHERS];
-const WING_A = build(mirror(WING_P), WING_T, 0, 2, WING_ALPHA, true, [-0.10, -0.14, 0.04]);
-const WING_B = build(WING_P, WING_T, 0, 3, WING_ALPHA, true, [0.10, -0.14, 0.04]);
+const WING_A = build(mirror(WING_P), WING_T, 0, 2, WING_ALPHA, true, [-0.10, -0.14, 0.04], HEAD_CORE);
+const WING_B = build(WING_P, WING_T, 0, 3, WING_ALPHA, true, [0.10, -0.14, 0.04], HEAD_CORE);
 WING_A.flame = WING_B.flame = 0.4;
 
 // The two wings, each with the shoulder it turns about and the sign that
@@ -404,6 +416,12 @@ const BEAT_EASE = 0.08;
 const FOLD_RISE = -0.30;
 const FOLD_SWEEP = 0.95;
 const FOLD_EASE = 0.06;
+// In flight the wings are swept back a little, as a bird's are going
+// anywhere. It is what says which way it is flying: from the chase camera the
+// two wings make an arrowhead pointing the way the bird is going -- up the
+// screen flying away, down it coming towards you -- where the body alone,
+// seen from above, is much the same shape either way.
+const FLIGHT_SWEEP = 0.45;
 
 let beat = BEAT_IDLE;
 let fold = 0;
@@ -435,7 +453,7 @@ export function drawOrigami(rd, p, camX, camY, camZ) {
   }
 
   const angle = Math.sin(p.rotorSpin || 0) * beat * (1 - fold) + FOLD_RISE * fold;
-  const sweep = FOLD_SWEEP * fold;
+  const sweep = FLIGHT_SWEEP * (1 - fold) + FOLD_SWEEP * fold;
 
   for (const wing of WINGS) {
     const off = matApply(p.pose,
