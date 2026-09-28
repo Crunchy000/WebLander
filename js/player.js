@@ -191,6 +191,20 @@ const SKIM_FAST = TILE * 0.08;
 const FACE_SLOW = 0.002;
 const FACE_FAST = 0.012;
 const FACE_EASE = 0.15;
+// How far the bird is drawn nose-down for a lean. Drawn at the whole lean --
+// sixty degrees at half stick -- a bird flying away from the chase camera
+// had its head below its tail on the screen, exactly as one flying towards
+// it does, and which way it faced could not be read at all. A bird in fast
+// flight keeps its body near level, so it is drawn at two fifths of the
+// lean up to PITCH_KNEE, and from there catches up, to the whole lean at
+// upright-and-over, so a loop still goes all the way round.
+const PITCH_KNEE = 1.0;
+const PITCH_SOFT = 0.4;
+function drawnPitch(lean) {
+  if (lean <= PITCH_KNEE) return lean * PITCH_SOFT;
+  if (lean >= Math.PI) return lean;
+  return PITCH_KNEE * PITCH_SOFT + (lean - PITCH_KNEE) * (Math.PI - PITCH_KNEE * PITCH_SOFT) / (Math.PI - PITCH_KNEE);
+}
 const SHIP_RADIUS = 0.3;   // in tiles, for scenery collisions
 const SCAN = 2;            // tiles either way to test for scenery
 
@@ -687,7 +701,7 @@ export class Player {
     let off = this.leanDir - this.facing;
     while (off > Math.PI) off -= Math.PI * 2;
     while (off < -Math.PI) off += Math.PI * 2;
-    matFromAim(this.facing, this.lean * Math.max(0, Math.cos(off)), this.pose);
+    matFromAim(this.facing, drawnPitch(this.lean) * Math.max(0, Math.cos(off)), this.pose);
   }
 
   // Downwash off the ground. Only close in, and only over land -- it is grit
