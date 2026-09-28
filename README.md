@@ -136,7 +136,18 @@ clip a tree or come down hard without losing a ship. The HUD counts it down.
 
 Steering is by *position*, not rate: the bearing of the stick from centre
 becomes the craft's heading, and how far you push it becomes how far its nose
-drops. Thrust acts along the roof, so a nose-down attitude carries you along
+drops. Asked to lean the other way -- more than a right angle round
+-- it comes upright first and then turns, rather than swinging the lean
+round through the side, so pulling back brakes instead of shoving the bird
+sideways.
+
+The mouse is that stick. With the pointer captured there is no cursor, so a
+ring in the bottom-right corner shows where the stick is; a whole canvas
+height of movement takes it from the middle to the rim, and near the middle
+counts as the middle. The mouse and the keys stop just short of the rim that
+starts a loop: neither can be let go of the way a pad's stick or a thumb
+can, and at the rim they kept the bird looping -- flying backwards for half
+of every turn. Loops belong to the pad and the thumb sticks. Thrust acts along the roof, so a nose-down attitude carries you along
 the heading — trading lift for speed.
 
 **Hover does not make that trade** — it keeps the height it is at. The

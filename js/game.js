@@ -1241,6 +1241,16 @@ export class Game {
       }
     }
 
+    // Where the mouse's stick is. With the pointer captured there is no
+    // cursor, and the stick stays wherever it was left, so without this the
+    // only clue to where the middle is was how the bird was leaning.
+    if (this.state === STATE.PLAYING && this.input.mouseSteers) {
+      const ms = this.input.stick, f = this.mouseGauge || (this.mouseGauge = { alpha: 0.8, r: 16 });
+      f.x = SCREEN_W - 24; f.y = SCREEN_H - 24;
+      f.knobX = f.x + ms.x * f.r; f.knobY = f.y - ms.y * f.r;
+      drawTouchStick(rd, f);
+    }
+
     if (this.state === STATE.PLAYING && p.protected) {
       // No number until the clock is actually running, since a number that
       // is not counting down is a broken one.

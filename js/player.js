@@ -489,16 +489,31 @@ export class Player {
     let dd = targetDir - this.leanDir;
     while (dd > Math.PI) dd -= Math.PI * 2;
     while (dd < -Math.PI) dd += Math.PI * 2;
-    this.leanDir += dd * LEAN_RATE;
+    // Asked to lean the other way -- more than a right angle round -- it
+    // comes upright first and turns once it is there (see the lean, below),
+    // rather than swinging a lean round through the side.
+    const over = Math.abs(dd) > Math.PI / 2 && this.lean > 0.05 && this.lean < Math.PI;
+    this.leanDir += dd * (over ? 0 : LEAN_RATE);
 
     this.looping = mag >= (this.looping ? LOOP_KEEP : LOOP_AT);
     if (this.looping) {
       this.lean += LOOP_RATE;
     } else {
+      // A lean asked for the other way from the one the bird has is reached
+      // by coming upright and going over, as a stick passes through its
+      // middle -- not by swinging the lean round through the side, which is
+      // what easing the heading and the amount separately did: stick forward
+      // to stick back threw the bird half a tile sideways on the way. So the
+      // lean asked for is cut by how far the heading still has to turn, to
+      // nothing at a right angle and beyond.
+      let left = targetDir - this.leanDir;
+      while (left > Math.PI) left -= Math.PI * 2;
+      while (left < -Math.PI) left += Math.PI * 2;
+      const want = this.lean < Math.PI ? targetLean * Math.max(0, Math.cos(left)) : targetLean;
       // Ease the short way round, the same as the heading does. Without this
       // a craft coming off a loop at five radians would unwind backwards
       // through everything it had just flown.
-      let dl = targetLean - this.lean;
+      let dl = want - this.lean;
       while (dl > Math.PI) dl -= Math.PI * 2;
       while (dl < -Math.PI) dl += Math.PI * 2;
       this.lean += dl * LEAN_RATE;

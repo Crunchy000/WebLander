@@ -17,6 +17,23 @@ import { SCREEN_W, SCREEN_H } from './renderer.js';
 // pushing one of them is never quite square to the other. Without this every
 // strafe was also a gentle climb or sink, and every climb a slow slide.
 const AXIS_DEAD = 0.15;
+
+// How far the mouse and the keys may push the stick. Short of LOOP_AT (see
+// player.js), because neither can be let go of: a pad's stick springs back
+// to the middle and a thumb lifts off the glass, but the mouse's stick stays
+// wherever it was left -- with the pointer captured there is no cursor to
+// show where that is -- and an arrow key held is a stick held hard over.
+// At the rim either of them started the bird looping and kept it looping,
+// and half of every loop is flying backwards. Measured: the up arrow held
+// for four seconds took the bird round 358 degrees, moving towards the
+// camera for 45 of 200 steps. Loops belong to the pad and the thumbs.
+const MOUSE_MAX = 0.94;
+// ... and the keys less than that: a key is all or nothing, so held it goes
+// to wherever this is. 0.6 is a lean of about 80 degrees, a fast dash that
+// still keeps the bird up.
+const KEY_MAX = 0.6;
+// A mouse cannot find the exact middle by hand, so near it counts as it.
+const MOUSE_DEAD = 0.05;
 function axisDead(v) {
   const a = Math.abs(v);
   return a <= AXIS_DEAD ? 0 : Math.sign(v) * (a - AXIS_DEAD) / (1 - AXIS_DEAD);
@@ -205,7 +222,7 @@ export class Input {
       return h > 0 ? h / 2 : 0;
     };
     const rim = (x, y) => {
-      const m = Math.hypot(x, y);
+      const m = Math.hypot(x, y) / MOUSE_MAX;
       return m > 1 ? { x: x / m, y: y / m } : { x, y };
     };
 
@@ -224,6 +241,11 @@ export class Input {
       if (!R) return;
 
       if (this.locked) {
+        // Captured, a whole canvas height of movement from the middle to the
+        // rim rather than half of one. Half was about a centimetre and a half
+        // of hand on an ordinary mouse, and with no cursor to show where the
+        // stick had got to, a small movement was a big lean.
+        const RL = R * 2;
         // Some browsers now and then report a single movement far larger
         // than any hand made -- Chrome with pointer lock is the one people
         // meet -- and with the position kept here, a spike does not flick
@@ -233,17 +255,17 @@ export class Input {
         // it was a real flick, and it goes through -- a hand that fast was
         // at the rim either way.
         const d = Math.hypot(e.movementX, e.movementY);
-        if (d > R && d > this._lastMove * 4 && !this._spiked) {
+        if (d > RL && d > this._lastMove * 4 && !this._spiked) {
           this._spiked = true;
           return;
         }
         this._spiked = false;
         this._lastMove = d;
         this.mouseStick = rim(
-          this.mouseStick.x + e.movementX / R,
+          this.mouseStick.x + e.movementX / RL,
           // Negated: screen y grows downwards, but moving up the screen,
           // towards the horizon, has to fly away from the viewer.
-          this.mouseStick.y - e.movementY / R);
+          this.mouseStick.y - e.movementY / RL);
         return;
       }
 
@@ -280,6 +302,7 @@ export class Input {
     c.addEventListener('contextmenu', (e) => e.preventDefault());
 
     this.mouseStick = { x: 0, y: 0 };
+    this.mouseZero = { x: 0, y: 0 };
     this.mouseThrust = 0;
     this.mouseFire = false;
     this.locked = false;
@@ -634,8 +657,11 @@ export class Input {
     const kx = (k.has('ArrowRight') || k.has('KeyD') ? 1 : 0) - (k.has('ArrowLeft') || k.has('KeyA') ? 1 : 0);
     const ky = (k.has('ArrowUp') || k.has('KeyW') ? 1 : 0) - (k.has('ArrowDown') || k.has('KeyS') ? 1 : 0);
     const RATE = 0.09;
-    this.keyStick.x += (kx - this.keyStick.x) * RATE;
-    this.keyStick.y += (ky - this.keyStick.y) * RATE;
+    // Towards the direction held, at KEY_MAX -- diagonals included, which
+    // used to reach 1.41.
+    const kn = kx && ky ? KEY_MAX / Math.SQRT2 : KEY_MAX;
+    this.keyStick.x += (kx * kn - this.keyStick.x) * RATE;
+    this.keyStick.y += (ky * kn - this.keyStick.y) * RATE;
     const keyActive = kx !== 0 || ky !== 0 || Math.hypot(this.keyStick.x, this.keyStick.y) > 0.01;
 
     this._pollPad();
@@ -665,8 +691,13 @@ export class Input {
     } else if (keyActive) {
       this.stick = this.keyStick;
     } else {
-      this.stick = this.mouseStick;
+      const ms = this.mouseStick;
+      this.stick = Math.hypot(ms.x, ms.y) < MOUSE_DEAD ? this.mouseZero : ms;
     }
+    // Whether the mouse is what is steering, so the HUD can show where its
+    // stick is (see Game.drawHud): with the pointer captured nothing else
+    // does.
+    this.mouseSteers = !this.padOwns && !thumbs && !tilt && !keyActive && !this.touchUi;
 
     // Thrust, from whichever source is active, and how much of it.
     //
