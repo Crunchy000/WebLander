@@ -99,8 +99,10 @@ each, and the bar glows as it lands). Below a fifth the meter turns red, the lab
 and the machine starts beeping, faster and higher the less there is left; it
 stops the moment you are on the ground taking charge.
 
-Running it flat is the end of flying: there is no glide, and the bird falls.
-Keep an eye on the bar. The height stick holds your height when it is left
+Running it flat ends the life: there is no glide -- unless the bird is sat
+on ground it can charge on, it burns out to embers and rises again at the
+pad. Lives never run out: the phoenix always comes back, keeping every flame
+it has gathered. Keep an eye on the bar. The height stick holds your height when it is left
 centred, all the way down to the surface -- over land or the sea it never
 sets you down by itself -- and landing is the stick pushed down, which at
 the bottom of its travel pushes the bird down at about twice a free fall's

@@ -118,6 +118,7 @@ const DEATH_MESSAGE = {
   shelled: 'shot down',
   beam: 'hull breached',
   missile: 'missile hit',
+  spent: 'burnt out -- rising again',
 };
 
 
@@ -146,7 +147,6 @@ const SIP_FRAMES = 26;             // just over half a second
 const NECTAR_RUN_GAP = 6 * 50;     // and six seconds between flowers keeps a run
 const LANTERN_RUN_GAP = 100;
 
-const STARTING_LIVES = 4;
 
 // The game runs on a fixed 50Hz step regardless of how often the display
 // refreshes, so the physics constants -- which are all per-frame, as they were
@@ -221,7 +221,6 @@ export class Game {
 
   newGame() {
     this.score = 0;
-    this.lives = STARTING_LIVES;
     this.gravity = GRAVITY_START;
     this.message = null;
     this.messageTimer = 0;
@@ -410,7 +409,9 @@ export class Game {
   }
 
   onDeath(how) {
-    this.audio.explosion();
+    // Burning out is not a crash, and does not sound like one.
+    if (how === 'spent') this.audio.gameOver();
+    else this.audio.explosion();
     this.state = STATE.DYING;
     this.setMessage(DEATH_MESSAGE[how] || String(how), 110);
   }
@@ -514,15 +515,10 @@ export class Game {
     if (this.messageTimer > 0 && --this.messageTimer === 0) this.message = null;
   }
 
+  // The phoenix always rises again: there is no count of lives, and no end to
+  // the game but the player's. It comes back at the launchpad, full to its
+  // size, with every flame it had gathered.
   respawn() {
-    this.lives--;
-    if (this.lives <= 0) {
-      this.state = STATE.GAMEOVER;
-      this.setMessage(null, 0);
-      this.audio.gameOver();
-      this.audio.engine(0);
-      return;
-    }
     resetParticles();
     resetRibbon();
     this.player.reset();
@@ -1138,10 +1134,6 @@ export class Game {
       }
     }
 
-    // How many more are left. Not drones in a hangar any more.
-    const lifeText = 'birds ' + Math.max(0, this.lives - 1);
-    drawText(rd, lifeText, SCREEN_W - 4 - textWidth(lifeText), by, DIM);
-
     // Two heights, because they answer two different questions.
     //
     // `alt` is the height above the sea: the one the ceiling is set in, and
@@ -1189,12 +1181,6 @@ export class Game {
     if (this.state === STATE.TITLE) {
       drawTextCentred(rd, 'twilight hover', CENTRE_X, 78, [238, 232, 216], 3);
       drawTextCentred(rd, 'press start to fly', CENTRE_X, 122, WHITE);
-    } else if (this.state === STATE.GAMEOVER) {
-      // Not GAME OVER. Nothing has been failed here -- the birds are simply
-      // used up, and the next line is an invitation rather than a verdict.
-      drawTextCentred(rd, 'out of birds', CENTRE_X, 92, [226, 172, 148], 2);
-      drawTextCentred(rd, 'you scored ' + this.score, CENTRE_X, 118, WHITE);
-      drawTextCentred(rd, 'press start to fly again', CENTRE_X, 136, DIM);
     }
   }
 }

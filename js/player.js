@@ -17,6 +17,7 @@ import { topple, isKnocked } from './blocks.js';
 import { project } from './renderer.js';
 import {
   spawnExhaust, spawnExplosion, spawnSparks, spawnSmoke, spawnDust, spawnSkimSpray, spawnFoam,
+  spawnEmber,
 } from './particles.js';
 import { drawUav } from './uav.js';
 import { drawBird } from './bird.js';
@@ -630,6 +631,11 @@ export class Player {
     if (AIRFRAME === 'origami') shedEmbers(this);
 
     this.checkGround(game);
+
+    // Out of energy is the end of this life: there is no glide and no
+    // falling, the fire simply goes out. Unless it is sat somewhere it can
+    // take on charge, which is the one place an empty bird is not stranded.
+    if (!this.dead && this.charge <= 0 && !this.charging) this.die(game, 'spent');
   }
 
   // Downwash off the ground. Only close in, and only over land -- it is grit
@@ -893,8 +899,17 @@ export class Player {
     if (this.protected) return;
     this.dead = true;
     this.deathTimer = 110;
-    spawnExplosion(this.x, this.y, this.z, 60, TILE * 0.045, null);
-    spawnSparks(this.x, this.y, this.z, 20);
+    if (how === 'spent') {
+      // Burnt out: not an explosion, a phoenix going to embers, which drift
+      // up and away before it rises again at the pad.
+      for (let i = 0; i < 44; i++) {
+        spawnEmber(this.x, this.y, this.z,
+          rndSigned() * TILE * 0.02, -rnd() * TILE * 0.03, rndSigned() * TILE * 0.02);
+      }
+    } else {
+      spawnExplosion(this.x, this.y, this.z, 60, TILE * 0.045, null);
+      spawnSparks(this.x, this.y, this.z, 20);
+    }
     game.onDeath(how);
   }
 
