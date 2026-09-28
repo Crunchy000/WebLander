@@ -168,10 +168,10 @@ that handled differently depending on which power it was on.
 
 There is no separate turn control, because steering *is* turning. The bird
 is drawn facing where it is going once it is moving -- towards you when it
-flies towards the camera -- and the lean shows as its body tipping forward,
-back or to the side of that, so leaning back to slow down is a nose-up flare
-rather than the bird turning round and flying on tail first. Standing still
-it faces its lean. Only the picture turns; the flying is unchanged. The craft
+flies towards the camera -- tipped nose-down by the part of its lean along
+that way, so leaning back to slow down leaves it level rather than turning
+it round to fly on tail first. Standing still, and in a loop, it faces its
+lean. Only the picture turns; the flying is unchanged. The craft
 swings to face wherever you are steering, and since the gun fires along the
 nose, aiming and flying are one action. Centre the stick and it holds its
 heading rather than snapping back.

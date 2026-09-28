@@ -5,7 +5,7 @@
 // for sideways acceleration. That single idea is the whole flight model, and
 // it is why the controls map so naturally onto a phone you physically tilt.
 
-import { TILE, matFromAim, matApply, matMul, matRotY, clamp, rnd, rndSigned } from './maths.js';
+import { TILE, matFromAim, matApply, clamp, rnd, rndSigned } from './maths.js';
 import { Model, shade, facet, drawModel } from './model.js';
 import {
   landAltitude, SEA_LEVEL, LAUNCHPAD_ALT, LAUNCHPAD_Y,
@@ -191,7 +191,6 @@ const SKIM_FAST = TILE * 0.08;
 const FACE_SLOW = 0.002;
 const FACE_FAST = 0.012;
 const FACE_EASE = 0.15;
-const faceTurn = new Float64Array(9);
 const SHIP_RADIUS = 0.3;   // in tiles, for scenery collisions
 const SCAN = 2;            // tiles either way to test for scenery
 
@@ -654,24 +653,26 @@ export class Player {
     if (!this.dead && this.charge <= 0 && !this.charging) this.die(game, 'spent');
   }
 
-  // Which way the bird looks.
+  // Which way the bird looks: where it is going.
   //
   // The flying is all in the lean: `matrix` is tipped along the stick, and
   // thrust goes along its roof. It was drawn that way too, facing wherever
   // it leaned -- so a bird leaning back to slow down turned round and flew
-  // on tail first, and one coasting towards the camera with the stick
-  // forward came at you backwards.
+  // on tail first, and one coasting towards the camera came at you
+  // backwards. So it is drawn facing its direction of travel once it is
+  // moving, and facing its lean when it is not.
   //
-  // So it is drawn facing where it is going, once it is going anywhere, and
-  // the lean is shown as the body tipping forward, back or over to the side
-  // of that: leaning back against its speed is a flare, nose up, as a bird
-  // brakes. Standing still it faces its lean, as before. Only the picture
-  // turns -- the roof, and so the flying, is exactly the same: the lean is
-  // a tilt about the horizontal square to it, and turning the bird about
-  // the vertical first does not move where that tilt takes the roof.
+  // It is drawn as it always was otherwise -- the same nose-down pitch for
+  // the lean -- except that only the part of the lean along the way it
+  // faces tips it. Leaning back against its speed, or across it, leaves it
+  // level rather than standing it on its tail or on its side. Only the
+  // picture: the flying still goes by `matrix`.
   face() {
     const speed = Math.hypot(this.vx, this.vz) / TILE;
-    const w = clamp((speed - FACE_SLOW) / (FACE_FAST - FACE_SLOW), 0, 1);
+    // Not in a loop, or leaning past upright: there the travel swings right
+    // round and the bird would spin to follow it. It faces its lean.
+    const w = this.looping || this.lean > Math.PI / 2 ? 0
+      : clamp((speed - FACE_SLOW) / (FACE_FAST - FACE_SLOW), 0, 1);
     let want = this.leanDir;
     if (w > 0) {
       let d = Math.atan2(this.vx, this.vz) - this.leanDir;
@@ -683,8 +684,10 @@ export class Player {
     while (d > Math.PI) d -= Math.PI * 2;
     while (d < -Math.PI) d += Math.PI * 2;
     this.facing += d * FACE_EASE;
-    matRotY(this.facing - this.leanDir, faceTurn);
-    matMul(this.matrix, faceTurn, this.pose);
+    let off = this.leanDir - this.facing;
+    while (off > Math.PI) off -= Math.PI * 2;
+    while (off < -Math.PI) off += Math.PI * 2;
+    matFromAim(this.facing, this.lean * Math.max(0, Math.cos(off)), this.pose);
   }
 
   // Downwash off the ground. Only close in, and only over land -- it is grit
