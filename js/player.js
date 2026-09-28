@@ -15,7 +15,9 @@ import {
 import { MODELS, objectAt, objectOffset, isWreck, isBlocks, structureIndex } from './objects.js';
 import { topple, isKnocked } from './blocks.js';
 import { project } from './renderer.js';
-import { spawnExhaust, spawnExplosion, spawnSparks, spawnSmoke, spawnDust } from './particles.js';
+import {
+  spawnExhaust, spawnExplosion, spawnSparks, spawnSmoke, spawnDust, spawnSkimSpray, spawnFoam,
+} from './particles.js';
 import { drawUav } from './uav.js';
 import { drawBird } from './bird.js';
 import { drawOrigami } from './origami.js';
@@ -176,6 +178,11 @@ const BAY_OFFSET = TILE * 0.34;
 const RELEASE_SPEED = TILE * 0.010;
 // Clearance, in tiles, within which the rotors start lifting dust.
 const WASH_HEIGHT = 2.6;
+// Skimming the sea: within this many tiles of the water the bird throws up
+// spray and leaves foam, and at SKIM_FAST across it (four tiles a second)
+// the wake is at its fullest. See skim().
+const SKIM_HEIGHT = 1.8;
+const SKIM_FAST = TILE * 0.08;
 const SHIP_RADIUS = 0.3;   // in tiles, for scenery collisions
 const SCAN = 2;            // tiles either way to test for scenery
 
@@ -616,6 +623,8 @@ export class Player {
     this.y = (this.y + this.vy) | 0;
     this.z = (this.z + this.vz) | 0;
 
+    if (!this.landed) this.skim();
+
     this.checkGround(game);
   }
 
@@ -643,6 +652,60 @@ export class Player {
       Math.cos(a) * speed,
       Math.sin(a) * speed,
     );
+  }
+
+  // Skimming the sea. Low over open water the bird's wingbeat blows spray up
+  // and out from under it, and moving across the water it throws a rooster
+  // tail of spray up behind it and leaves a trail of foam lying on the sea,
+  // spreading into a V as it goes. All of it thicker the lower it is, and
+  // the wake the faster -- which is also a read on how close to the water
+  // you are, the way the dust is over land. Flat out at the lowest it keeps
+  // about three hundred particles going, of the pool's 484, which leaves
+  // room for a splash or an explosion at the same time.
+  skim() {
+    if (landAltitude(this.x, this.z) < SEA_LEVEL) return;
+    const clearance = (SEA_LEVEL - (this.y + UNDERCARRIAGE_Y)) / TILE;
+    if (clearance < 0 || clearance > SKIM_HEIGHT) return;
+    const low = 1 - clearance / SKIM_HEIGHT;
+    const sea = SEA_LEVEL - 1;
+
+    // Downwash: droplets blown up and outwards, while the wings are beating.
+    if (this.thrusting && rnd() < low * 0.8) {
+      const a = rnd() * Math.PI * 2, r = (0.3 + rnd() * 0.5) * TILE;
+      const out = TILE * (0.006 + 0.010 * low);
+      spawnSkimSpray((this.x + Math.cos(a) * r) | 0, sea, (this.z + Math.sin(a) * r) | 0,
+        Math.cos(a) * out, -TILE * (0.010 + 0.018 * low * rnd()), Math.sin(a) * out);
+    }
+
+    // The wake, if it is going anywhere.
+    const vx = this.vx + this.slideV, vz = this.vz;
+    const speed = Math.hypot(vx, vz);
+    if (speed < TILE * 0.006) return;
+    const fast = Math.min(1, speed / SKIM_FAST);
+    const ux = vx / speed, uz = vz / speed;           // along the track
+    const sx = -uz, sz = ux;                          // across it
+    // The rooster tail: thrown up behind, fanned out to the sides, going
+    // slower than the bird so it falls away behind.
+    for (let n = low * fast * 4 + rnd(); n >= 1; n--) {
+      const side = rndSigned();
+      spawnSkimSpray(
+        (this.x - ux * TILE * 0.2 + sx * side * TILE * 0.2) | 0, sea,
+        (this.z - uz * TILE * 0.2 + sz * side * TILE * 0.2) | 0,
+        vx * 0.45 + sx * side * TILE * 0.03,
+        -TILE * (0.016 + 0.03 * low * fast * rnd()),
+        vz * 0.45 + sz * side * TILE * 0.03);
+    }
+    // Foam, left lying, drifting apart into a V -- which is the part of the
+    // wake the chase camera sees, since the trail itself runs back towards
+    // it and out of the bottom of the frame.
+    for (let n = low * (0.4 + 0.8 * fast) + rnd(); n >= 1; n--) {
+      const side = rnd() < 0.5 ? -1 : 1;
+      const spread = TILE * (0.004 + 0.010 * fast) * (0.6 + 0.4 * rnd());
+      spawnFoam(
+        (this.x + sx * side * TILE * 0.15 * rnd()) | 0,
+        (this.z + sz * side * TILE * 0.15 * rnd()) | 0,
+        sx * side * spread, sz * side * spread);
+    }
   }
 
   emitExhaust(up, thrust, t = 1) {

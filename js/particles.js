@@ -8,6 +8,7 @@
 import { TILE, rnd, rndSigned, rndInt } from './maths.js';
 import { landAltitude, SEA_LEVEL } from './landscape.js';
 import { project, projScale, SCREEN_W, SCREEN_H } from './renderer.js';
+import { sky } from './daylight.js';
 
 export const MAX_PARTICLES = 484;
 
@@ -20,6 +21,7 @@ export const P_BULLET  = 1 << 4;  // damages whatever it touches
 export const P_SPLASH  = 1 << 5;  // throws up spray when it hits the sea
 export const P_RISE    = 1 << 6;  // drifts upwards (smoke)
 export const P_HEAVY   = 1 << 7;  // falls at a multiple of gravity
+export const P_THIN    = 1 << 8;  // fades out, lit by the sky (water)
 
 // What P_HEAVY multiplies gravity by. A bomb is a lump of metal, not a
 // cinder: it has no business hanging in the air at the same rate as the
@@ -92,6 +94,7 @@ const SMOKE = [[102, 102, 102], [136, 136, 136], [68, 68, 68]];
 const SPRAY = [[187, 221, 255], [255, 255, 255]];
 const SPARK = [[255, 255, 204], [255, 221, 102]];
 const DUST  = [[176, 164, 136], [154, 144, 120], [196, 184, 156]];
+const FOAM  = [[238, 245, 250], [216, 232, 244], [226, 238, 248]];
 
 const pick = (a) => a[rndInt(a.length)];
 
@@ -150,6 +153,17 @@ export function spawnDust(px, py, pz, outX, outZ) {
   spawn(px, py, pz,
     outX, -TILE * 0.004 - rnd() * TILE * 0.004, outZ,
     pick(DUST), 22 + rndInt(20), P_GRAVITY | P_FADE, 2);
+}
+
+// Skimming the sea: spray thrown up off the water, and the foam left lying on
+// it. Both are water, so they thin away rather than cooling to black -- a
+// dark fleck on the sea reads as dirt -- and they take the evening's light,
+// where fire and sparks make their own.
+export function spawnSkimSpray(px, py, pz, pvx, pvy, pvz) {
+  spawn(px, py, pz, pvx, pvy, pvz, pick(SPRAY), 26 + rndInt(20), P_GRAVITY | P_THIN, 2);
+}
+export function spawnFoam(px, pz, pvx, pvz) {
+  spawn(px, SEA_LEVEL - 1, pz, pvx, 0, pvz, pick(FOAM), 70 + rndInt(50), P_THIN, 2);
 }
 
 // Smoke climbing from a wreck.
@@ -224,6 +238,7 @@ export function updateParticles(gravity, onBulletHit) {
 // --- drawing ---------------------------------------------------------------
 
 const pt = { x: 0, y: 0 };
+const thinCol = [0, 0, 0, 255];
 
 // Particles are drawn as small screen-aligned rectangles whose size falls off
 // with distance, in the same 1x1 to 3x2 range the original used.
@@ -247,6 +262,17 @@ export function drawParticles(rd, camX, camY, camZ) {
     if (size[i] >= 3) { const g = size[i] - 2; w += g; h += g; }
 
     let r = cr[i], g = cg[i], b = cb[i];
+    if (flags[i] & P_THIN) {
+      // Water: lit by the sky, and fading out rather than down.
+      const t = life[i] / maxLife[i];
+      const t2 = sky.tint;
+      thinCol[0] = Math.min(255, r * t2[0]) | 0;
+      thinCol[1] = Math.min(255, g * t2[1]) | 0;
+      thinCol[2] = Math.min(255, b * t2[2]) | 0;
+      thinCol[3] = Math.round(240 * Math.min(1, t * 1.6));
+      rd.rect(Math.round(pt.x) - (w >> 1), Math.round(pt.y) - (h >> 1), w, h, thinCol);
+      continue;
+    }
     if (flags[i] & P_FADE) {
       // Cool down towards black over the particle's life.
       const t = life[i] / maxLife[i];
