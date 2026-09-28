@@ -84,6 +84,18 @@ it built, so a bob up and straight back down still costs you.
 Sites are static, worth more than anything else on the map, and the rounds
 still on the rails go up with them.
 
+**Shadow crabs** scuttle about the dry land, sideways, with red eyes on
+stalks that are all there is of them to see after dark. Left alone they
+wander; let the bird come down within about three tiles of the ground and
+seven across it and one will notice and come at it, claws working, at about
+two tiles a second. A pinch does not kill: it takes a sixth of a full load of
+energy and throws the bird up and away, and the crab backs off for three
+seconds before it will try again -- it is the energy running out that does
+the killing. They never set foot on the launchpad, and none spawn within five
+tiles of it, so the pad is always somewhere safe to sit and charge. Coming
+down on one from above -- descending, over it, feet within half a tile of
+its back -- bursts it into shadow for 60 points and bounces the bird back up.
+
 The phoenix **starts small**: no tail, no streamer, and half a full load of
 energy. Five teardrop flames burn across the whole world, each about fifty
 tiles further ahead of the launchpad than the last and swinging wider left
@@ -275,6 +287,7 @@ software rasterisation, so a phone GPU does not notice it.
 | `js/objects.js` | scenery models and the stateless object map |
 | `js/tanks.js` | roving armour, their gunnery and their destruction |
 | `js/boats.js` | canoes on the sea, the one moving thing left out there |
+| `js/crabs.js` | shadow crabs: wander the land, pinch the bird, squash from above |
 | `js/sam.js` | radar and missile sites, and what they do to anyone flying high |
 | `js/player.js` | faceted hull, flight physics, collisions |
 | `js/particles.js` | exhaust, bullets, explosions, smoke, spray |

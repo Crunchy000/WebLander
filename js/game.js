@@ -102,6 +102,7 @@ import {
 import {
   updateBoats, drawBoat, boatsInRow, boatHit, boatBlast, resetBoats, BOAT_SCORE,
 } from './boats.js';
+import { updateCrabs, drawCrab, crabsInRow, resetCrabs, CRAB_SCORE } from './crabs.js';
 
 export const STATE = { TITLE: 0, PLAYING: 1, DYING: 2, GAMEOVER: 3 };
 
@@ -133,6 +134,10 @@ const FLAME_SCORE = 150;
 // through rather than crept up on and held, and there are dozens on the
 // water -- a line of them is a real top-up, one is a sip.
 const LANTERN_ENERGY = CHARGE_MAX / 24;
+// What a shadow crab's pinch takes: a sixth of a full load, about a quarter
+// of what a bird with no flames yet can hold at all -- enough to hurt, not
+// enough that one on its own ends a full bird.
+const PINCH_ENERGY = CHARGE_MAX / 6;
 
 // Nectar. Half a second of holding station buys a fourteenth of the pack,
 // which is about ten seconds of hovering -- so a meadow pays for the time
@@ -228,6 +233,7 @@ export class Game {
     this.pendingBalloons = Array.from({ length: TILES_Z + 2 }, () => []);
     this.pendingLanterns = Array.from({ length: TILES_Z + 2 }, () => []);
     this.pendingFlames = Array.from({ length: TILES_Z + 2 }, () => []);
+    this.pendingCrabs = Array.from({ length: TILES_Z + 2 }, () => []);
     this.warnTick = 0;
 
     this.newGame();
@@ -249,6 +255,7 @@ export class Game {
     resetWeather();
     resetFlowers();
     resetFlames();
+    resetCrabs();
     this.flames = 0;
     this.flameOrder = [];
     this.grow();
@@ -313,6 +320,33 @@ export class Game {
   onBoatHit(x, y, z) {
     this.audio.explosion();
     this.setMessage('boat hit', 60);
+  }
+
+  // A shadow crab has got the bird: energy out of it, and the bird thrown up
+  // and away from the claws.
+  onPinched(c) {
+    const p = this.player;
+    p.charge = Math.max(0, p.charge - PINCH_ENERGY);
+    let ax = p.x - c.x, az = p.z - c.z;
+    const len = Math.hypot(ax, az) || 1;
+    ax /= len; az /= len;
+    p.vx = (p.vx * 0.3 + ax * TILE * 0.022) | 0;
+    p.vz = (p.vz * 0.3 + az * TILE * 0.022) | 0;
+    p.vy = Math.min(p.vy, -TILE * 0.028) | 0;
+    this.energyFlash = 24;
+    this.audio.tone(210, 0.06, 'square', 0.22);
+    setTimeout(() => this.audio.tone(150, 0.09, 'square', 0.2), 70);
+    this.setMessage('pinched!', 60);
+  }
+
+  // ... and the bird has come down on one.
+  onCrabSquashed(c) {
+    const p = this.player;
+    p.vy = Math.min(p.vy, -TILE * 0.03) | 0;
+    this.addScore(CRAB_SCORE);
+    this.audio.clatter(0.35);
+    this.audio.chime(3);
+    this.setMessage('crab squashed  +' + CRAB_SCORE, 60);
   }
 
   onBoatSunk(x, y, z) {
@@ -506,6 +540,7 @@ export class Game {
     updateBalloons(this.player);
     updateLanterns(this.player, this);
     updateFlames(this.player, this);
+    updateCrabs(this.player, this);
     updateBlocks();
     updateParticles(this.gravity, (i, bx, by, bz) => this.bulletHit(i, bx, by, bz));
 
@@ -827,6 +862,7 @@ export class Game {
     for (const list of this.pendingBoats) list.length = 0;
     for (const list of this.pendingBalloons) list.length = 0;
     for (const list of this.pendingLanterns) list.length = 0;
+    for (const list of this.pendingCrabs) list.length = 0;
 
     // The landscape pass keeps depth: see Renderer.depthMode('paint'). The
     // picture is painter's order exactly as before; the depth buffer comes
@@ -853,6 +889,7 @@ export class Game {
         balloonsInRow(worldZ, (worldZ + TILE) | 0, this.pendingBalloons[j]);
         lanternsInRow(worldZ, (worldZ + TILE) | 0, this.pendingLanterns[j]);
         flamesInRow(worldZ, (worldZ + TILE) | 0, this.pendingFlames[j]);
+        crabsInRow(worldZ, (worldZ + TILE) | 0, this.pendingCrabs[j]);
         // The craft's shadow belongs to whichever row the ground under it
         // is in, so it is drawn with that row and hidden by hills in front.
         if (eyeShadowZ >= worldZ && eyeShadowZ < worldZ + TILE) this.shadowRow = j;
@@ -1029,6 +1066,13 @@ export class Game {
     if (fl && fl.length) {
       for (const f of fl) drawFlame(this.rd, f, eyeX, eyeY, eyeZ, haze);
       fl.length = 0;
+    }
+
+    // Shadow crabs, on the ground of their row.
+    const crabs = this.pendingCrabs[row];
+    if (crabs && crabs.length) {
+      for (const c of crabs) drawCrab(this.rd, c, eyeX, eyeY, eyeZ, haze, row);
+      crabs.length = 0;
     }
 
     const shipping = this.pendingBoats[row];
