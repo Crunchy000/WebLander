@@ -1,6 +1,7 @@
 // fill.mjs -- how much of the frame is pixels rather than geometry: the same
 // flight, at the resolution the game ships at and at the one it used to be.
 import { chromium } from '/home/user/WebLander/node_modules/playwright/index.mjs';
+import { base } from './serve.mjs';
 const br = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 const pg = await br.newPage({ viewport: { width: 960, height: 560 } });
 const errs = []; pg.on('pageerror', (e) => errs.push(e.message));
@@ -11,7 +12,7 @@ await pg.addInitScript(() => {
   navigator.getGamepads = () => [fake];
   window.__press = (i, v = 1) => { window.__pad.buttons[i] = { pressed: v > 0, value: v }; };
 });
-await pg.goto('http://localhost:8123/', { waitUntil: 'load' });
+await pg.goto(await base(), { waitUntil: 'load' });
 await pg.waitForFunction(() => !!window.lander);
 await pg.click('#start');
 const out = await pg.evaluate(async ([rows, seconds]) => {

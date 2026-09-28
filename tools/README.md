@@ -1,6 +1,13 @@
 # tools
 
-The game has no build step and this does not change that. These are the
+The game has no build step and this does not change that.
+
+None of the browser tools need a web server started first: each serves the
+game to itself from inside the tool (`serve.mjs`, a small static server on a
+free port that goes away when the tool exits). They used to expect
+`python3 -m http.server 8123` left running in the background, which died or
+hung often enough that tools failed on a refused connection for no reason of
+their own. `BASE=http://...` still points one at another build. These are the
 one-off scripts that turned `art/hummingbird.glb` into `js/origami-data.js`,
 kept so the conversion can be rerun or pointed at another model rather than
 being a thing that happened once on somebody's laptop.

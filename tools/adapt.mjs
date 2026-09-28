@@ -1,10 +1,11 @@
 // adapt.mjs -- does the backing store come down when the machine cannot keep
 // up, and does it go back up when it can?
 import { chromium } from '/home/user/WebLander/node_modules/playwright/index.mjs';
+import { base } from './serve.mjs';
 const br = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 const pg = await br.newPage({ viewport: { width: 1280, height: 720 } });
 const errs = []; pg.on('pageerror', (e) => errs.push(e.message));
-await pg.goto('http://localhost:8123/?perf=1', { waitUntil: 'load' });
+await pg.goto((await base()) + '?perf=1', { waitUntil: 'load' });
 await pg.waitForFunction(() => !!window.lander);
 await pg.click('#start');
 const seen = [];

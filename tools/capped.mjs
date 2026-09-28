@@ -2,6 +2,7 @@
 // its cadence, not because it is struggling. The adaptor should leave the
 // picture alone.
 import { chromium } from '/home/user/WebLander/node_modules/playwright/index.mjs';
+import { base } from './serve.mjs';
 const br = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 const pg = await br.newPage({ viewport: { width: 640, height: 360 } });
 const errs = []; pg.on('pageerror', (e) => errs.push(e.message));
@@ -17,7 +18,7 @@ await pg.addInitScript(() => {
     return window.setTimeout(() => fn(performance.now()), Math.max(0, next - now));
   };
 });
-await pg.goto('http://localhost:8123/?perf=1', { waitUntil: 'load' });
+await pg.goto((await base()) + '?perf=1', { waitUntil: 'load' });
 await pg.waitForFunction(() => !!window.lander);
 await pg.click('#start');
 const seen = [];

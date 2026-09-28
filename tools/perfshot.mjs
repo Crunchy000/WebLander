@@ -1,12 +1,13 @@
 // perfshot.mjs -- does the readout appear, does it say sensible things, and
 // does the console line arrive?
 import { chromium } from '/home/user/WebLander/node_modules/playwright/index.mjs';
+import { base } from './serve.mjs';
 const br = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 const pg = await br.newPage({ viewport: { width: 900, height: 470 } });
 const logs = [], errs = [];
 pg.on('console', (m) => { if (m.text().startsWith('weblander:')) logs.push(m.text()); });
 pg.on('pageerror', (e) => errs.push(e.message));
-await pg.goto('http://localhost:8123/?perf=1', { waitUntil: 'load' });
+await pg.goto((await base()) + '?perf=1', { waitUntil: 'load' });
 await pg.waitForFunction(() => !!window.lander);
 await pg.click('#start');
 await pg.waitForTimeout(12000);

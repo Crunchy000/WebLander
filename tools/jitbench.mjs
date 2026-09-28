@@ -16,6 +16,7 @@
 //   JIT=1 node tools/jitbench.mjs      # JIT on, for comparison
 
 import { chromium } from '/home/user/WebLander/node_modules/playwright/index.mjs';
+import { base } from './serve.mjs';
 
 const SCENES = [
   { name: 'meadow-noon', x: 0, z: 0, alt: 2, phase: 0.35 },
@@ -40,7 +41,7 @@ await pg.addInitScript(() => {
     return ((a + b) >>> 0) / 4294967296;
   };
 });
-await pg.goto((process.env.BASE || 'http://localhost:8123/') + (process.env.QUERY || ''), { waitUntil: 'load' });
+await pg.goto((await base()) + (process.env.QUERY || ''), { waitUntil: 'load' });
 await pg.waitForFunction(() => !!window.lander);
 await pg.click('#start');
 

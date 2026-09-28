@@ -6,6 +6,7 @@
 // the only thing that can differ between two runs is the renderer.
 import fs from 'fs';
 import { chromium } from '/home/user/WebLander/node_modules/playwright/index.mjs';
+import { base } from './serve.mjs';
 
 const SCENES = [
   { name: 'meadow-noon', x: 0, z: 0, alt: 2, phase: 0.35 },
@@ -35,7 +36,7 @@ async function shoot(outDir) {
       return ((a + b) >>> 0) / 4294967296;
     };
   });
-  await pg.goto('http://localhost:8123/' + (process.env.QUERY || ''), { waitUntil: 'load' });
+  await pg.goto((await base()) + (process.env.QUERY || ''), { waitUntil: 'load' });
   await pg.waitForFunction(() => !!window.lander);
   await pg.click('#start');
   for (const sc of SCENES) {

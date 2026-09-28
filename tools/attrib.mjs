@@ -3,12 +3,13 @@
 // draw pass consults; the cost of a layer is the time the frame loses
 // without it.
 import { chromium } from '/home/user/WebLander/node_modules/playwright/index.mjs';
+import { base } from './serve.mjs';
 const SCENE = process.env.SCENE || 'water';
 const PHASE = Number(process.env.PHASE || 0.40);
 const br = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 const pg = await br.newPage({ viewport: { width: 640, height: 300 } });
 const errs = []; pg.on('pageerror', (e) => errs.push(e.message));
-await pg.goto('http://localhost:8123/', { waitUntil: 'load' });
+await pg.goto(await base(), { waitUntil: 'load' });
 await pg.waitForFunction(() => !!window.lander);
 await pg.click('#start');
 await pg.waitForTimeout(300);

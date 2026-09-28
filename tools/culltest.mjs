@@ -2,11 +2,12 @@
 // picture? Renders the same frame with the flag on and off and counts the
 // pixels that differ, plus what it saves.
 import { chromium } from '/home/user/WebLander/node_modules/playwright/index.mjs';
+import { base } from './serve.mjs';
 import fs from 'fs';
 const br = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
 const pg = await br.newPage({ viewport: { width: 900, height: 420 } });
 const errs = []; pg.on('pageerror', (e) => errs.push(e.message));
-await pg.goto('http://localhost:8123/', { waitUntil: 'load' });
+await pg.goto(await base(), { waitUntil: 'load' });
 await pg.waitForFunction(() => !!window.lander);
 await pg.click('#start');
 await pg.waitForTimeout(300);
