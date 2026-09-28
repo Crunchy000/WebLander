@@ -4,9 +4,9 @@
 // it in the oranges of a fire -- ember, rust, flame, amber, gold. A hooked
 // beak; a neck that rises to the head; wings raised in a V, each an arm
 // folded once and a hand cut into six long flight feathers with three
-// shorter ones behind; legs hanging with their talons. And the fire itself:
-// a crest of three swept-back flames and a tail of five tongues of flame,
-// each drooping and then curling up at its tip -- lit from within,
+// shorter ones behind. No eyes, no crest and no legs: a shape of fire, not
+// a creature with a face. And the fire itself: a tail of up to six tongues
+// of flame, each drooping and then curling up at its tip -- lit from within,
 // see-through towards their tips, and flickering.
 //
 // Paper, twice over. Every facet's tone is nudged a little lighter or darker
@@ -33,12 +33,10 @@ const AMBER = [244, 142, 48];
 const GOLD = [250, 180, 80];
 const PALE = [252, 208, 126];
 const INK = [40, 18, 12];
-// Marks that are not fire: the beak in dark slate, so it reads apart from the
-// head, and the eyes a glowing cyan -- the one cool colour on the bird, and
-// so the first place the eye goes.
+// The one mark that is not fire: the beak in dark slate, so it reads apart
+// from the head.
 const SLATE = [58, 54, 66];
 const OBSIDIAN = [34, 30, 40];
-const CYAN = [0, 255, 255];
 
 // The heat, from the core out: white-yellow in the chest, a saturated orange
 // through the body and the wings, a deep ember at the feather tips and the
@@ -105,7 +103,7 @@ function build(points, tris, dy, seed, alpha, lit = false, heatFrom = null) {
     const len = Math.hypot(n[0], n[1], n[2]) || 1;
     const lit_ = Math.abs((n[0] * LIGHT[0] + n[1] * LIGHT[1] + n[2] * LIGHT[2]) / len);
     const k = ((hash2(m.faces.length, seed) & 255) / 255 - 0.5) * 2 * MOTTLE;
-    // A mark (the beak, the eyes) keeps its own colour and is solid.
+    // A mark (the beak) keeps its own colour and is solid.
     if (glow === 'mark') {
       m.faces.push({ idx: [a, b, c], col, glow: true, alpha: [1, 1, 1] });
       return;
@@ -169,8 +167,6 @@ const BODY_P = {
   back: [0, -0.20, -0.02], shoulderR: [0.18, -0.05, -0.02], keel: [0, 0.20, 0.14],
   rump: [0, -0.12, -0.28], hipR: [0.10, 0.02, -0.26], belly: [0, 0.14, -0.16],
   vent: [0, -0.02, -0.36],
-  thighR: [0.06, 0.12, -0.12], kneeR: [0.06, 0.13, -0.02], ankleR: [0.07, 0.30, -0.03],
-  talonAR: [0.03, 0.37, 0.06], talonBR: [0.11, 0.37, 0.05], talonCR: [0.07, 0.36, -0.09],
 };
 const BODY_T = [
   // The beak, folded along its top and bottom, hooked at the tip.
@@ -200,15 +196,11 @@ const BODY_T = [
   // Closed at the vent.
   [['rump', 'vent', 'hipR'], EMBER, true],
   [['hipR', 'vent', 'belly'], RUST, true],
-  // The legs, hanging, and their talons.
-  [['thighR', 'kneeR', 'ankleR'], EMBER, true],
-  [['ankleR', 'talonAR', 'talonBR'], RUST, true],
-  [['ankleR', 'talonBR', 'talonCR'], EMBER, true],
 ];
 
 // --- the fire --------------------------------------------------------------
 //
-// The tail and the crest are not paper but flame: a piece of their own, drawn
+// The tail is not paper but flame: a piece of their own, drawn
 // after the rest of the bird, every facet lit from within so the evening does
 // not dim it, and see-through -- nearly solid at the root, a wisp at the tip.
 // On the GPU it also flickers (see modelpass.js); the CPU path draws it as a
@@ -218,19 +210,19 @@ const FIRE_MID = [250, 136, 36];
 const FIRE_HOT = [255, 176, 64];
 const FIRE_TIP = [255, 214, 120];
 const FLAME_P = {};
-const FLAME_T = [];
 const FLAME_A = {};           // how solid each point is, 0 to 1
 
 // The tail: five tongues of flame from the vent, fanned, each drooping and
 // then curling up at its tip, and each folded down its length so the two
 // halves take the light differently.
-function tongue(name, spread, reach, side) {
+// `rise` lifts a tongue above the others, for the long one down the middle.
+function tongue(name, spread, reach, side, rise = 0) {
   const R = side ? 'R' : '';
   const line = [
     [spread * 0.06, -0.06, -0.32, 0.06, 0.92],
-    [spread * 0.28, 0.08, -0.32 - 0.30 * reach, 0.09, 0.78],
-    [spread * 0.50, 0.16, -0.32 - 0.62 * reach, 0.07, 0.55],
-    [spread * 0.66, 0.02, -0.32 - 0.90 * reach, 0, 0.16],
+    [spread * 0.28, 0.08 - rise * 0.6, -0.32 - 0.30 * reach, 0.09, 0.78],
+    [spread * 0.50, 0.16 - rise, -0.32 - 0.62 * reach, 0.07, 0.55],
+    [spread * 0.66, 0.02 - rise * 1.3, -0.32 - 0.90 * reach, 0, 0.16],
   ];
   const cols = [FIRE_ROOT, FIRE_MID, FIRE_HOT];
   line.forEach(([x, y, z, w, a], j) => {
@@ -262,49 +254,12 @@ function tongue(name, spread, reach, side) {
 }
 const TONGUES = [];
 
-// The eyes, laid flat on the face just behind the beak -- in the plane of
-// that facet and a hair proud of it, so they are there from the side and
-// the front and gone from behind, as a bird's are. (Standing out from the
-// head, they read from the chase camera as a crawfish's, on stalks.)
-{
-  const [A, B, C] = [BODY_P.billTop, BODY_P.cheekR, BODY_P.crown];
-  const e1 = A.map((v, i) => B[i] - v), e2 = A.map((v, i) => C[i] - v);
-  let n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
-  const l = Math.hypot(...n);
-  n = n.map((v) => v / l);
-  if (n[0] < 0) n = n.map((v) => -v);                          // outward, to the right
-  const on = (a, b, c) => A.map((v, i) => v * a + B[i] * b + C[i] * c + n[i] * 0.004);
-  BODY_P.eyeAR = on(0.32, 0.40, 0.28);
-  BODY_P.eyeBR = on(0.14, 0.42, 0.44);
-  BODY_P.eyeCR = on(0.20, 0.62, 0.18);
-  BODY_T.push([['eyeAR', 'eyeBR', 'eyeCR'], CYAN, true, 'mark']);
-}
-
-// The crest: three flames swept back along the top of the head, each
-// folded down its middle into a shallow V, so it has width from every side
-// rather than being a blade that is a line from behind.
-function plume(name, front, back, tip, col) {
-  const mid = front.map((v, i) => (v + back[i]) / 2);
-  const flare = mid.map((v, i) => v + (tip[i] - v) * 0.4);
-  const put = (k, p, a) => { FLAME_P[name + k] = p; FLAME_A[name + k] = a; };
-  put('f', front, 0.95);
-  put('b', back, 0.95);
-  put('t', tip, 0.2);
-  put('R', [flare[0] + 0.032, flare[1] + 0.015, flare[2]], 0.7);
-  FLAME_T.push([[name + 'f', name + 't', name + 'R'], col, true]);
-  FLAME_T.push([[name + 'R', name + 't', name + 'b'], col === FIRE_MID ? FIRE_ROOT : FIRE_MID, true]);
-}
-{
-  const lerp = (p, q, t) => p.map((v, i) => v + (q[i] - v) * t);
-  const top = lerp(BODY_P.crown, BODY_P.nape, 0.5);
-  plume('plumeA', BODY_P.crown, top, [0, -0.84, 0.10], FIRE_HOT);
-  plume('plumeB', top, BODY_P.nape, [0, -0.74, -0.06], FIRE_MID);
-  plume('plumeC', BODY_P.nape, lerp(BODY_P.nape, BODY_P.back, 0.35), [0, -0.62, -0.22], FIRE_HOT);
-}
-
 tongue('t0', 0, 1.25, false);
 tongue('t1', 0.55, 1.05, true);
 tongue('t2', 1.15, 0.85, true);
+// The sixth, and last: a long one straight back over the middle one,
+// curling higher -- the finishing plume of the whole bird.
+tongue('t3', 0, 1.6, false, 0.12);
 
 // --- the wings -------------------------------------------------------------
 //
@@ -397,7 +352,7 @@ const SHOULDER_B = [0.10, -0.14 - LIFT, 0.04];
 // The whole bird burns. The body and the wings are paper that has caught:
 // lit from within like the fire, see-through -- the body nearly solid, the
 // wings thinning towards their feather tips -- and flickering, more gently
-// than the tail and crest, so the bird shimmers rather than strobes. `flame`
+// than the tail, so the bird shimmers rather than strobes. `flame`
 // is how hard it flickers (see modelpass.js).
 const BODY_ALPHA = () => 0.8;
 const WING_ALPHA = ([x, y, z]) => 0.86 - 0.52 * Math.min(1, Math.hypot(x, y, z) / 0.6);
@@ -407,19 +362,21 @@ const WING_ALPHA = ([x, y, z]) => 0.86 - 0.52 * Math.min(1, Math.hypot(x, y, z) 
 // shading, which means something for the closed body and nothing for a sheet.
 export const ORIGAMI_BODY = build(BODY_P, BODY_T, LIFT, 1, BODY_ALPHA, 'shell', [0, 0, 0]);
 ORIGAMI_BODY.flame = 0.4;
-// The fire at each stage of the game: the crest always, and a tongue of the
-// tail for every flame gathered -- the middle one first, then the pairs
-// either side, one side at a time.
-const FIRE_BY_LEVEL = [0, 1, 2, 3, 4, 5].map((n) => {
-  const m = build(FLAME_P, [...FLAME_T, ...TONGUES.slice(0, n).flat()], LIFT, 4, FLAME_A, false, [0, 0, 0]);
+// The fire at each stage of the game: a tongue of the tail for each feather
+// -- the middle one first, then the pairs either side, one side at a time,
+// and the long plume last. Never fewer than one: the bird is always a fire.
+export const TAIL_FEATHERS = TONGUES.length;
+const FIRE_BY_LEVEL = TONGUES.map((_, i) => {
+  const m = build(FLAME_P, TONGUES.slice(0, i + 1).flat(), LIFT, 4, FLAME_A, false, [0, 0, 0]);
   m.flame = 1;
   return m;
 });
-let fireLevel = 5;
+FIRE_BY_LEVEL.unshift(FIRE_BY_LEVEL[0]);
+let fireLevel = TAIL_FEATHERS;
 export function setFireLevel(n) {
-  fireLevel = Math.max(0, Math.min(5, n | 0));
+  fireLevel = Math.max(1, Math.min(TAIL_FEATHERS, n | 0));
 }
-export const ORIGAMI_FIRE = FIRE_BY_LEVEL[5];
+export const ORIGAMI_FIRE = FIRE_BY_LEVEL[TAIL_FEATHERS];
 const WING_A = build(mirror(WING_P), WING_T, 0, 2, WING_ALPHA, true, [-0.10, -0.14, 0.04]);
 const WING_B = build(WING_P, WING_T, 0, 3, WING_ALPHA, true, [0.10, -0.14, 0.04]);
 WING_A.flame = WING_B.flame = 0.4;

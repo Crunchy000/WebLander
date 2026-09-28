@@ -96,7 +96,7 @@ tiles of it, so the pad is always somewhere safe to sit and charge. Coming
 down on one from above -- descending, over it, feet within half a tile of
 its back -- bursts it into shadow for 60 points and bounces the bird back up.
 
-The phoenix **starts small**: no tail, no streamer, and half a full load of
+The phoenix **starts small**: a single tail feather, no streamer, and half a full load of
 energy. Five teardrop flames burn across the whole world, each about fifty
 tiles further ahead of the launchpad than the last and swinging wider left
 and right, the last most of the way round; each stands under a column of
@@ -104,7 +104,7 @@ light, the nearer ones visible from the pad and the rest coming into view on
 the way out. Flying
 through one grows the bird: a tongue of flame for its tail, a fifth more of
 its streamer, and a tenth more room for energy, filled on the spot. All five
-is the whole bird. Before launch the phoenix is itself one of these flames,
+is the whole bird, six feathers with a long plume down the middle. Before launch the phoenix is itself one of these flames,
 sat on the pad, and it hatches out of it at the first touch of power -- at
 the start of every life. A death costs it the flame it gathered last: that
 tail feather goes, and the flame burns again where it was found, to be flown

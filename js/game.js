@@ -266,14 +266,14 @@ export class Game {
 
   // --- the phoenix's flames ------------------------------------------------
   //
-  // The bird starts small -- no tail, no streamer, half a load of energy --
-  // and every one of the five flames it gathers adds to all three: a tongue
-  // of the tail, a fifth of the streamer, a tenth of a full load of room for
-  // energy. All five is the whole bird. A death costs it the last one (see
+  // The bird starts small -- one tail feather, no streamer, half a load of
+  // energy -- and every one of the five flames it gathers adds to all
+  // three: a tongue of the tail, a fifth of the streamer, a tenth of a full
+  // load of room for energy. All five is the whole bird. A death costs it the last one (see
   // respawn); a new game starts it small again.
   grow() {
     const n = this.flames;
-    setFireLevel(n);
+    setFireLevel(1 + n);
     setRibbonLength(n / FLAME_COUNT);
     this.player.chargeCap = Math.round(CHARGE_MAX * (0.5 + 0.5 * n / FLAME_COUNT));
   }

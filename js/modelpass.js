@@ -65,12 +65,12 @@ void main() {
   vec3 c;
   float a = iLook.w;
   if (uFlame > 0.0) {
-    // Fire (the phoenix's tail and crest): lit from within like a lamp, and
+    // Fire (the phoenix's tail): lit from within like a lamp, and
     // as solid as the shape says at each corner -- nearly at the root, a
     // wisp at the tip -- flickering, each corner on a beat of its own.
     c = mix(aCol.rgb, uFog, iLook.z);
     float t = uTime * 11.0 + dot(aLocal, vec3(23.0, 31.0, 17.0));
-    // uFlame is how hard it flickers: 1 for the tail and crest, less for
+    // uFlame is how hard it flickers: 1 for the tail, less for
     // the body and wings.
     a = aCol.a * (1.0 - 0.26 * uFlame + uFlame * (0.16 * sin(t) + 0.10 * sin(t * 2.3 + 1.7)));
   } else if (aCol.a < 0.5) {
