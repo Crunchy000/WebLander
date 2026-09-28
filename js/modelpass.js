@@ -367,7 +367,23 @@ export class ModelPass {
       gl.clearDepth(1);
       gl.clear(gl.DEPTH_BUFFER_BIT);
     }
-    if (model.flame) {
+    if (model.flame && model.flame < 1) {
+      // The burning paper -- the body and the wings. See-through, but only
+      // its nearest surface: first its depth alone, then its colour blended
+      // where that depth is. Blended straight off, with no depth written, its
+      // faces went down in the order they were built rather than nearest
+      // last, so wherever the back of the bird was built after the front it
+      // was painted over it -- head-on the back of the head covered the face
+      // and the beak, and a bird coming towards the camera looked to be
+      // facing away from it. (The CPU path sorts its faces, and never did.)
+      gl.disable(gl.BLEND);
+      gl.colorMask(false, false, false, false);
+      gl.drawArrays(gl.TRIANGLES, shape.first, shape.count);
+      gl.colorMask(true, true, true, true);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+      gl.depthMask(false);
+    } else if (model.flame) {
       // Over what is already there, premultiplied, tested against the bird's
       // own depth but not written: it is see-through, and nothing behind it
       // should be hidden by it.
