@@ -5,7 +5,7 @@
 // for sideways acceleration. That single idea is the whole flight model, and
 // it is why the controls map so naturally onto a phone you physically tilt.
 
-import { TILE, matFromAim, matApply, clamp, rnd, rndSigned } from './maths.js';
+import { TILE, matFromAim, matApply, matMul, matRotY, clamp, rnd, rndSigned } from './maths.js';
 import { Model, shade, facet, drawModel } from './model.js';
 import {
   landAltitude, SEA_LEVEL, LAUNCHPAD_ALT, LAUNCHPAD_Y,
@@ -185,6 +185,13 @@ const WASH_HEIGHT = 2.6;
 // the wake is at its fullest. See skim().
 const SKIM_HEIGHT = 1.8;
 const SKIM_FAST = TILE * 0.08;
+// Facing where it is going: not below FACE_SLOW (tiles a step, a tenth of a
+// tile a second), all of the way from FACE_FAST (six tenths), and turning to
+// it at FACE_EASE a step.
+const FACE_SLOW = 0.002;
+const FACE_FAST = 0.012;
+const FACE_EASE = 0.15;
+const faceTurn = new Float64Array(9);
 const SHIP_RADIUS = 0.3;   // in tiles, for scenery collisions
 const SCAN = 2;            // tiles either way to test for scenery
 
@@ -328,6 +335,9 @@ export class Player {
     this.slideV = 0;
     this.looping = false;
     this.matrix = matFromAim(0, 0);
+    // How the bird is drawn, which is not quite how it flies: see face().
+    this.pose = matFromAim(0, 0);
+    this.facing = 0;
     // How much it can hold, which grows as the phoenix gathers its flames
     // (the game sets it; see Game.onFlameTaken). It starts each life full.
     if (!this.chargeCap) this.chargeCap = CHARGE_MAX;
@@ -632,6 +642,7 @@ export class Player {
     this.y = (this.y + this.vy) | 0;
     this.z = (this.z + this.vz) | 0;
 
+    this.face();
     if (!this.landed) this.skim();
     if (AIRFRAME === 'origami' && this.launched) shedEmbers(this);
 
@@ -641,6 +652,39 @@ export class Player {
     // falling, the fire simply goes out. Unless it is sat somewhere it can
     // take on charge, which is the one place an empty bird is not stranded.
     if (!this.dead && this.charge <= 0 && !this.charging) this.die(game, 'spent');
+  }
+
+  // Which way the bird looks.
+  //
+  // The flying is all in the lean: `matrix` is tipped along the stick, and
+  // thrust goes along its roof. It was drawn that way too, facing wherever
+  // it leaned -- so a bird leaning back to slow down turned round and flew
+  // on tail first, and one coasting towards the camera with the stick
+  // forward came at you backwards.
+  //
+  // So it is drawn facing where it is going, once it is going anywhere, and
+  // the lean is shown as the body tipping forward, back or over to the side
+  // of that: leaning back against its speed is a flare, nose up, as a bird
+  // brakes. Standing still it faces its lean, as before. Only the picture
+  // turns -- the roof, and so the flying, is exactly the same: the lean is
+  // a tilt about the horizontal square to it, and turning the bird about
+  // the vertical first does not move where that tilt takes the roof.
+  face() {
+    const speed = Math.hypot(this.vx, this.vz) / TILE;
+    const w = clamp((speed - FACE_SLOW) / (FACE_FAST - FACE_SLOW), 0, 1);
+    let want = this.leanDir;
+    if (w > 0) {
+      let d = Math.atan2(this.vx, this.vz) - this.leanDir;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      want += d * w;
+    }
+    let d = want - this.facing;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    this.facing += d * FACE_EASE;
+    matRotY(this.facing - this.leanDir, faceTurn);
+    matMul(this.matrix, faceTurn, this.pose);
   }
 
   // Downwash off the ground. Only close in, and only over land -- it is grit

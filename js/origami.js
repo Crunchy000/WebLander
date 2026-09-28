@@ -427,18 +427,18 @@ export function drawOrigami(rd, p, camX, camY, camZ) {
   const gpu = rd.instancer;
   // Whether the depth still needs clearing before the next GPU piece.
   let fresh = true;
-  if (gpu && gpu.drawTurned(ORIGAMI_BODY, p.matrix,
+  if (gpu && gpu.drawTurned(ORIGAMI_BODY, p.pose,
         (p.x - camX) | 0, (p.y - camY) | 0, (p.z - camZ) | 0, fresh)) {
     fresh = false;
   } else {
-    drawModel(rd, ORIGAMI_BODY, p.matrix, p.x, p.y, p.z, camX, camY, camZ, 0, 0, BIRD_CPU_FADE);
+    drawModel(rd, ORIGAMI_BODY, p.pose, p.x, p.y, p.z, camX, camY, camZ, 0, 0, BIRD_CPU_FADE);
   }
 
   const angle = Math.sin(p.rotorSpin || 0) * beat * (1 - fold) + FOLD_RISE * fold;
   const sweep = FOLD_SWEEP * fold;
 
   for (const wing of WINGS) {
-    const off = matApply(p.matrix,
+    const off = matApply(p.pose,
       wing.at[0] * TILE, wing.at[1] * TILE, wing.at[2] * TILE);
     const wx = (p.x + off[0]) | 0;
     const wy = (p.y + off[1]) | 0;
@@ -447,7 +447,7 @@ export function drawOrigami(rd, p, camX, camY, camZ) {
     matRotY(sweep * wing.side, sweepMat);
     matRotZ(angle * wing.side, flapMat);
     matMul(flapMat, sweepMat, poseMat);
-    matMul(p.matrix, poseMat, wingMat);
+    matMul(p.pose, poseMat, wingMat);
     if (gpu && gpu.drawTurned(wing.model, wingMat,
           (wx - camX) | 0, (wy - camY) | 0, (wz - camZ) | 0, fresh)) {
       fresh = false;
@@ -458,9 +458,9 @@ export function drawOrigami(rd, p, camX, camY, camZ) {
 
   // The fire last, over the paper, blended.
   const fire = FIRE_BY_LEVEL[fireLevel];
-  if (!(gpu && gpu.drawTurned(fire, p.matrix,
+  if (!(gpu && gpu.drawTurned(fire, p.pose,
         (p.x - camX) | 0, (p.y - camY) | 0, (p.z - camZ) | 0, fresh))) {
-    drawModel(rd, fire, p.matrix, p.x, p.y, p.z, camX, camY, camZ, 0, 0, FIRE_CPU_FADE);
+    drawModel(rd, fire, p.pose, p.x, p.y, p.z, camX, camY, camZ, 0, 0, FIRE_CPU_FADE);
   }
 }
 // Embers: now and then a spark comes off the tail and drifts up, left behind
@@ -472,7 +472,7 @@ export function shedEmbers(p) {
   // Somewhere along the tail, in the bird's own frame.
   const along = 0.45 + rnd() * 0.65;
   const lx = (rnd() - 0.5) * 0.9 * along, ly = 0.10 - LIFT, lz = -0.32 - along * 0.8;
-  const off = matApply(p.matrix, lx * TILE, ly * TILE, lz * TILE);
+  const off = matApply(p.pose, lx * TILE, ly * TILE, lz * TILE);
   spawnEmber((p.x + off[0]) | 0, (p.y + off[1]) | 0, (p.z + off[2]) | 0,
     (p.vx * 0.3 + (rnd() - 0.5) * TILE * 0.006) | 0,
     (-TILE * (0.004 + rnd() * 0.006)) | 0,

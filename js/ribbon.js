@@ -50,7 +50,7 @@ let shown = 0;
 // Called once a frame with the craft, after it has moved.
 export function sampleRibbon(p) {
   if (p.dead) return;
-  const o = matApply(p.matrix, ANCHOR[0] * TILE, ANCHOR[1] * TILE, ANCHOR[2] * TILE);
+  const o = matApply(p.pose || p.matrix, ANCHOR[0] * TILE, ANCHOR[1] * TILE, ANCHOR[2] * TILE);
   x[head] = (p.x + o[0]) | 0;
   y[head] = (p.y + o[1]) | 0;
   z[head] = (p.z + o[2]) | 0;
