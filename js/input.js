@@ -241,11 +241,7 @@ export class Input {
       if (!R) return;
 
       if (this.locked) {
-        // Captured, a whole canvas height of movement from the middle to the
-        // rim rather than half of one. Half was about a centimetre and a half
-        // of hand on an ordinary mouse, and with no cursor to show where the
-        // stick had got to, a small movement was a big lean.
-        const RL = R * 2;
+        const RL = R;
         // Some browsers now and then report a single movement far larger
         // than any hand made -- Chrome with pointer lock is the one people
         // meet -- and with the position kept here, a spike does not flick
