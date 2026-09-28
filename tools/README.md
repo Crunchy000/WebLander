@@ -137,20 +137,6 @@ is the stand-in: four fixed scenes at the Xbox's 1280x720, drawn 60 times
 hovering and 60 times moving forward, with the median draw and the biggest
 sections from profile.js.
 
-## The resolution adaptor
-
-    node adapttest.mjs                  # the decision itself, no browser
-    node adapt.mjs                      # a machine that cannot keep up
-    node capped.mjs                     # ... and one that simply shows 30 a second
-
-Two cases that have to end differently. `adapt.mjs` watches the backing
-store on this container, which has no GPU: it should walk down a step at a
-time and settle where the frames come in on time. `capped.mjs` wraps
-requestAnimationFrame in a 33ms slot, the way a console browser locked to
-thirty does, and the backing store should not move at all -- a cadence is not
-a machine in trouble, and no amount of taking pixels away turns thirty into
-sixty.
-
 ## How big is a clump?
 
     node clumps.mjs
@@ -162,8 +148,3 @@ construction, so every picture it takes looks like a field. The runs say
 what the ground actually does: median 1 tile, ninetieth percentile 3,
 biggest 12, over 5.6 per cent of the ground.
 
-`adapttest.mjs` drives `adapt()` by hand against a made-up machine that holds
-sixty at half size and exactly thirty at two thirds -- the shape of console
-browser that made the adaptor step up on the comfortable reading, find the
-step above too slow, step down, and go round for ever, resizing the canvas
-each time. It asserts that the size stops moving.

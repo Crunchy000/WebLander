@@ -126,13 +126,10 @@ export class DebugPanel {
       },
       {
         label: 'resolution',
-        value: () => (rd.fixed == null ? 'auto ' : 'fixed ') + Math.round(rd.scale * 100) + '%',
-        // auto, then each scale from the largest down, then auto again.
-        act: () => {
-          const n = rd.scales.length;
-          rd.fixed = rd.fixed == null ? 0 : rd.fixed + 1 < n ? rd.fixed + 1 : null;
-          if (rd.fixed != null) rd.want = rd.fixed;
-        },
+        value: () => Math.round(rd.scale * 100) + '%',
+        // Each scale from the full size down, then back to full. The game
+        // never changes it by itself.
+        act: () => { rd.want = ((rd.want || 0) + 1) % rd.scales.length; },
       },
       ...LAYERS.map(([key, label]) => ({
         label,
@@ -147,7 +144,7 @@ export class DebugPanel {
     const out = [];
     for (const it of this.items) {
       const v = it.value();
-      if (v === 'off' || v.startsWith('fixed') || v === 'measuring') out.push(it.label + ' ' + v);
+      if (v === 'off' || v === 'measuring' || (it.label === 'resolution' && v !== '100%')) out.push(it.label + ' ' + v);
     }
     return out;
   }
@@ -241,10 +238,7 @@ export class DebugPanel {
     lines.push('gpu: timer ' + (timer === null ? (this.timerRefused ? 'not available' : 'off') : f2(timer) + 'ms') +
       '  wait probe ' + (rd.probe ? f2(prof.median('gpu wait (probe)')) + 'ms' : 'off') +
       '  calls ' + Math.round(prof.median('draw calls')) +
-      '  upload ' + Math.round(prof.median('upload KB')) + 'KB/frame' +
-      // The adaptor sees the probe's slower frames as a slow machine and
-      // shrinks the picture; pinned, the comparison is like for like.
-      (rd.probe && rd.fixed == null ? '  (pin the resolution to compare)' : ''));
+      '  upload ' + Math.round(prof.median('upload KB')) + 'KB/frame');
 
     // Memory.
     const mem = typeof performance !== 'undefined' && performance.memory;
@@ -341,7 +335,7 @@ export class DebugPanel {
     let html = '<div style="color:#f0d9a8;margin-bottom:6px">debug &mdash; B or Esc closes</div>';
     this.items.forEach((it, i) => {
       const v = it.value();
-      const off = v === 'off' || v.startsWith('fixed') || v === 'measuring';
+      const off = v === 'off' || v === 'measuring' || (it.label === 'resolution' && v !== '100%');
       html += '<div data-i="' + i + '" style="cursor:pointer;padding:1px 6px;border-radius:3px;' +
         (i === this.sel ? 'background:rgba(224,189,138,.28);' : '') + '">' +
         '<span style="display:inline-block;width:12em">' + it.label + '</span>' +

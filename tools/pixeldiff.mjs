@@ -46,9 +46,6 @@ async function shoot(outDir) {
       const W = await import('/js/weather.js');
       const TILE = 0x01000000;
       const g = window.lander.game, p = g.player;
-      // Hold the resolution still: the adaptor moving between two runs
-      // would be a difference that has nothing to do with the change.
-      window.lander.renderer.adapt = () => {};
       let x = (sc.x || 0) * TILE, z = (sc.z || 0) * TILE;
       if (sc.water) {
         let best = -1;

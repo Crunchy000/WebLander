@@ -82,9 +82,9 @@ function trim(who) {
   return text.length > 44 ? text.slice(0, 43) + '…' : text;
 }
 
-// The adaptor's doing, when it has done something: a backing store that is
-// not what the display asked for is the first thing to know about a slow
-// machine.
+// The resolution, when it has been turned down from the debug panel: a
+// backing store that is not what the display asked for is the first thing to
+// know about a figure.
 function scaleNote() {
   const r = typeof window !== 'undefined' && window.lander && window.lander.renderer;
   const scale = r && r.scale;
@@ -134,8 +134,7 @@ export function perfFrame(step, draw, tris, canvas, gl) {
   }
 }
 
-// The recent frame, for whoever is deciding how many pixels to ask for next.
-// See Renderer.adapt().
+// The recent frame, for the debug panel's report.
 //
 // Three numbers, not one. The median says how it is going; the fastest
 // twentieth says what this machine's frames look like when nothing is in the

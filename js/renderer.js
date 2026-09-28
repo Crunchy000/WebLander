@@ -122,45 +122,14 @@ const supersampleFor = (dpr) => (dpr > 1.25 ? 1 : 1.5);
 // The tallest backing store worth asking for, in real pixels. See resize().
 const MAX_DEVICE_H = 1200;
 
-// ... and how far below that the game is allowed to drop itself when the
-// machine cannot keep up. Each step is a little over half the pixels of the
-// one before it.
+// Smaller backing stores, as a share of that, for the debug panel's
+// resolution switch: a way to see what a size costs on a given machine. The
+// game itself always draws at the display's own resolution. It used to walk
+// down these steps by itself when frames ran long, and on the machines it
+// did that on the picture got softer without the frame getting any quicker
+// -- the time was going on the JavaScript, not the pixels -- so it no longer
+// does.
 const SCALES = [1, 0.8, 0.65, 0.5, 0.4];
-const SLOW_MS = 21;             // a frame this long, a few checks running...
-const FAST_MS = 13;             // ... and this short, for a good while, to go back up
-const DOWN_CHECKS = 3;          // at four checks a second
-const UP_CHECKS = 40;           // ... so ten seconds of comfort before trying again
-// Going up and coming straight back down means that step does not hold here.
-// Within this many checks of a rise, a fall makes the step above a ceiling
-// and the size stops moving.
-const REGRET_CHECKS = 60;
-
-// ... unless the machine is not missing frames at all, but showing them at a
-// slower cadence than sixty a second. A console browser pinned at thirty has
-// a 33ms frame when everything about it is fine, and a fixed 21ms bar reads
-// that as trouble and goes on taking pixels away for ever -- arriving at the
-// smallest picture it is allowed to draw, still at thirty, because the cap
-// was never about pixels.
-//
-// A cadence gives itself away by being exact. Every frame the same length,
-// and that length one of the periods a display actually runs at; a machine
-// that is genuinely short of fill misses frames unevenly and the spread
-// between its quickest and its slowest is wide. So: tight spread and a
-// recognisable period means leave it alone -- and give back any pixels that
-// were taken away before it was recognised.
-// Sixty, fifty and thirty a second. Twenty is not on the list and must not
-// be: no display runs at it, so a machine sitting on a 50ms frame is a
-// machine in trouble, and mistaking that for a cadence would leave it there.
-const CADENCES = [16.67, 20, 33.33];
-const CADENCE_SLOP = 2.5;
-const CADENCE_TAIL = 1.3;       // ... and its slowest frames within this much of it
-
-function lockedCadence(median, slowest) {
-  for (const c of CADENCES) {
-    if (Math.abs(median - c) < CADENCE_SLOP && slowest < c * CADENCE_TAIL) return c;
-  }
-  return 0;
-}
 
 const MAX_TRIS = 16384;
 const FLOATS_PER_VERT = 4;   // x, y, depth, packed rgba
@@ -343,19 +312,16 @@ export class Renderer {
     this.z = 1;
     this.depthState = 'off';
     this.drawn = 0;
-    // Where the adaptor has got to, and how long it has been wanting to move.
+    // Which of SCALES the backing store is at, and which it has been asked
+    // to be at (by the debug panel), applied at the top of the next frame.
     this.scaleAt = 0;
     this.want = 0;
-    this.slow = 0;
-    this.fast = 0;
-    this.checks = 0;
-    this.ceiling = 0;           // the largest picture still allowed
     // ... and the stylesheet needs the shape of it to letterbox correctly.
     document.documentElement.style.setProperty('--screen-aspect', String(SCREEN_W / SCREEN_H));
 
     this.resize();
     // A change of size is noted here and made at the top of the next frame
-    // (see begin), for the same reason the adaptor's are: resizing a canvas
+    // (see begin), for the same reason a change of scale is: resizing a canvas
     // empties it, and one that is emptied after it was drawn is shown
     // blank. The window is watched as well as the canvas, because a window
     // that only gets wider may not change the canvas at all -- it is held
@@ -413,59 +379,6 @@ export class Renderer {
     this.gl.viewport(0, 0, w, h);
   }
 
-  // Give ground, and take it back.
-  //
-  // What a machine can fill is not a thing this code can know in advance --
-  // the same browser on the same screen is a different machine on a console,
-  // a laptop on battery and a phone in a case -- so it is measured instead.
-  // Handed the recent median frame time a few times a second, this walks the
-  // backing store down a step when the frames are long and back up when they
-  // are comfortably short, with the two thresholds far enough apart that it
-  // settles rather than oscillates.
-  //
-  // Nothing about the game changes with it. The world is still drawn in the
-  // same 586x256 coordinate space; only the number of real pixels it lands
-  // in moves, so a step down costs sharpness and nothing else.
-  adapt(stat) {
-    // Pinned by hand, from the debug panel: hold that size and decide
-    // nothing. The point of pinning is to see what one size costs.
-    if (this.fixed != null) {
-      this.want = this.fixed;
-      return;
-    }
-    // A backgrounded tab reports frames seconds long; that is not a machine
-    // struggling, it is a machine not being asked.
-    if (!stat || !stat.ready || stat.median > 250) return;
-    const at = this.want === undefined ? (this.scaleAt || 0) : this.want;
-    const locked = lockedCadence(stat.median, stat.slowest) !== 0;
-    this.cadence = locked ? stat.median : 0;
-    this.checks = (this.checks || 0) + 1;
-
-    if (!locked && stat.median > SLOW_MS) {
-      this.fast = 0;
-      if (++this.slow >= DOWN_CHECKS && at < SCALES.length - 1) {
-        this.slow = 0;
-        // Coming down again soon after going up means the step above this
-        // one does not hold on this machine. Remember it and stop offering
-        // it: a picture that flickers between two sizes is worse than
-        // either of them, and this is where that flicker comes from.
-        if (this.checks - (this.wentUpAt || -1e9) < REGRET_CHECKS) this.ceiling = at + 1;
-        this.want = at + 1;
-      }
-    } else if (locked || stat.median < FAST_MS) {
-      this.slow = 0;
-      if (++this.fast >= UP_CHECKS && at > (this.ceiling || 0)) {
-        this.fast = 0;
-        this.wentUpAt = this.checks;
-        this.want = at - 1;
-      }
-    } else {
-      this.slow = 0;
-      this.fast = 0;
-    }
-  }
-
-  // What the adaptor has settled on, for the readout.
   // How many render scales there are, and what each is: for the debug panel.
   get scales() {
     return SCALES;
