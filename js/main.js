@@ -8,11 +8,18 @@ import { Game, STEP_MS } from './game.js';
 import { perf, perfInit, perfFrame, perfDescribe } from './perf.js';
 import { DebugPanel } from './debugpanel.js';
 import { prof } from './profile.js';
+import { BUILD } from './build.js';
 
 const canvas = document.getElementById('screen');
 const overlay = document.getElementById('overlay');
 const startBtn = document.getElementById('start');
 const touchPad = document.getElementById('touch');
+
+// Which build this is, on the title card.
+{
+  const el = document.getElementById('build');
+  if (el) el.textContent = 'build ' + BUILD.hash + (BUILD.date ? ' \u00b7 ' + BUILD.date : '');
+}
 
 // Trouble, where it can be seen. A console browser on a television has no
 // developer tools anyone can open, so a script error there was invisible --

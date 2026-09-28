@@ -19,6 +19,7 @@
 // every time, so the figures are the cost of drawing, not of a frozen image.
 // The switches last until the page is reloaded.
 
+import { BUILD } from './build.js';
 import { qrcode } from './vendor/qrcode.mjs';
 import { perfReport, perfLate, perfFrameStat } from './perf.js';
 import { prof } from './profile.js';
@@ -199,7 +200,7 @@ export class DebugPanel {
     const rd = this.renderer;
     const base = perfReport(this.canvas, rd.gl);
     const f2 = (v) => v.toFixed(2);
-    const lines = [base[0], base[1], base[2]];
+    const lines = ['build ' + BUILD.hash + (BUILD.date ? ' ' + BUILD.date : ''), base[0], base[1], base[2]];
 
     // How much of each frame the main thread was busy with this game, and
     // how many frames came late. The rest of the interval is the browser's.

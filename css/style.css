@@ -135,6 +135,8 @@ html, body {
 #panel p { margin: .5em 0; }
 #panel b { color: var(--sand); font-weight: 600; }
 .dim { color: var(--dim); font-size: .92em; }
+/* Which build is running, small and out of the way under the button. */
+.build { color: var(--dim); font: 11px/1.2 ui-monospace, Menlo, Consolas, monospace; opacity: .7; margin-top: .6em; }
 
 #start {
   padding: .8em 2.4em;

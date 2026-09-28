@@ -30,7 +30,11 @@ useful job is to import every module for real before publishing, so a syntax
 error or a bad import path fails the run rather than the site. The site it
 publishes is staged by `scripts/assemble-web.mjs`, which copies out
 `index.html`, `css/`, `js/`, `icons/` and `audio/` if it is there, and nothing
-else -- the workflows, the README and the scripts themselves stay behind.
+else -- the workflows, the README and the scripts themselves stay behind. It
+also writes `js/build.js` with the commit the site was built from and its
+date, which the title card shows under the start button (and the debug
+panel's report carries), so you can tell which version a browser is
+running; the copy in the repository says `dev`.
 
 ## Controls
 
