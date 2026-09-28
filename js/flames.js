@@ -13,7 +13,8 @@
 import { TILE, matRotY, rnd, rndSigned } from './maths.js';
 import { Model, drawModel } from './model.js';
 import { sky } from './daylight.js';
-import { landAltitude, SEA_LEVEL } from './landscape.js';
+import { landAltitude, groundRoughness, SEA_LEVEL } from './landscape.js';
+import { objectAt } from './objects.js';
 import { project, SCREEN_W, SCREEN_H } from './renderer.js';
 import { spawn, P_RISE, P_GLOW } from './particles.js';
 
@@ -23,44 +24,87 @@ export const FLAME_COUNT = 5;
 // and wraps round. Every one is ahead of the launchpad -- the camera looks
 // only one way, and a flame behind it could never be seen -- about fifty
 // tiles further on each time, swinging wider left and right, so the last is
-// most of the way round the world. Each is moved to the nearest dry ground to
-// its mark. The first two columns of light can be seen from the pad; the
-// others, more than half the world away, come into view on the way out.
+// most of the way round the world. Each is moved to the nearest good spot to
+// its mark (see goodSpot). The first two columns of light can be seen from
+// the pad; the others, more than half the world away, come into view on the
+// way out.
 const START = [4, 4];
 const MARKS = [[12, 40], [-30, 90], [55, 140], [-80, 190], [110, 235]];
-const HOVER = 1.3;               // tiles above the ground
-const REACH = 0.95;              // how close the bird must come, in tiles
+const HOVER = 1.3;               // tiles above the highest ground about it
 
-function dryNear(cx, cz) {
-  for (let r = 0; r < 24; r++) {
-    for (let a = 0; a < 16; a++) {
-      const ang = (a / 16) * Math.PI * 2;
-      const x = Math.round(cx + Math.cos(ang) * r), z = Math.round(cz + Math.sin(ang) * r);
-      // Dry, and dry around it, so a flame is never out over the sea.
-      let ok = true;
-      for (let d = -1; d <= 1 && ok; d++) {
-        if (landAltitude(((x + d) * TILE) | 0, (z * TILE) | 0) >= SEA_LEVEL) ok = false;
-        if (landAltitude((x * TILE) | 0, ((z + d) * TILE) | 0) >= SEA_LEVEL) ok = false;
-      }
-      if (ok) return [x, z];
-      if (r === 0) break;
+// How close counts as flying into one: a generous upright cylinder rather
+// than a ball round the teardrop. Anywhere within REACH across the ground,
+// from down near the ground under it to well over its top -- so passing over
+// it, through it or just beside it all take it. It was a ball 0.95 tiles
+// across its middle, and on a slope that was very nearly impossible.
+const REACH = 1.3;               // tiles, across the ground
+const REACH_ABOVE = 1.6;         // tiles over the flame's middle
+const REACH_BELOW = 1.25;        // ... and under it
+
+// Where one may burn: dry, and dry around it, so it is never out over the
+// sea; flat enough that the ground does not climb up into it; and clear of
+// anything standing there, so a tree is never in the way of taking it.
+function goodSpot(x, z) {
+  for (let dz = -1; dz <= 1; dz++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (landAltitude(((x + dx) * TILE) | 0, ((z + dz) * TILE) | 0) >= SEA_LEVEL) return false;
+      if (objectAt(x + dx, z + dz) >= 0) return false;
     }
   }
-  return [cx, cz];
+  return groundRoughness((x * TILE) | 0, (z * TILE) | 0, TILE * 1.2) <= SPOT_ROUGH;
+}
+const SPOT_ROUGH = 0.3;
+
+function spotNear(cx, cz) {
+  for (const test of [goodSpot, dryOnly]) {
+    for (let r = 0; r < 30; r++) {
+      for (let a = 0; a < 16; a++) {
+        const ang = (a / 16) * Math.PI * 2;
+        const x = Math.round(cx + Math.cos(ang) * r), z = Math.round(cz + Math.sin(ang) * r);
+        if (test(x, z)) return [x, z];
+        if (r === 0) break;
+      }
+    }
+  }
+  return [Math.round(cx), Math.round(cz)];
+}
+function dryOnly(x, z) {
+  return landAltitude((x * TILE) | 0, (z * TILE) | 0) < SEA_LEVEL;
+}
+
+// The highest ground within a tile or so, which is what a flame is hung
+// over: over the ground straight under it, a slope put the uphill side at or
+// above the flame itself.
+function groundAbout(x, z) {
+  let top = landAltitude(x, z);                     // +y is down: highest is least
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const h = landAltitude((x + Math.cos(a) * TILE * 1.1) | 0, (z + Math.sin(a) * TILE * 1.1) | 0);
+    if (h < top) top = h;
+  }
+  return top;
 }
 
 const flames = MARKS.map(([dx, dz], k) => {
-  const [x, z] = dryNear(START[0] + dx, START[1] + dz);
-  return { k, x: (x * TILE) | 0, z: (z * TILE) | 0, taken: false, phase: k * 1.7 };
+  const [x, z] = spotNear(START[0] + dx, START[1] + dz);
+  const fx = (x * TILE) | 0, fz = (z * TILE) | 0;
+  return { k, x: fx, z: fz, ground: groundAbout(fx, fz), taken: false, phase: k * 1.7 };
 });
 
 export function resetFlames() {
   for (const f of flames) f.taken = false;
 }
 
+// A flame given back to the world: the one a death takes from the bird's tail
+// burns again where it was found, to be flown back to and taken again.
+export function restoreFlame(k) {
+  const f = flames[k];
+  if (f) f.taken = false;
+}
+
 function heightOf(f) {
   const bob = Math.sin(sky.tick * 0.05 + f.phase) * 0.12;
-  return (landAltitude(f.x, f.z) - (HOVER + bob) * TILE) | 0;
+  return (f.ground - (HOVER + bob) * TILE) | 0;
 }
 
 // Called every step. Hands a flame to the game when the bird flies into it.
@@ -69,8 +113,9 @@ export function updateFlames(player, game) {
   for (const f of flames) {
     if (f.taken) continue;
     const dx = ((f.x - player.x) | 0) / TILE, dz = ((f.z - player.z) | 0) / TILE;
-    const dy = (heightOf(f) - player.y) / TILE;
-    if (dx * dx + dy * dy + dz * dz > REACH * REACH) continue;
+    if (dx * dx + dz * dz > REACH * REACH) continue;
+    const up = (heightOf(f) - player.y) / TILE;      // + when the bird is above it
+    if (up > REACH_ABOVE || up < -REACH_BELOW) continue;
     f.taken = true;
     // A burst of sparks where it was.
     const y = heightOf(f);
@@ -142,6 +187,28 @@ function teardrop(scale) {
 const DROP = teardrop(1);
 const HALO = teardrop(1.45);
 const spin = new Float64Array(9);
+
+// The phoenix before it hatches: one of these flames, sat on the pad where
+// the bird will be, turning and breathing like the others. `groundY` is the
+// ground under it. The bird breaks out of it at the first touch of power
+// (see hatch), which is every life's start -- a phoenix rising from its own
+// fire.
+const EGG_HOVER = 0.08;           // tiles clear of the ground, at the bottom of its breath
+export function drawEgg(rd, x, groundY, z, camX, camY, camZ) {
+  const bob = (Math.sin(sky.tick * 0.05) * 0.5 + 0.5) * 0.10;
+  const y = (groundY - (RINGS[0][0] + EGG_HOVER + bob) * TILE) | 0;
+  matRotY(sky.tick * 0.03, spin);
+  drawModel(rd, DROP, spin, x, y, z, camX, camY, camZ);
+  drawModel(rd, HALO, spin, x, y, z, camX, camY, camZ, 0, 0, 0.32);
+}
+
+// ... and the moment it does: the flame bursts into embers round the bird.
+export function hatch(x, y, z) {
+  for (let i = 0; i < 40; i++) {
+    spawn(x, y, z, rndSigned() * TILE * 0.035, -rnd() * TILE * 0.045, rndSigned() * TILE * 0.035,
+      EMBERS[i % EMBERS.length], 36 + ((rnd() * 30) | 0), P_RISE | P_GLOW, 1 + (i % 3 === 0 ? 1 : 0));
+  }
+}
 
 export function drawFlame(rd, f, camX, camY, camZ, fog = 0) {
   const y = heightOf(f);

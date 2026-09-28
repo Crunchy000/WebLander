@@ -92,7 +92,11 @@ light, the nearer ones visible from the pad and the rest coming into view on
 the way out. Flying
 through one grows the bird: a tongue of flame for its tail, a fifth more of
 its streamer, and a tenth more room for energy, filled on the spot. All five
-is the whole bird, and it keeps them across lives; a new game starts it small.
+is the whole bird. Before launch the phoenix is itself one of these flames,
+sat on the pad, and it hatches out of it at the first touch of power -- at
+the start of every life. A death costs it the flame it gathered last: that
+tail feather goes, and the flame burns again where it was found, to be flown
+back to. A new game starts it small.
 
 The bird runs on **energy**, not fuel. Set down anywhere the ground is
 level enough to sit square on and it charges — the launchpad is simply the
@@ -104,8 +108,8 @@ stops the moment you are on the ground taking charge.
 
 Running it flat ends the life: there is no glide -- unless the bird is sat
 on ground it can charge on, it burns out to embers and rises again at the
-pad. Lives never run out: the phoenix always comes back, keeping every flame
-it has gathered. Keep an eye on the bar. The height stick holds your height when it is left
+pad. Lives never run out: the phoenix always comes back, one tail feather
+the smaller. Keep an eye on the bar. The height stick holds your height when it is left
 centred, all the way down to the surface -- over land or the sea it never
 sets you down by itself -- and landing is the stick pushed down, which at
 the bottom of its travel pushes the bird down at about twice a free fall's

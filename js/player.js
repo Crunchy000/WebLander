@@ -22,6 +22,7 @@ import {
 import { drawUav } from './uav.js';
 import { drawBird } from './bird.js';
 import { drawOrigami, shedEmbers } from './origami.js';
+import { drawEgg, hatch } from './flames.js';
 
 // Which airframe to fly. The faceted lander, the quadrotor and the hoverbird
 // all fly on the same model -- tilt the body, push along its own up axis --
@@ -450,7 +451,11 @@ export class Player {
 
     // The safe window runs from the first touch of power, not from the
     // moment the craft appears.
-    if (thrust > 0) this.launched = true;
+    if (thrust > 0 && !this.launched) {
+      this.launched = true;
+      // The phoenix breaks out of its flame. See drawEgg.
+      if (AIRFRAME === 'origami') hatch(this.x, this.y, this.z);
+    }
     if (this.launched && this.grace > 0) this.grace--;
 
     // Rotor phase: idling at rest, winding up with the throttle.
@@ -628,7 +633,7 @@ export class Player {
     this.z = (this.z + this.vz) | 0;
 
     if (!this.landed) this.skim();
-    if (AIRFRAME === 'origami') shedEmbers(this);
+    if (AIRFRAME === 'origami' && this.launched) shedEmbers(this);
 
     this.checkGround(game);
 
@@ -919,7 +924,10 @@ export class Player {
     if (this.dead) return;
 
     if (AIRFRAME === 'origami') {
-      drawOrigami(rd, this, camX, camY, camZ);
+      // Until the first touch of power the phoenix is still a flame, sat on
+      // the pad: it hatches when it launches.
+      if (this.launched) drawOrigami(rd, this, camX, camY, camZ);
+      else drawEgg(rd, this.x, (this.y + UNDERCARRIAGE_Y) | 0, this.z, camX, camY, camZ);
     } else if (AIRFRAME === 'bird') {
       drawBird(rd, this, camX, camY, camZ);
     } else if (AIRFRAME === 'uav') {

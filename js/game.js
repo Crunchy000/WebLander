@@ -14,7 +14,7 @@ import { drawRidges, drawNearGround, drawHorizonHaze, backdropAt } from './ridge
 import { flowersInRow, nearestFlower, takeFlower, resetFlowers } from './flowers.js';
 import { sampleRibbon, drawRibbon, resetRibbon, setRibbonLength } from './ribbon.js';
 import {
-  FLAME_COUNT, resetFlames, updateFlames, flamesInRow, drawFlame, drawBeacons,
+  FLAME_COUNT, resetFlames, restoreFlame, updateFlames, flamesInRow, drawFlame, drawBeacons,
 } from './flames.js';
 import { serene } from './style.js';
 import { seaShade } from './sea.js';
@@ -171,11 +171,26 @@ const backTop = [0, 0, 0], backBottom = [0, 0, 0];
 // above the line and the haze of the far plain below it, and a square mixed
 // against a single sample of that reads as a pale box sitting on the sky
 // instead of as glow.
+// The sun and the moon go down behind the ground, and the ground runs flat
+// all the way to the horizon, which is eye level: nothing of them below that
+// line can be seen. They are drawn onto the far plain that stands in for the
+// country beyond the hills, and it used to be only the hills that hid them
+// -- so wherever there were none, over a distant sea or through the gap
+// under a ridge, a sliver of a low sun showed below the skyline, in front of
+// the ground. Everything of theirs is cut off at the horizon now.
 function corona(rd, cx, cy, w, col, mix) {
-  const x0 = Math.round(cx - w / 2), y0 = Math.round(cy - w / 2), y1 = y0 + w;
+  const x0 = Math.round(cx - w / 2), y0 = Math.round(cy - w / 2);
+  const y1 = Math.min(y0 + w, CENTRE_Y);
+  if (y1 <= y0) return;
   const a = mixCol(backdropAt(y0, backTop), col, mix);
   const b = mixCol(backdropAt(y1, backBottom), col, mix);
   rd.quadShaded(x0, y0, a, x0 + w, y0, a, x0 + w, y1, b, x0, y1, b);
+}
+
+// A rectangle of a body, cut off at the horizon. See corona.
+function rectAbove(rd, x, y, w, h, col) {
+  const hh = Math.min(h, CENTRE_Y - y);
+  if (hh > 0) rd.rect(x, y, w, hh, col);
 }
 
 export class Game {
@@ -235,6 +250,7 @@ export class Game {
     resetFlowers();
     resetFlames();
     this.flames = 0;
+    this.flameOrder = [];
     this.grow();
     this.player.reset();
     this.input.newFlight();
@@ -246,8 +262,8 @@ export class Game {
   // The bird starts small -- no tail, no streamer, half a load of energy --
   // and every one of the five flames it gathers adds to all three: a tongue
   // of the tail, a fifth of the streamer, a tenth of a full load of room for
-  // energy. All five is the whole bird. It keeps them across lives; a new
-  // game starts it small again.
+  // energy. All five is the whole bird. A death costs it the last one (see
+  // respawn); a new game starts it small again.
   grow() {
     const n = this.flames;
     setFireLevel(n);
@@ -257,6 +273,7 @@ export class Game {
 
   onFlameTaken(k) {
     this.flames = Math.min(FLAME_COUNT, this.flames + 1);
+    (this.flameOrder || (this.flameOrder = [])).push(k);
     this.grow();
     // Taking a flame fills the bird to its new size.
     this.player.charge = this.player.chargeCap;
@@ -517,14 +534,28 @@ export class Game {
 
   // The phoenix always rises again: there is no count of lives, and no end to
   // the game but the player's. It comes back at the launchpad, full to its
-  // size, with every flame it had gathered.
+  // size.
+  //
+  // Every death costs it a tail feather: the flame it gathered last goes back
+  // to where it burned, to be flown back to and taken again -- so progress
+  // can slip but never be lost for good -- and the bird comes back a size
+  // smaller: a tongue of its tail, a fifth of its streamer and a tenth of its
+  // room for energy. It rises from its flame on the pad, as it began.
   respawn() {
     resetParticles();
     resetRibbon();
+    let lost = false;
+    if (this.flames > 0) {
+      const k = (this.flameOrder || []).pop();
+      if (k !== undefined) restoreFlame(k);
+      this.flames--;
+      this.grow();
+      lost = true;
+    }
     this.player.reset();
     this.input.newFlight();
     this.state = STATE.PLAYING;
-    this.setMessage(null, 0);
+    this.setMessage(lost ? 'a tail feather lost -- its flame burns again' : null, lost ? 120 : 0);
   }
 
   // A bullet has moved; see whether it has struck anything worth destroying.
@@ -752,7 +783,7 @@ export class Game {
       for (const [scale, mix] of [[2.6, 0.20], [1.8, 0.42], [1.3, 0.68]]) {
         corona(rd, sun.x, sun.y, Math.round(s * scale), sun.col, mix);
       }
-      rd.rect(Math.round(sun.x - s / 2), Math.round(sun.y - s / 2), s, s, sun.col);
+      rectAbove(rd, Math.round(sun.x - s / 2), Math.round(sun.y - s / 2), s, s, sun.col);
     }
 
     if (moon.up) {
@@ -766,11 +797,11 @@ export class Game {
         corona(rd, moon.x, moon.y, Math.round(s * scale), face, mix);
       }
       const mx = Math.round(moon.x - s / 2), my = Math.round(moon.y - s / 2);
-      rd.rect(mx, my, s, s, face);
+      rectAbove(rd, mx, my, s, s, face);
       // Two square seas, so it is plainly a moon and not a pale sun.
       const sea = [188, 198, 222];
-      rd.rect(mx + 2, my + 4, 5, 5, sea);
-      rd.rect(mx + 10, my + 9, 3, 3, sea);
+      rectAbove(rd, mx + 2, my + 4, 5, 5, sea);
+      rectAbove(rd, mx + 10, my + 9, 3, 3, sea);
     }
   }
 
