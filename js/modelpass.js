@@ -267,10 +267,12 @@ export class ModelPass {
     for (const f of model.faces) {
       glow = f.glow === true;
       alpha = model.flame ? f.alpha : null;
+      // A face may carry a colour for each corner (the phoenix's heat).
+      const cs = f.cols;
       for (let k = 1; k + 1 < f.idx.length; k++) {
-        put(f.idx[0], f.col, 0);
-        put(f.idx[k], f.col, k);
-        put(f.idx[k + 1], f.col, k + 1);
+        put(f.idx[0], cs ? cs[0] : f.col, 0);
+        put(f.idx[k], cs ? cs[k] : f.col, k);
+        put(f.idx[k + 1], cs ? cs[k + 1] : f.col, k + 1);
       }
     }
     this.shapeVerts = w;

@@ -19,9 +19,10 @@
 // wing either side, each built about its own shoulder so it can be turned
 // there. Axes are the engine's: +x right, +y DOWN, +z forward (the beak).
 
-import { TILE, matMul, matRotY, matRotZ, matApply, hash2 } from './maths.js';
+import { TILE, matMul, matRotY, matRotZ, matApply, hash2, rnd } from './maths.js';
 import { Model, LIGHT, shade, drawModel } from './model.js';
 import { UNDERCARRIAGE_Y } from './landscape.js';
+import { spawnEmber } from './particles.js';
 
 // --- the paper -------------------------------------------------------------
 
@@ -32,6 +33,34 @@ const AMBER = [244, 142, 48];
 const GOLD = [250, 180, 80];
 const PALE = [252, 208, 126];
 const INK = [40, 18, 12];
+// Marks that are not fire: the beak in dark slate, so it reads apart from the
+// head, and the eyes a glowing cyan -- the one cool colour on the bird, and
+// so the first place the eye goes.
+const SLATE = [58, 54, 66];
+const OBSIDIAN = [34, 30, 40];
+const CYAN = [0, 255, 255];
+
+// The heat, from the core out: white-yellow in the chest, a saturated orange
+// through the body and the wings, a deep ember at the feather tips and the
+// ends of the tail. Every corner takes the colour for its distance from the
+// middle of the bird, blended with its facet's own paper colour.
+const HEAT_CORE = [255, 247, 194];
+const HEAT_MID = [255, 107, 0];
+const HEAT_TIP = [138, 18, 0];
+const CORE = [0, -0.06, 0.06];            // the middle of the chest, in body space
+const HEAT_MIX = 0.7;                     // how much of a corner is heat, not paper
+function heatAt(d) {
+  const a = Math.min(1, d / 0.38), b = Math.max(0, Math.min(1, (d - 0.38) / 0.62));
+  const out = [0, 0, 0];
+  for (let i = 0; i < 3; i++) {
+    out[i] = d < 0.38 ? HEAT_CORE[i] + (HEAT_MID[i] - HEAT_CORE[i]) * a
+                      : HEAT_MID[i] + (HEAT_TIP[i] - HEAT_MID[i]) * b;
+  }
+  return out;
+}
+// Underneath is in its own shadow: a body facet facing down is darker, which
+// is what gives the bird volume under a light that is otherwise even.
+const UNDERSIDE = 0.82;
 
 
 // Paper has no inside, so a facet is lit by how it is inclined, not which
@@ -47,7 +76,7 @@ const GRAIN = 0.11;
 // easier to fold on paper than a table of numbers. A name ending in R has a
 // twin ending in L, the same point mirrored across the bird's middle, so each
 // side is only written once.
-function build(points, tris, dy, seed, alpha, lit = false) {
+function build(points, tris, dy, seed, alpha, lit = false, heatFrom = null) {
   const m = new Model();
   const at = {};
   for (const [name, [x, y, z]] of Object.entries(points)) {
@@ -55,6 +84,11 @@ function build(points, tris, dy, seed, alpha, lit = false) {
     if (name.endsWith('R')) at[name.slice(0, -1) + 'L'] = m.vert(-x, y - dy, z);
   }
   const v = m.verts;
+  // The middle of the piece, for telling which way is out (see UNDERSIDE).
+  let mx = 0, my = 0, mz = 0;
+  const nv = v.length / 3;
+  for (let i = 0; i < nv; i++) { mx += v[i * 3]; my += v[i * 3 + 1]; mz += v[i * 3 + 2]; }
+  mx /= nv; my /= nv; mz /= nv;
   const add = (names, col, glow, from) => {
     const [a, b, c] = names.map((n) => at[n]);
     const ax = v[a * 3], ay = v[a * 3 + 1], az = v[a * 3 + 2];
@@ -68,17 +102,47 @@ function build(points, tris, dy, seed, alpha, lit = false) {
     const len = Math.hypot(n[0], n[1], n[2]) || 1;
     const lit_ = Math.abs((n[0] * LIGHT[0] + n[1] * LIGHT[1] + n[2] * LIGHT[2]) / len);
     const k = ((hash2(m.faces.length, seed) & 255) / 255 - 0.5) * 2 * MOTTLE;
-    // A facet that makes its own light keeps its colour: it is not shaded
-    // here, and the renderer does not dim it for the evening either.
+    // A mark (the beak, the eyes) keeps its own colour and is solid.
+    if (glow === 'mark') {
+      m.faces.push({ idx: [a, b, c], col, glow: true, alpha: [1, 1, 1] });
+      return;
+    }
     if (alpha) {
       // Fire: lit from within, and see-through by how far out along it each
       // corner is (the twin's corners read the same as its own). Paper that
       // has caught keeps its folds' shading, so it still reads as folded.
-      const f = lit ? (SHADE_FLOOR + SHADE_RANGE * lit_) * (1 + k) : 1 + k * 0.5;
-      m.faces.push({ idx: [a, b, c], col: shade(col, f), glow: true,
-                     alpha: from.map((n) => (typeof alpha === 'function' ? alpha(points[n]) : alpha[n])) });
-    } else if (glow) m.faces.push({ idx: [a, b, c], col, glow: true });
-    else m.face([a, b, c], shade(col, (SHADE_FLOOR + SHADE_RANGE * lit_) * (1 + k)));
+      let f = lit ? (SHADE_FLOOR + SHADE_RANGE * lit_) * (1 + k) : 1 + k * 0.5;
+      // Facing down, out of the piece: in its own shadow.
+      const cx = (ax + v[b * 3] + v[c * 3]) / 3 - mx;
+      const cy = (ay + v[b * 3 + 1] + v[c * 3 + 1]) / 3 - my;
+      const cz = (az + v[b * 3 + 2] + v[c * 3 + 2]) / 3 - mz;
+      const outward = n[0] * cx + n[1] * cy + n[2] * cz >= 0 ? 1 : -1;
+      if (lit === 'shell' && (n[1] * outward) / len > 0.35) f *= UNDERSIDE;
+      const face = {
+        idx: [a, b, c], col: shade(col, f), glow: true,
+        alpha: from.map((nm) => (typeof alpha === 'function' ? alpha(points[nm]) : alpha[nm])),
+      };
+      if (heatFrom) {
+        // Each corner its own heat, by how far it is from the core. A twin's
+        // corners are the same distance out as its own.
+        face.cols = from.map((nm) => {
+          const p = points[nm];
+          const d = Math.hypot(p[0] + heatFrom[0] - CORE[0], p[1] + heatFrom[1] - CORE[1],
+                               p[2] + heatFrom[2] - CORE[2]);
+          const h = heatAt(d);
+          return shade(h.map((hv, j) => hv * HEAT_MIX + col[j] * (1 - HEAT_MIX)), f);
+        });
+        face.col = [0, 1, 2].map((j) =>
+          Math.round((face.cols[0][j] + face.cols[1][j] + face.cols[2][j]) / 3));
+      }
+      m.faces.push(face);
+    } else if (glow) {
+      // A facet that makes its own light keeps its colour: it is not shaded
+      // here, and the renderer does not dim it for the evening either.
+      m.faces.push({ idx: [a, b, c], col, glow: true });
+    } else {
+      m.face([a, b, c], shade(col, (SHADE_FLOOR + SHADE_RANGE * lit_) * (1 + k)));
+    }
   };
   for (const [names, col, both, glow] of tris) {
     add(names, col, glow, names);
@@ -98,8 +162,8 @@ const BODY_P = {
   billTop: [0, -0.47, 0.46], billR: [0.045, -0.39, 0.46], billUnder: [0, -0.33, 0.47],
   crown: [0, -0.55, 0.34], cheekR: [0.115, -0.43, 0.32], chin: [0, -0.30, 0.36],
   crestR: [0.05, -0.51, 0.25],
-  nape: [0, -0.44, 0.17], neckR: [0.11, -0.26, 0.18], throat: [0, -0.10, 0.26],
-  back: [0, -0.20, -0.02], shoulderR: [0.17, -0.05, -0.02], keel: [0, 0.17, 0.06],
+  nape: [0, -0.44, 0.17], neckR: [0.13, -0.24, 0.19], throat: [0, -0.07, 0.30],
+  back: [0, -0.20, -0.02], shoulderR: [0.18, -0.05, -0.02], keel: [0, 0.20, 0.14],
   rump: [0, -0.12, -0.28], hipR: [0.10, 0.02, -0.26], belly: [0, 0.14, -0.16],
   vent: [0, -0.02, -0.36],
   thighR: [0.06, 0.12, -0.12], kneeR: [0.06, 0.13, -0.02], ankleR: [0.07, 0.30, -0.03],
@@ -107,8 +171,8 @@ const BODY_P = {
 };
 const BODY_T = [
   // The beak, folded along its top and bottom, hooked at the tip.
-  [['beak', 'billTop', 'billR'], PALE, true],
-  [['beak', 'billR', 'billUnder'], GOLD, true],
+  [['beak', 'billTop', 'billR'], SLATE, true, 'mark'],
+  [['beak', 'billR', 'billUnder'], OBSIDIAN, true, 'mark'],
   // The base of the beak to the head.
   [['billTop', 'crown', 'cheekR'], FLAME, true],
   [['billTop', 'cheekR', 'billR'], AMBER, true],
@@ -198,10 +262,10 @@ function tongue(name, spread, reach, side) {
   n = n.map((v) => v / l);
   if (n[0] < 0) n = n.map((v) => -v);                          // outward, to the right
   const on = (a, b, c) => A.map((v, i) => v * a + B[i] * b + C[i] * c + n[i] * 0.004);
-  BODY_P.eyeAR = on(0.30, 0.46, 0.24);
-  BODY_P.eyeBR = on(0.18, 0.44, 0.38);
-  BODY_P.eyeCR = on(0.20, 0.60, 0.20);
-  BODY_T.push([['eyeAR', 'eyeBR', 'eyeCR'], INK, true]);
+  BODY_P.eyeAR = on(0.32, 0.40, 0.28);
+  BODY_P.eyeBR = on(0.14, 0.42, 0.44);
+  BODY_P.eyeCR = on(0.20, 0.62, 0.18);
+  BODY_T.push([['eyeAR', 'eyeBR', 'eyeCR'], CYAN, true, 'mark']);
 }
 
 // The crest: three flames swept back along the top of the head, each
@@ -214,16 +278,16 @@ function plume(name, front, back, tip, col) {
   put('f', front, 0.95);
   put('b', back, 0.95);
   put('t', tip, 0.2);
-  put('R', [flare[0] + 0.04, flare[1] + 0.015, flare[2]], 0.7);
+  put('R', [flare[0] + 0.032, flare[1] + 0.015, flare[2]], 0.7);
   FLAME_T.push([[name + 'f', name + 't', name + 'R'], col, true]);
   FLAME_T.push([[name + 'R', name + 't', name + 'b'], col === FIRE_MID ? FIRE_ROOT : FIRE_MID, true]);
 }
 {
   const lerp = (p, q, t) => p.map((v, i) => v + (q[i] - v) * t);
   const top = lerp(BODY_P.crown, BODY_P.nape, 0.5);
-  plume('plumeA', BODY_P.crown, top, [0, -0.76, 0.16], FIRE_HOT);
-  plume('plumeB', top, BODY_P.nape, [0, -0.68, 0.01], FIRE_MID);
-  plume('plumeC', BODY_P.nape, lerp(BODY_P.nape, BODY_P.back, 0.35), [0, -0.57, -0.12], FIRE_HOT);
+  plume('plumeA', BODY_P.crown, top, [0, -0.84, 0.10], FIRE_HOT);
+  plume('plumeB', top, BODY_P.nape, [0, -0.74, -0.06], FIRE_MID);
+  plume('plumeC', BODY_P.nape, lerp(BODY_P.nape, BODY_P.back, 0.35), [0, -0.62, -0.22], FIRE_HOT);
 }
 
 tongue('t0', 0, 1.25, false);
@@ -276,6 +340,27 @@ const WING_T = [
   }
   // Closed back to the elbow.
   WING_T.push([['wrist', 'tip' + (N - 1), 'elbow'], FLAME]);
+  // Coverts: a second, shorter tier of feathers laid along the top of the
+  // wing from the shoulder to the wrist, standing just proud of the sheet,
+  // so the wing is layered rather than one flat fan -- which is what gives
+  // it depth seen straight from behind or in front.
+  {
+    const R = WING_P.root, Wr = WING_P.wrist, E = WING_P.elbow;
+    const e1 = Wr.map((v, i) => v - R[i]), e2 = E.map((v, i) => v - R[i]);
+    let nrm = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+    const l = Math.hypot(...nrm);
+    nrm = nrm.map((v) => v / l);
+    if (nrm[1] > 0) nrm = nrm.map((v) => -v);            // the upper side
+    const lift = (p, h) => p.map((v, i) => v + nrm[i] * h);
+    const C = 4;
+    for (let k = 0; k <= C; k++) WING_P['cov' + k] = lift(lerp(R, Wr, 0.08 + 0.84 * k / C), 0.015);
+    for (let k = 0; k < C; k++) {
+      const mid = lerp(WING_P['cov' + k], WING_P['cov' + (k + 1)], 0.5);
+      const toward = lerp(mid, lerp(E, WING_P.rootBack, 0.5), 0.42);
+      WING_P['covTip' + k] = lift([toward[0], toward[1], toward[2] - 0.04], 0.02);
+      WING_T.push([['cov' + k, 'covTip' + k, 'cov' + (k + 1)], k % 2 ? AMBER : FLAME]);
+    }
+  }
   // Shorter feathers back along the trailing edge, from the elbow to the body.
   const M = 3;
   for (let k = 0; k <= M; k++) WING_P['back' + k] = lerp(WING_P.elbow, WING_P.rootBack, k / M);
@@ -305,12 +390,15 @@ const SHOULDER_B = [0.10, -0.14 - LIFT, 0.04];
 const BODY_ALPHA = () => 0.8;
 const WING_ALPHA = ([x, y, z]) => 0.86 - 0.52 * Math.min(1, Math.hypot(x, y, z) / 0.6);
 
-export const ORIGAMI_BODY = build(BODY_P, BODY_T, LIFT, 1, BODY_ALPHA, true);
+// `heatFrom` is where each piece's own origin sits in body space, so its
+// corners can be measured from the core; `'shell'` asks for the underside
+// shading, which means something for the closed body and nothing for a sheet.
+export const ORIGAMI_BODY = build(BODY_P, BODY_T, LIFT, 1, BODY_ALPHA, 'shell', [0, 0, 0]);
 ORIGAMI_BODY.flame = 0.4;
-export const ORIGAMI_FIRE = build(FLAME_P, FLAME_T, LIFT, 4, FLAME_A);
+export const ORIGAMI_FIRE = build(FLAME_P, FLAME_T, LIFT, 4, FLAME_A, false, [0, 0, 0]);
 ORIGAMI_FIRE.flame = 1;
-const WING_A = build(mirror(WING_P), WING_T, 0, 2, WING_ALPHA, true);
-const WING_B = build(WING_P, WING_T, 0, 3, WING_ALPHA, true);
+const WING_A = build(mirror(WING_P), WING_T, 0, 2, WING_ALPHA, true, [-0.10, -0.14, 0.04]);
+const WING_B = build(WING_P, WING_T, 0, 3, WING_ALPHA, true, [0.10, -0.14, 0.04]);
 WING_A.flame = WING_B.flame = 0.4;
 
 // The two wings, each with the shoulder it turns about and the sign that
@@ -394,6 +482,22 @@ export function drawOrigami(rd, p, camX, camY, camZ) {
     drawModel(rd, ORIGAMI_FIRE, p.matrix, p.x, p.y, p.z, camX, camY, camZ, 0, 0, FIRE_CPU_FADE);
   }
 }
+// Embers: now and then a spark comes off the tail and drifts up, left behind
+// as the bird flies on. A few alive at a time -- enough to say the fire is
+// alive, not so many that it smokes. Called from the simulation step.
+const EMBER_RATE = 0.09;          // per step
+export function shedEmbers(p) {
+  if (p.dead || rnd() > EMBER_RATE * (p.landed ? 0.4 : 1)) return;
+  // Somewhere along the tail, in the bird's own frame.
+  const along = 0.45 + rnd() * 0.65;
+  const lx = (rnd() - 0.5) * 0.9 * along, ly = 0.10 - LIFT, lz = -0.32 - along * 0.8;
+  const off = matApply(p.matrix, lx * TILE, ly * TILE, lz * TILE);
+  spawnEmber((p.x + off[0]) | 0, (p.y + off[1]) | 0, (p.z + off[2]) | 0,
+    (p.vx * 0.3 + (rnd() - 0.5) * TILE * 0.006) | 0,
+    (-TILE * (0.004 + rnd() * 0.006)) | 0,
+    (p.vz * 0.3 + (rnd() - 0.5) * TILE * 0.006) | 0);
+}
+
 // Without the GPU there is no flicker and no per-corner see-through, so the
 // fire is drawn as one steady translucent glow.
 const FIRE_CPU_FADE = 0.72;

@@ -674,11 +674,17 @@ export function drawGroundPatch(rd, wx, wz, radius, strength, tint, camX, camY, 
   const cy = CENTRE_Y + (((ground - LIFT - camY) | 0) * FOCAL_Y) / vz;
 
   const ring = shadowRing;
+  const drop = Math.max(TILE * 0.25, radius * 0.58);
   for (let i = 0; i < PATCH_SEG; i++) {
     const px = (wx + PATCH_COS[i] * radius) | 0;
     const pz = (wz + PATCH_SIN[i] * radius) | 0;
     const py = landAltitude(px, pz);
     if (py >= SEA_LEVEL) return;            // straddling the shoreline
+    // ... or a cliff: the edge of the raised launchpad, where a rim point
+    // drops to the ground below and the patch hangs down the side as a
+    // sheet towards the camera. Anything steeper than about 30 degrees
+    // across the patch is not a slope to lie on.
+    if (Math.abs(py - ground) > drop) return;
     vz = (pz - camZ) | 0;
     if (vz < NEAR) return;
     ring[i * 2] = CENTRE_X + (((px - camX) | 0) * FOCAL_X) / vz;
@@ -718,8 +724,8 @@ export function drawShadow(rd, wx, wz, radius, strength, camX, camY, camZ, row, 
 // mixed towards warm white instead of towards black.
 const POOL_TINT = [255, 236, 176];
 
-export function drawLightPool(rd, wx, wz, radius, strength, camX, camY, camZ, row, fog = 0) {
+export function drawLightPool(rd, wx, wz, radius, strength, camX, camY, camZ, row, fog = 0, tint = POOL_TINT) {
   if (strength <= 0.02) return;
   drawGroundPatch(rd, wx, wz, radius, Math.min(0.85, strength),
-                  POOL_TINT, camX, camY, camZ, row, fog);
+                  tint, camX, camY, camZ, row, fog);
 }

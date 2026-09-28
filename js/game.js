@@ -73,7 +73,7 @@ function placeObject(tci, tx, tz, type) {
 
 const P_FLOWERS = prof.section('flowers');
 const P_LANTERNS = prof.section('lanterns');
-import { Player, GRAVITY_START, CHARGE_MAX, HULL_HITS } from './player.js';
+import { Player, GRAVITY_START, CHARGE_MAX, HULL_HITS, AIRFRAME } from './player.js';
 import { drawModel, drawShadow, drawLightPool, silhouetteAmount } from './model.js';
 import {
   MODELS, OBJ_SCORE, objectAt, objectOffset, destroyObject, isWreck,
@@ -899,17 +899,33 @@ export class Game {
     if (row === this.shadowRow && this.state === STATE.PLAYING && !this.player.dead) {
       const p = this.player;
       const altTiles = Math.max(0, p.altitude / TILE);
+      // The phoenix is a light, so its shadow is a soft one, and over it the
+      // ground takes its glow: a warm pool, faint by day and bright by
+      // night, spreading and thinning as it climbs -- which puts the bird
+      // in the scene rather than pasted over it, and is a height cue of its
+      // own. Its lamp is its fire, so there is no landing lamp as well.
+      const phoenix = AIRFRAME === 'origami';
       if (altTiles < SHADOW_FADE) {
         const t = altTiles / SHADOW_FADE;
         drawShadow(this.rd, p.x, p.z,
           TILE * (0.46 + 0.62 * t),        // spreads with height
-          (1 - t) * 0.92,                  // and fades
+          (1 - t) * (phoenix ? 0.5 : 0.92),  // and fades
           eyeX, eyeY, eyeZ, row, haze, p.altitude);
       }
-      // After dark the landing lamp throws a pool where the shadow was. It
-      // spreads and thins with height exactly as a real beam would, which
-      // makes it a height cue in its own right once the shadow is gone.
-      if (sky.lamp > 0.05 && altTiles < LAMP_REACH) {
+      if (phoenix && altTiles < FIRE_REACH) {
+        // Two layers, wide and faint under narrow and stronger, so the glow
+        // falls off towards its edge rather than stopping at one.
+        const t = altTiles / FIRE_REACH;
+        const k = (1 - t) * (1 - t * 0.4);
+        const r = TILE * (1.15 + 1.3 * t);
+        drawLightPool(this.rd, p.x, p.z, r, (0.14 + 0.20 * sky.lamp) * k,
+          eyeX, eyeY, eyeZ, row, haze, FIRE_GLOW);
+        drawLightPool(this.rd, p.x, p.z, r * 0.55, (0.16 + 0.26 * sky.lamp) * k,
+          eyeX, eyeY, eyeZ, row, haze, FIRE_GLOW);
+      } else if (!phoenix && sky.lamp > 0.05 && altTiles < LAMP_REACH) {
+        // After dark the landing lamp throws a pool where the shadow was. It
+        // spreads and thins with height exactly as a real beam would, which
+        // makes it a height cue in its own right once the shadow is gone.
         const t = altTiles / LAMP_REACH;
         drawLightPool(this.rd, p.x, p.z,
           TILE * (0.44 + 1.15 * t),
@@ -1124,6 +1140,9 @@ export class Game {
 // at which its landing lamp stops reaching the ground.
 const SHADOW_FADE = 7.0;
 const LAMP_REACH = 5.5;
+// The phoenix's own glow on the ground, and how far up it reaches.
+const FIRE_REACH = 6.0;
+const FIRE_GLOW = [255, 136, 44];
 
 function mixCol(a, b, t) {
   return [

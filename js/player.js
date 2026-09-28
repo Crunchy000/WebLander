@@ -20,7 +20,7 @@ import {
 } from './particles.js';
 import { drawUav } from './uav.js';
 import { drawBird } from './bird.js';
-import { drawOrigami } from './origami.js';
+import { drawOrigami, shedEmbers } from './origami.js';
 
 // Which airframe to fly. The faceted lander, the quadrotor and the hoverbird
 // all fly on the same model -- tilt the body, push along its own up axis --
@@ -624,6 +624,7 @@ export class Player {
     this.z = (this.z + this.vz) | 0;
 
     if (!this.landed) this.skim();
+    if (AIRFRAME === 'origami') shedEmbers(this);
 
     this.checkGround(game);
   }

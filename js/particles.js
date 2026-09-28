@@ -22,6 +22,7 @@ export const P_SPLASH  = 1 << 5;  // throws up spray when it hits the sea
 export const P_RISE    = 1 << 6;  // drifts upwards (smoke)
 export const P_HEAVY   = 1 << 7;  // falls at a multiple of gravity
 export const P_THIN    = 1 << 8;  // fades out, lit by the sky (water)
+export const P_GLOW    = 1 << 9;  // fades out, makes its own light (embers)
 
 // What P_HEAVY multiplies gravity by. A bomb is a lump of metal, not a
 // cinder: it has no business hanging in the air at the same rate as the
@@ -95,6 +96,7 @@ const SPRAY = [[187, 221, 255], [255, 255, 255]];
 const SPARK = [[255, 255, 204], [255, 221, 102]];
 const DUST  = [[176, 164, 136], [154, 144, 120], [196, 184, 156]];
 const FOAM  = [[238, 245, 250], [216, 232, 244], [226, 238, 248]];
+const EMBERS = [[255, 214, 110], [255, 150, 40], [255, 96, 20]];
 
 const pick = (a) => a[rndInt(a.length)];
 
@@ -164,6 +166,12 @@ export function spawnSkimSpray(px, py, pz, pvx, pvy, pvz) {
 }
 export function spawnFoam(px, pz, pvx, pvz) {
   spawn(px, SEA_LEVEL - 1, pz, pvx, 0, pvz, pick(FOAM), 70 + rndInt(50), P_THIN, 2);
+}
+
+// An ember off the phoenix: a spark that drifts up and thins away, its own
+// light rather than the evening's.
+export function spawnEmber(px, py, pz, pvx, pvy, pvz) {
+  spawn(px, py, pz, pvx, pvy, pvz, pick(EMBERS), 30 + rndInt(26), P_RISE | P_GLOW, 1);
 }
 
 // Smoke climbing from a wreck.
@@ -239,6 +247,7 @@ export function updateParticles(gravity, onBulletHit) {
 
 const pt = { x: 0, y: 0 };
 const thinCol = [0, 0, 0, 255];
+const ONE = [1, 1, 1];
 
 // Particles are drawn as small screen-aligned rectangles whose size falls off
 // with distance, in the same 1x1 to 3x2 range the original used.
@@ -262,10 +271,11 @@ export function drawParticles(rd, camX, camY, camZ) {
     if (size[i] >= 3) { const g = size[i] - 2; w += g; h += g; }
 
     let r = cr[i], g = cg[i], b = cb[i];
-    if (flags[i] & P_THIN) {
-      // Water: lit by the sky, and fading out rather than down.
+    if (flags[i] & (P_THIN | P_GLOW)) {
+      // Water: lit by the sky, and fading out rather than down. An ember
+      // fades the same way, but in its own light.
       const t = life[i] / maxLife[i];
-      const t2 = sky.tint;
+      const t2 = flags[i] & P_GLOW ? ONE : sky.tint;
       thinCol[0] = Math.min(255, r * t2[0]) | 0;
       thinCol[1] = Math.min(255, g * t2[1]) | 0;
       thinCol[2] = Math.min(255, b * t2[2]) | 0;
