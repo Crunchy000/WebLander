@@ -85,8 +85,11 @@ Sites are static, worth more than anything else on the map, and the rounds
 still on the rails go up with them.
 
 The phoenix **starts small**: no tail, no streamer, and half a full load of
-energy. Five teardrop flames burn ahead of the launchpad, further out each
-time, each under a column of light that can be seen from the pad. Flying
+energy. Five teardrop flames burn across the whole world, each about fifty
+tiles further ahead of the launchpad than the last and swinging wider left
+and right, the last most of the way round; each stands under a column of
+light, the nearer ones visible from the pad and the rest coming into view on
+the way out. Flying
 through one grows the bird: a tongue of flame for its tail, a fifth more of
 its streamer, and a tenth more room for energy, filled on the spot. All five
 is the whole bird, and it keeps them across lives; a new game starts it small.

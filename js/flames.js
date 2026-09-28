@@ -19,13 +19,15 @@ import { spawn, P_RISE, P_GLOW } from './particles.js';
 
 export const FLAME_COUNT = 5;
 
-// Where they burn: ahead of the launchpad, since the camera looks only one
-// way and a flame behind it could never be seen, spread left and right and
-// further out each time -- the first a short hop, the last a proper journey
-// -- each moved to the nearest dry ground to its mark. All five are in view
-// from the pad, as columns of light.
+// Where they burn: spread over the whole world, which is 256 tiles each way
+// and wraps round. Every one is ahead of the launchpad -- the camera looks
+// only one way, and a flame behind it could never be seen -- about fifty
+// tiles further on each time, swinging wider left and right, so the last is
+// most of the way round the world. Each is moved to the nearest dry ground to
+// its mark. The first two columns of light can be seen from the pad; the
+// others, more than half the world away, come into view on the way out.
 const START = [4, 4];
-const MARKS = [[6, 16], [-14, 30], [18, 46], [-24, 64], [4, 86]];
+const MARKS = [[12, 40], [-30, 90], [55, 140], [-80, 190], [110, 235]];
 const HOVER = 1.3;               // tiles above the ground
 const REACH = 0.95;              // how close the bird must come, in tiles
 
