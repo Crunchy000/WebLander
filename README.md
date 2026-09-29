@@ -88,8 +88,10 @@ it built, so a bob up and straight back down still costs you.
 Sites are static, worth more than anything else on the map, and the rounds
 still on the rails go up with them.
 
-**Shadow crabs** scuttle about the dry land, sideways, with red eyes on
-stalks that are all there is of them to see after dark. Left alone they
+**Shadow crabs** scuttle about the dry land, sideways: chunky low-poly
+things, a tall faceted shell with two big white eyes on its front, heavy
+block claws dark along the edges that close, and short spiky legs. The eyes
+make their own light, so after dark they are what you see of them. Left alone they
 wander; let the bird come down within about three tiles of the ground and
 seven across it and one will notice -- a clatter of claws says so -- and
 come at it with its claws raised, at about two tiles a second. In reach, it

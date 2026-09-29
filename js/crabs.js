@@ -50,109 +50,146 @@ const RAISED_HOLD = 40;
 
 // --- the model ---------------------------------------------------------------
 //
-// Units are tiles, ground at y = 0, up negative, facing +z. A shore crab: the
-// shell wider than it is long, low and flat, with a spiked front edge; four
-// walking legs a side, each two broad blades, hip to raised knee and knee
-// down to the ground; two arms forward, one claw big and one small, as a
-// shore crab's are; and two eyes on stalks, which make their own light -- by
-// night they are all there is of it to see.
+// Units are tiles, ground at y = 0, up negative, facing +z. Chunky and low-
+// poly: a tall faceted shell like a rounded box, two big eyes on its front
+// face, two heavy claws each a block of a palm with two fingers -- dark along
+// the edges that close on each other -- and short spiky legs, three a side.
 //
 // Posed four ways at once: where it is in its stride, whether its claws are
 // open or shut, and whether they are down, as it wanders, or raised, as it
 // comes for you -- which is the one thing about a crab you need to be able to
 // read from fifteen tiles away.
-const SHELL = [56, 42, 80];
-const SHELL_HI = [74, 56, 104];
-const RIM = [36, 28, 54];
-const LEG = [34, 27, 48];
-const CLAW = [112, 42, 82];
-const CLAW_TIP = [170, 58, 96];
-const EYE = [255, 64, 96];
-const S = 1.3;
+const SHELL = [66, 50, 94];
+const SHELL_TOP = [80, 62, 112];
+const CLAW = [74, 56, 104];
+const CLAW_DARK = [20, 15, 30];
+const LEG = [48, 37, 70];
+const EYE = [240, 236, 255];
+const PUPIL = [14, 10, 22];
+const S = 1.2;
+const SHELL_MID = [0, -0.30, 0];
 
 function buildCrab(frame, shut, raised) {
   const m = new Model();
   const v = (x, y, z) => m.vert(x * S, y * S, z * S);
-
-  // The shell: a low dome, wide across, on a dark rim.
-  const SIDES = 6;
-  const ring = (y, rx, rz) => {
-    const r = [];
-    for (let i = 0; i < SIDES; i++) {
-      const a = (i / SIDES) * Math.PI * 2 + Math.PI / SIDES;
-      r.push(v(Math.sin(a) * rx, y, Math.cos(a) * rz));
-    }
-    return r;
+  // Every face is wound to face out from the middle of its own part -- the
+  // shell, a leg, an arm, a palm, a finger -- so the model can say it is
+  // solid and the faces turned away from the camera are skipped rather than
+  // sorted and drawn to be painted over. About half of them, at any angle.
+  const out = (idx, c) => {
+    const w = m.verts, i0 = idx[0] * 3, i1 = idx[1] * 3, i2 = idx[2] * 3;
+    const ax = w[i1] - w[i0], ay = w[i1 + 1] - w[i0 + 1], az = w[i1 + 2] - w[i0 + 2];
+    const bx = w[i2] - w[i0], by = w[i2 + 1] - w[i0 + 1], bz = w[i2 + 2] - w[i0 + 2];
+    const nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+    const dot = nx * (w[i0] - c[0] * S * TILE) + ny * (w[i0 + 1] - c[1] * S * TILE) + nz * (w[i0 + 2] - c[2] * S * TILE);
+    return dot < 0 ? idx.slice().reverse() : idx;
   };
-  const r0 = ring(-0.10, 0.28, 0.18), r1 = ring(-0.16, 0.36, 0.24), r2 = ring(-0.23, 0.22, 0.14);
-  const top = v(0, -0.26, -0.01);
-  for (let i = 0; i < SIDES; i++) {
-    const j = (i + 1) % SIDES;
-    facet(m, [r0[i], r0[j], r1[j], r1[i]], RIM);
-    facet(m, [r1[i], r1[j], r2[j], r2[i]], i === 0 || i === 5 ? SHELL_HI : SHELL);
-    facet(m, [r2[i], r2[j], top], SHELL);
-  }
-  // Spikes along the front edge, either side of the eyes.
-  for (const sx of [1, -1]) {
-    facet(m, [v(sx * 0.20, -0.17, 0.20), v(sx * 0.30, -0.16, 0.12), v(sx * 0.33, -0.18, 0.22)], RIM);
-    facet(m, [v(sx * 0.10, -0.18, 0.23), v(sx * 0.20, -0.17, 0.20), v(sx * 0.19, -0.19, 0.29)], RIM);
-  }
+  const F = (idx, col, c) => facet(m, out(idx, c), col);
 
-  // The legs, in two sets that step in turn: while one is swinging forward
-  // with its feet lifted, the other is on the ground pushing back.
-  const phase = (frame / 4) * Math.PI * 2;
-  const LEGS_Z = [0.10, 0.02, -0.06, -0.14];
-  for (const sx of [1, -1]) {
-    for (let k = 0; k < 4; k++) {
-      const p = phase + (((k + (sx > 0 ? 0 : 1)) % 2) ? Math.PI : 0);
-      const dz = Math.sin(p) * 0.06, lift = Math.max(0, Math.cos(p)) * 0.06;
-      const z = LEGS_Z[k], spread = 1 + (k === 0 || k === 3 ? 0.08 : 0);
-      const hipA = v(sx * 0.30, -0.13, z - 0.045), hipB = v(sx * 0.30, -0.13, z + 0.045);
-      const kx = sx * 0.44 * spread, ky = -0.24, kz = z + dz * 0.5 + (z * 0.4);
-      const knee = v(kx, ky, kz);
-      const kneeA = v(kx, ky, kz - 0.035), kneeB = v(kx, ky, kz + 0.035);
-      const tip = v(sx * 0.55 * spread, -lift, z + dz + z * 0.7);
-      facet(m, [hipA, hipB, knee], LEG);
-      facet(m, [kneeA, kneeB, tip], LEG);
+  // The shell: three rings of a box with its corners cut, and a top.
+  const ring = (y, w, d, c) => [
+    [w, d * (1 - c)], [w * (1 - c), d], [-w * (1 - c), d], [-w, d * (1 - c)],
+    [-w, -d * (1 - c)], [-w * (1 - c), -d], [w * (1 - c), -d], [w, -d * (1 - c)],
+  ].map(([x, z]) => v(x, y, z));
+  const R = [
+    { y: -0.12, w: 0.24, d: 0.20, c: 0.35 },
+    { y: -0.32, w: 0.32, d: 0.27, c: 0.35 },
+    { y: -0.48, w: 0.23, d: 0.19, c: 0.40 },
+  ];
+  const rings = R.map((r) => ring(r.y, r.w, r.d, r.c));
+  for (let k = 0; k < 2; k++) {
+    const A = rings[k], B = rings[k + 1];
+    for (let i = 0; i < 8; i++) {
+      const j = (i + 1) % 8;
+      F([A[i], A[j], B[j], B[i]], k ? SHELL_TOP : SHELL, SHELL_MID);
+    }
+  }
+  // The top, flat, as one face. (Faces are what cost here, drawn on the
+  // CPU with the JIT off; so what cannot be seen from the chase camera --
+  // undersides, mostly -- is not built at all.)
+  F(rings[2].slice(), SHELL_TOP, SHELL_MID);
+
+  // The eyes, on the front face of the upper band: a white square each,
+  // lit, with a dark pupil low and to the inside, both a hair proud of it.
+  {
+    const a = R[1], b = R[2];
+    const ny = -(a.d - b.d), nz = a.y - b.y;              // outward: forward and up
+    const nl = Math.hypot(ny, nz);
+    const on = (u, t, out) => {
+      const w = (a.w * (1 - a.c)) * (1 - t) + (b.w * (1 - b.c)) * t;
+      return v(u * w, a.y + (b.y - a.y) * t + (ny / nl) * out, a.d + (b.d - a.d) * t + (nz / nl) * out);
+    };
+    for (const sx of [1, -1]) {
+      const q = (u0, u1, t0, t1, out) => sx > 0
+        ? [on(u0, t0, out), on(u1, t0, out), on(u1, t1, out), on(u0, t1, out)]
+        : [on(-u1, t0, out), on(-u0, t0, out), on(-u0, t1, out), on(-u1, t1, out)];
+      m.faces.push({ idx: out(q(0.07, 0.76, 0.08, 0.97, 0.012), SHELL_MID), col: EYE, glow: true });
+      F(q(0.10, 0.36, 0.12, 0.62, 0.024), PUPIL, SHELL_MID);
     }
   }
 
-  // The arms and claws: the big one on the right. Down in front of it as it
-  // wanders; raised high and forward, open, as it comes at you.
-  const gap = shut ? 0.015 : 0.14;
+  // The legs: short spikes out and down from the back half of the shell,
+  // three a side, in two sets that step in turn.
+  const phase = (frame / 4) * Math.PI * 2;
+  const LEGS_Z = [0.04, -0.07, -0.18];
   for (const sx of [1, -1]) {
-    const k = sx > 0 ? 1.35 : 0.95;
-    const lift = raised ? 0.20 : 0;
-    const shA = v(sx * 0.16, -0.13, 0.17), shB = v(sx * 0.22, -0.17, 0.17);
-    const el = v(sx * 0.36, -0.22 - lift * 0.6, 0.28 + lift * 0.1);
-    const elA = v(sx * 0.33, -0.20 - lift * 0.6, 0.28 + lift * 0.1), elB = v(sx * 0.39, -0.25 - lift * 0.6, 0.28 + lift * 0.1);
-    const bx = sx * 0.27, by = -0.21 - lift, bz = 0.42 + lift * 0.15;
-    const base = v(bx, by, bz);
-    facet(m, [shA, shB, el], LEG);
-    facet(m, [elA, elB, base], CLAW);
-    // The palm, a closed wedge, so it reads as a lump from any side.
-    const w = 0.08 * k, hU = 0.09 * k, hD = 0.06 * k;
-    const back = v(bx, by, bz - 0.07 * k);
-    const pL = v(bx - w, by, bz + 0.03), pR = v(bx + w, by, bz + 0.03);
-    const pU = v(bx, by - hU, bz + 0.04), pD = v(bx, by + hD, bz + 0.04);
-    facet(m, [back, pL, pU], CLAW); facet(m, [back, pU, pR], CLAW);
-    facet(m, [back, pR, pD], CLAW); facet(m, [back, pD, pL], CLAW);
-    facet(m, [pL, pU, pR, pD], CLAW);
-    // The two jaws, opening up and down.
-    const jA = v(bx - 0.055 * k, by - 0.03, bz + 0.04), jB = v(bx + 0.055 * k, by - 0.03, bz + 0.04);
-    facet(m, [jA, jB, v(bx, by - 0.03 - gap * k, bz + 0.28 * k)], CLAW_TIP);
-    const kA = v(bx - 0.045 * k, by + 0.02, bz + 0.04), kB = v(bx + 0.045 * k, by + 0.02, bz + 0.04);
-    facet(m, [kA, kB, v(bx, by + 0.02 + gap * 0.6 * k, bz + 0.22 * k)], CLAW_TIP);
+    for (let k = 0; k < 3; k++) {
+      const p = phase + (((k + (sx > 0 ? 0 : 1)) % 2) ? Math.PI : 0);
+      const dz = Math.sin(p) * 0.06, lift = Math.max(0, Math.cos(p)) * 0.05;
+      const z = LEGS_Z[k], hx = sx * 0.27, hy = -0.17;
+      const h0 = v(hx, hy - 0.04, z), h1 = v(hx, hy + 0.03, z - 0.035), h2 = v(hx, hy + 0.03, z + 0.035);
+      const tip = v(sx * 0.50, -lift, z + dz - 0.05 - k * 0.03);
+      const lc = [(hx + sx * 0.50) / 2, (hy - lift) / 2, z];
+      F([h2, h0, tip], LEG, lc);
+      F([h0, h1, tip], LEG, lc);
+    }
   }
 
-  // Eyes on stalks, lit.
+  // The claws. Down in front of it as it wanders; raised high and forward
+  // as it comes at you.
+  const gap = shut ? 0.0 : 0.10;
+  const lift = raised ? 0.16 : 0;
   for (const sx of [1, -1]) {
-    facet(m, [v(sx * 0.05, -0.23, 0.13), v(sx * 0.09, -0.23, 0.13), v(sx * 0.09, -0.40, 0.18)], LEG);
-    // Two crossed diamonds, so there is an eye to see from any side.
-    const ex = sx * 0.09, ey = -0.42, ez = 0.19, e = 0.045;
-    m.faces.push({ idx: [v(ex, ey - e, ez), v(ex + e, ey, ez), v(ex, ey + e, ez), v(ex - e, ey, ez)], col: EYE, glow: true });
-    m.faces.push({ idx: [v(ex, ey - e, ez), v(ex, ey, ez + e), v(ex, ey + e, ez), v(ex, ey, ez - e)], col: EYE, glow: true });
+    // A three-sided arm from the shoulder, through the elbow, to the palm.
+    const tri = (x, y, z, r) => [v(x, y - r, z), v(x + sx * r, y + r * 0.6, z), v(x - sx * r, y + r * 0.6, z)];
+    const sh = tri(sx * 0.26, -0.24, 0.16, 0.05);
+    const el = tri(sx * 0.42, -0.24 - lift * 0.5, 0.28 + lift * 0.05, 0.05);
+    const px = sx * 0.40, py = -0.26 - lift, pz = 0.44 + lift * 0.1;
+    const wr = tri(px, py, pz - 0.08, 0.055);
+    const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
+    const shC = [sx * 0.26, -0.24, 0.16], elC = [sx * 0.42, -0.24 - lift * 0.5, 0.28 + lift * 0.05];
+    for (const [A, B, c] of [[sh, el, mid(shC, elC)], [el, wr, mid(elC, [px, py, pz - 0.08])]]) {
+      // Not the underside, between the two lower corners (1 and 2).
+      for (const i of [0, 2]) F([A[i], A[(i + 1) % 3], B[(i + 1) % 3], B[i]], CLAW, c);
+    }
+    // The palm: a block.
+    const hx = 0.09, hy = 0.08, hz = 0.08;
+    const o = sx * hx, n = -sx * hx;        // outer and inner x offsets
+    const P = (dx, dy, dz) => v(px + dx, py + dy, pz + dz);
+    const bOT = P(o, -hy, -hz), bIT = P(n, -hy, -hz), bOB = P(o, hy, -hz), bIB = P(n, hy, -hz);
+    const fOT = P(o, -hy, hz), fIT = P(n, -hy, hz), fOB = P(o, hy, hz), fIB = P(n, hy, hz);
+    const fOM = P(o, 0, hz), fIM = P(n, 0, hz);
+    const pc = [px, py, pz];
+    F([bOT, bIT, fIT, fOT], CLAW, pc);            // top
+    F([bOT, bOB, fOB, fOT], CLAW, pc);            // outer side
+    F([bIT, bIB, fIB, fIT], CLAW, pc);            // inner side
+    F([bOT, bIT, bIB, bOB], CLAW, pc);            // back
+    // The two fingers, from the upper and lower halves of its front: pale
+    // outside, dark on the edges that meet.
+    const tU = P(-sx * 0.03, -0.02 - gap, hz + 0.22);
+    const uc = [px - sx * 0.01, py - 0.04 - gap * 0.3, pz + hz + 0.07];
+    F([fOT, fIT, tU], CLAW, uc);
+    F([fIT, fIM, tU], CLAW, uc);
+    F([fOM, fOT, tU], CLAW, uc);
+    F([fIM, fOM, tU], CLAW_DARK, uc);
+    const tL = P(-sx * 0.03, 0.02 + gap * 0.7, hz + 0.17);
+    const lc2 = [px - sx * 0.01, py + 0.04 + gap * 0.2, pz + hz + 0.06];
+    F([fOM, fIM, tL], CLAW_DARK, lc2);
+    F([fIM, fIB, tL], CLAW, lc2);
+    F([fOB, fOM, tL], CLAW, lc2);
+
   }
+  m.solid = true;
   return m;
 }
 
@@ -319,7 +356,7 @@ function squash(c, ground, game) {
   }
   for (let i = 0; i < 8; i++) {
     spawn(c.x, y, c.z, rndSigned() * TILE * 0.02, -rnd() * TILE * 0.04, rndSigned() * TILE * 0.02,
-      EYE, 30 + ((rnd() * 20) | 0), P_RISE | P_GLOW, 1);
+      [255, 90, 120], 30 + ((rnd() * 20) | 0), P_RISE | P_GLOW, 1);
   }
   game.onCrabSquashed(c);
 }
