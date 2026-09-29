@@ -61,6 +61,7 @@ const RAISED_HOLD = 40;
 // read from fifteen tiles away.
 const SHELL = [66, 50, 94];
 const SHELL_TOP = [80, 62, 112];
+const BELLY = [98, 84, 118];
 const CLAW = [74, 56, 104];
 const CLAW_DARK = [20, 15, 30];
 const LEG = [48, 37, 70];
@@ -69,7 +70,7 @@ const PUPIL = [14, 10, 22];
 const S = 1.2;
 const SHELL_MID = [0, -0.30, 0];
 
-function buildCrab(frame, shut, raised) {
+function buildCrab(frame, shut, raised, under = false) {
   const m = new Model();
   const v = (x, y, z) => m.vert(x * S, y * S, z * S);
   // Every face is wound to face out from the middle of its own part -- the
@@ -108,6 +109,10 @@ function buildCrab(frame, shut, raised) {
   // CPU with the JIT off; so what cannot be seen from the chase camera --
   // undersides, mostly -- is not built at all.)
   F(rings[2].slice(), SHELL_TOP, SHELL_MID);
+  // ... and, for a crab thrown on its back, everything underneath: the
+  // belly plate, and the undersides of the legs, the arms, the palms and the
+  // lower fingers. Upright it is never seen, so it is only in those poses.
+  if (under) F(rings[0].slice(), BELLY, SHELL_MID);
 
   // The eyes, on the front face of the upper band: a white square each,
   // lit, with a dark pupil low and to the inside, both a hair proud of it.
@@ -142,6 +147,7 @@ function buildCrab(frame, shut, raised) {
       const lc = [(hx + sx * 0.50) / 2, (hy - lift) / 2, z];
       F([h2, h0, tip], LEG, lc);
       F([h0, h1, tip], LEG, lc);
+      if (under) F([h1, h2, tip], LEG, lc);
     }
   }
 
@@ -160,7 +166,7 @@ function buildCrab(frame, shut, raised) {
     const shC = [sx * 0.26, -0.24, 0.16], elC = [sx * 0.42, -0.24 - lift * 0.5, 0.28 + lift * 0.05];
     for (const [A, B, c] of [[sh, el, mid(shC, elC)], [el, wr, mid(elC, [px, py, pz - 0.08])]]) {
       // Not the underside, between the two lower corners (1 and 2).
-      for (const i of [0, 2]) F([A[i], A[(i + 1) % 3], B[(i + 1) % 3], B[i]], CLAW, c);
+      for (const i of under ? [0, 1, 2] : [0, 2]) F([A[i], A[(i + 1) % 3], B[(i + 1) % 3], B[i]], CLAW, c);
     }
     // The palm: a block.
     const hx = 0.09, hy = 0.08, hz = 0.08;
@@ -174,6 +180,7 @@ function buildCrab(frame, shut, raised) {
     F([bOT, bOB, fOB, fOT], CLAW, pc);            // outer side
     F([bIT, bIB, fIB, fIT], CLAW, pc);            // inner side
     F([bOT, bIT, bIB, bOB], CLAW, pc);            // back
+    if (under) F([bOB, bIB, fIB, fOB], CLAW, pc);  // bottom
     // The two fingers, from the upper and lower halves of its front: pale
     // outside, dark on the edges that meet.
     const tU = P(-sx * 0.03, -0.02 - gap, hz + 0.22);
@@ -187,6 +194,7 @@ function buildCrab(frame, shut, raised) {
     F([fOM, fIM, tL], CLAW_DARK, lc2);
     F([fIM, fIB, tL], CLAW, lc2);
     F([fOB, fOM, tL], CLAW, lc2);
+    if (under) F([fIB, fOB, tL], CLAW, lc2);
 
   }
   m.solid = true;
@@ -197,6 +205,8 @@ function buildCrab(frame, shut, raised) {
 const POSES = [0, 1, 2, 3].map((f) => [false, true].map((shut) =>
   [false, true].map((raised) => buildCrab(f, shut, raised))));
 export const CRAB_MODEL = POSES[0][0][0];
+// On its back: FLIPPED[stride][shut], with the underneath built.
+const FLIPPED = [0, 1, 2, 3].map((f) => [false, true].map((shut) => buildCrab(f, shut, false, true)));
 
 // --- state -------------------------------------------------------------------
 
@@ -436,7 +446,7 @@ export function drawCrab(rd, c, camX, camY, camZ, fog = 0, row = 0) {
     matMul(mat, back, mat2);
     const hop = Math.sin(Math.PI * t) * 0.6 * TILE;
     const lie = 0.52 * S * TILE * e;
-    const pose = POSES[(c.gait | 0) & 3][c.snap > 0 ? 1 : 0][0];
+    const pose = FLIPPED[(c.gait | 0) & 3][c.snap > 0 ? 1 : 0];
     drawModel(rd, pose, mat2, c.x, (ground - hop - lie) | 0, c.z, camX, camY, camZ, fog);
     return;
   }
