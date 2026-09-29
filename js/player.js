@@ -210,7 +210,13 @@ function drawnPitch(lean) {
   if (lean >= Math.PI) return lean;
   return PITCH_KNEE * PITCH_SOFT + (lean - PITCH_KNEE) * (Math.PI - PITCH_KNEE * PITCH_SOFT) / (Math.PI - PITCH_KNEE);
 }
-const SHIP_RADIUS = 0.3;   // in tiles, for scenery collisions
+const SHIP_RADIUS = 0.3;
+// A close shave: passing within SHAVE tiles of something's side, below its
+// top, at SHAVE_SPEED or better. The same thing does not count again until
+// the bird has been clear of it for SHAVE_AGAIN steps.
+const SHAVE = 0.35;
+const SHAVE_SPEED = TILE * 0.03;
+const SHAVE_AGAIN = 60;   // in tiles, for scenery collisions
 const SCAN = 2;            // tiles either way to test for scenery
 
 // Getting off the pad is the fiddliest moment in the game, so the first few
@@ -541,7 +547,11 @@ export class Player {
       while (dl < -Math.PI) dl += Math.PI * 2;
       this.lean += dl * LEAN_RATE;
     }
-    if (this.lean >= Math.PI * 2) this.lean -= Math.PI * 2;
+    if (this.lean >= Math.PI * 2) {
+      this.lean -= Math.PI * 2;
+      // All the way round, forwards: a loop the loop.
+      if (!this.landed && game && game.onTrick) game.onTrick('loop');
+    }
     else if (this.lean < 0) this.lean += Math.PI * 2;
 
     matFromAim(this.leanDir, this.lean, this.matrix);
@@ -897,6 +907,7 @@ export class Player {
   // would be a poor toy box that punished you for finding that out.
   hitScenery(game) {
     const tx = this.x >> 24, tz = this.z >> 24;
+    if (this.shaveCool > 0) this.shaveCool--;
 
     // Two tiles either way, not one. A block structure now reaches over a
     // tile from its own centre, so a neighbour-only scan could put you
@@ -918,7 +929,19 @@ export class Player {
         const ddx = (this.x - wx) / TILE;
         const ddz = (this.z - wz) / TILE;
         const r = model.radius / TILE + SHIP_RADIUS;
-        if (ddx * ddx + ddz * ddz > r * r) continue;
+        if (ddx * ddx + ddz * ddz > r * r) {
+          // Not in it -- but past it close, low and quick is a close shave.
+          if (game && game.onTrick && !this.landed &&
+              ddx * ddx + ddz * ddz < (r + SHAVE) * (r + SHAVE) &&
+              Math.hypot(this.vx, this.vz) > SHAVE_SPEED &&
+              (this.y + UNDERCARRIAGE_Y) > landAltitude(wx, wz) - model.height) {
+            const key = ox * 4096 + oz;
+            if (key !== this.shavedKey || this.shaveCool <= 0) game.onTrick('shave');
+            this.shavedKey = key;
+            this.shaveCool = SHAVE_AGAIN;
+          }
+          continue;
+        }
 
         // Are we low enough to be in it?
         const base = landAltitude(wx, wz);

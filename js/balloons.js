@@ -382,9 +382,9 @@ for (let i = 0; i < MAX_GROUPS; i++) {
     // Style and burner are the balloon's own, not the group's: a chain of
     // four in one livery reads as bunting with decorations on it, and four
     // different ones read as four balloons that happen to be tied together.
-    bs.push({ x: 0, y: 0, z: 0, style: 0, burnAt: 0 });
+    bs.push({ x: 0, y: 0, z: 0, style: 0, burnAt: 0, cool: 0 });
   }
-  groups.push({ live: false, n: 0, bs, phase: 0, drawnLinks: 0 });
+  groups.push({ live: false, n: 0, bs, phase: 0, drawnLinks: 0, sides: [0, 0, 0, 0] });
 }
 
 export function resetBalloons() {
@@ -428,10 +428,88 @@ function place(g, px, pz) {
   }
 
   g.phase = rnd() * Math.PI * 2;
+  g.sides[0] = g.sides[1] = g.sides[2] = g.sides[3] = 0;
   g.live = true;
 }
 
-export function updateBalloons(player) {
+// --- the bird and the balloons ---------------------------------------------
+//
+// They still cannot hurt you, but they are no longer ghosts. The envelope is
+// springy: come down on top of one and the bird is thrown back up -- a
+// balloon bounce, a trick (see tricks.js) -- and brushing its side just
+// nudges you off it. The bunting is still flown through, and flying through
+// it is a trick too.
+//
+// The envelope is taken as an egg round its widest part: ENV_R across, its
+// middle ENV_MID above the point the balloon is placed at, reaching 0.76 of a
+// tile up to the crown and 1.3 down to the mouth -- squashed above and
+// stretched below by those, so a bounce happens on the canvas and not in
+// the air over it.
+const ENV_R = 0.84 * S * TILE;
+const ENV_MID = ENV_H * S * TILE * 0.66;
+const SQUASH_UP = (0.84 * S) / (ENV_H * S * 0.34);
+const SQUASH_DOWN = (0.84 * S) / (ENV_H * S * 0.58);
+const BIRD_R = 0.25 * TILE;
+const BOUNCE_UP = TILE * 0.065;       // the least a bounce throws you up at
+const BOUNCE_COOL = 30;               // steps before the same one counts again
+const BUNT_DROP = (BASKET_DROP + 0.2) * S * TILE;
+
+function touchBalloons(g, player, game) {
+  for (let k = 0; k < g.n; k++) {
+    const b = g.bs[k];
+    if (b.cool > 0) b.cool--;
+    const dx = (player.x - b.x) | 0, dz = (player.z - b.z) | 0;
+    const dy = (player.y - ((b.y - ENV_MID) | 0)) | 0;
+    const sy = dy < 0 ? SQUASH_UP : SQUASH_DOWN;
+    const ey = dy * sy;
+    const reach = ENV_R + BIRD_R;
+    if (Math.abs(dx) > reach || Math.abs(dz) > reach || Math.abs(ey) > reach) continue;
+    const d = Math.hypot(dx, ey, dz);
+    if (d >= reach || d === 0) continue;
+    // Out of the canvas, along the way in.
+    const ux = dx / d, uy = ey / d, uz = dz / d;
+    player.x = (b.x + ux * reach) | 0;
+    player.y = ((b.y - ENV_MID) + (uy * reach) / sy) | 0;
+    player.z = (b.z + uz * reach) | 0;
+    // The way out of an egg is not straight out from its middle.
+    const gl = Math.hypot(ux, uy * sy, uz);
+    const nx = ux / gl, ny = (uy * sy) / gl, nz = uz / gl;
+    // Springy: what was going in comes back out, a little livelier.
+    const vn = player.vx * nx + player.vy * ny + player.vz * nz;
+    if (vn < 0) {
+      player.vx = (player.vx - 2.1 * vn * nx) | 0;
+      player.vy = (player.vy - 2.1 * vn * ny) | 0;
+      player.vz = (player.vz - 2.1 * vn * nz) | 0;
+    }
+    // On top -- the way out mostly up -- it is a bounce.
+    if (ny < -0.55) {
+      if (player.vy > -BOUNCE_UP) player.vy = -BOUNCE_UP;
+      b.y = (b.y + TILE * 0.15) | 0;          // and the balloon dips under you
+      if (b.cool === 0 && game && game.onBalloonBounce) game.onBalloonBounce();
+      b.cool = BOUNCE_COOL;
+    }
+  }
+
+  // Through the bunting: which side of each link's line the bird is on,
+  // and whether that changed this step while it was at the cord's height.
+  for (let k = 0; k + 1 < g.n; k++) {
+    const a = g.bs[k], c = g.bs[k + 1];
+    const lx = ((c.x - a.x) | 0) / TILE, lz = ((c.z - a.z) | 0) / TILE;
+    const px = ((player.x - a.x) | 0) / TILE, pz = ((player.z - a.z) | 0) / TILE;
+    const side = lx * pz - lz * px >= 0 ? 1 : -1;
+    const was = g.sides[k];
+    g.sides[k] = side;
+    if (!was || was === side) continue;
+    const len2 = lx * lx + lz * lz;
+    const t = len2 > 0 ? (px * lx + pz * lz) / len2 : -1;
+    if (t < 0.04 || t > 0.96) continue;
+    const cordY = a.y + (c.y - a.y) * t + BUNT_DROP + Math.sin(Math.PI * t) * SAG * TILE;
+    const off = (player.y - cordY) / TILE;
+    if (off > -0.5 && off < 0.6 && game && game.onTrick) game.onTrick('bunting');
+  }
+}
+
+export function updateBalloons(player, game) {
   for (const g of groups) {
     if (!g.live) {
       if (Math.random() < 0.02) place(g, player.x, player.z);
@@ -449,6 +527,8 @@ export function updateBalloons(player) {
     // Judged on the head of the chain, as it always was on the first of the
     // pair: a whole group goes or stays together, so the bunting never has
     // one end retired out from under it.
+    if (!player.dead && player.launched && !player.landed) touchBalloons(g, player, game);
+
     const head = g.bs[0];
     // | 0 before dividing. World coordinates are 8.24 fixed point in an int32
     // and the map is a torus that wraps at a hundred and twenty-eight tiles,

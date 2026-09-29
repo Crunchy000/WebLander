@@ -104,6 +104,25 @@ import {
 } from './boats.js';
 import { updateCrabs, drawCrab, crabsInRow, resetCrabs, CRAB_SCORE } from './crabs.js';
 import { updateBombs, drawBombs, resetBombs } from './firebombs.js';
+import { Combo, COMBO_WINDOW } from './tricks.js';
+
+// What each trick puts in the pot. See tricks.js.
+const TRICK = {
+  loop: ['loop the loop', 150],
+  bounce: ['balloon bounce', 100],
+  bunting: ['bunting', 60],
+  skim: ['water skim', 60],
+  longSkim: ['long skim', 100],
+  shave: ['close shave', 40],
+  squash: ['crab squash', 60],
+  flip: ['crab flip', 40],
+};
+// A skim: low over the sea and moving. Feet within SKIM_LOW tiles of the
+// water, at SKIM_SPEED or better; SKIM_ONE steps of it is a skim, SKIM_LONG
+// a long one.
+const SKIM_LOW = 0.55;
+const SKIM_SPEED = 0x01000000 * 0.03;
+const SKIM_ONE = 50, SKIM_LONG = 150;
 // A crab thrown on its back by a fire bomb.
 const FLIP_SCORE = 40;
 
@@ -262,6 +281,8 @@ export class Game {
     resetBombs();
     this.flames = 0;
     this.flameOrder = [];
+    this.combo = new Combo();
+    this.skimRun = 0;
     this.grow();
     this.player.reset();
     this.input.newFlight();
@@ -312,6 +333,46 @@ export class Game {
 
   onTouchdown(onPad) {
     this.audio.touchdown();
+    // Setting down banks the stack.
+    this.bankCombo();
+  }
+
+  // --- tricks ---------------------------------------------------------------
+  //
+  // See tricks.js. `key` is one of TRICK; `base` overrides its points (a
+  // stack of blocks is worth what that stack is worth).
+  onTrick(key, base) {
+    if (this.state !== STATE.PLAYING || this.player.dead) return;
+    const [name, pts] = TRICK[key] || [key, base || 0];
+    this.combo.add(name, base !== undefined ? base : pts);
+    // A rising note for each one on the stack.
+    this.audio.chime(Math.min(7, this.combo.n + 1));
+  }
+
+  bankCombo() {
+    const c = this.combo;
+    if (!c || !c.active) return;
+    const total = c.total;
+    this.addScore(total);
+    this.setMessage((c.n > 1 ? 'stack x' + c.mult : c.names[0]) + '  +' + total, 90);
+    // A flourish, longer for a bigger stack.
+    for (let i = 0; i < Math.min(5, c.mult); i++) setTimeout(() => this.audio.chime(3 + i * 2), i * 70);
+    c.reset();
+  }
+
+  // The skim, watched every step: low and fast over the sea, and for how long.
+  watchSkim() {
+    const p = this.player;
+    let skimming = false;
+    if (!p.dead && !p.landed && p.launched && landAltitude(p.x, p.z) >= SEA_LEVEL) {
+      const clear = (SEA_LEVEL - (p.y + UNDERCARRIAGE_Y)) / TILE;
+      skimming = clear >= 0 && clear < SKIM_LOW && Math.hypot(p.vx, p.vz) > SKIM_SPEED;
+    }
+    if (!skimming) { this.skimRun = 0; return; }
+    this.skimRun++;
+    this.combo.hold();
+    if (this.skimRun === SKIM_ONE) this.onTrick('skim');
+    else if (this.skimRun === SKIM_LONG) this.onTrick('longSkim');
   }
 
   onCharging() {
@@ -353,9 +414,7 @@ export class Game {
     this.audio.blast();
     if (flipped > 0) {
       this.audio.clatter(0.5);
-      const pts = FLIP_SCORE * flipped;
-      this.addScore(pts);
-      this.setMessage((flipped > 1 ? flipped + ' crabs flipped' : 'crab flipped') + '  +' + pts, 60);
+      for (let i = 0; i < flipped; i++) this.onTrick('flip', FLIP_SCORE);
     }
   }
 
@@ -379,10 +438,8 @@ export class Game {
   onCrabSquashed(c) {
     const p = this.player;
     p.vy = Math.min(p.vy, -TILE * 0.03) | 0;
-    this.addScore(CRAB_SCORE);
     this.audio.clatter(0.35);
-    this.audio.chime(3);
-    this.setMessage('crab squashed  +' + CRAB_SCORE, 60);
+    this.onTrick('squash', CRAB_SCORE);
   }
 
   onBoatSunk(x, y, z) {
@@ -490,9 +547,15 @@ export class Game {
   // A structure has gone over. Points either way, but a stack shoved by the
   // drone clatters; one that a bomb went off under does not get the chance.
   onBlocksKnocked(type, x, y, z, force) {
-    this.addScore(OBJ_SCORE[type] || 0);
     this.audio.clatter(Math.min(1, force / 2.2));
-    this.setMessage('timber  +' + (OBJ_SCORE[type] || 0), 60);
+    this.onTrick('timber', OBJ_SCORE[type] || 0);
+  }
+
+  // A bounce off the top of a balloon (see balloons.js): a trick, and a boing.
+  onBalloonBounce() {
+    this.audio.tone(260, 0.07, 'sine', 0.2);
+    setTimeout(() => this.audio.tone(420, 0.12, 'sine', 0.16), 50);
+    this.onTrick('bounce');
   }
 
   onDeath(how) {
@@ -501,6 +564,11 @@ export class Game {
     else this.audio.explosion();
     this.state = STATE.DYING;
     this.setMessage(DEATH_MESSAGE[how] || String(how), 110);
+    // A crash takes the stack with it.
+    if (this.combo.active) {
+      this.combo.reset();
+      this.combo.lost = 110;
+    }
   }
 
   clearHighScore() {
@@ -578,11 +646,13 @@ export class Game {
 
     sampleRibbon(this.player);
     updateBoats(this.player, this);
-    updateBalloons(this.player);
+    updateBalloons(this.player, this);
     updateLanterns(this.player, this);
     updateFlames(this.player, this);
     updateCrabs(this.player, this);
     updateBombs(this);
+    this.watchSkim();
+    if (this.combo.tick()) this.bankCombo();
     updateBlocks();
     updateParticles(this.gravity, (i, bx, by, bz) => this.bulletHit(i, bx, by, bz));
 
@@ -619,6 +689,8 @@ export class Game {
   // smaller: a tongue of its tail, a fifth of its streamer and a tenth of its
   // room for energy. It rises from its flame on the pad, as it began.
   respawn() {
+    this.combo.reset();
+    this.skimRun = 0;
     resetParticles();
     resetRibbon();
     resetBombs();
@@ -1187,6 +1259,25 @@ export class Game {
 
   // --- HUD -----------------------------------------------------------------
 
+  // The stack, while there is one: the last few tricks on it, the pot and the
+  // multiplier, and how long is left to find the next.
+  drawCombo() {
+    const rd = this.rd, c = this.combo;
+    if (!c) return;
+    const y = 44;
+    if (c.active) {
+      const names = c.names.length > 3 ? '... ' + c.names.slice(-3).join(' + ') : c.names.join(' + ');
+      const hot = c.flash > 0;
+      drawTextCentred(rd, names, CENTRE_X, y, hot ? [255, 226, 160] : [236, 206, 150]);
+      drawTextCentred(rd, c.pot + ' x ' + c.mult, CENTRE_X, y + 11, hot ? [255, 244, 210] : [240, 224, 190]);
+      const w = 70, left = c.timer / COMBO_WINDOW;
+      rd.rect(CENTRE_X - w / 2, y + 22, w, 2, [70, 64, 60]);
+      rd.rect(CENTRE_X - w / 2, y + 22, Math.max(1, Math.round(w * left)), 2, [255, 170, 60]);
+    } else if (c.lost > 0) {
+      drawTextCentred(rd, 'stack lost', CENTRE_X, y, [232, 142, 116]);
+    }
+  }
+
   drawHud() {
     const rd = this.rd;
     const p = this.player;
@@ -1296,6 +1387,8 @@ export class Game {
       f.knobX = f.x + ms.x * f.r; f.knobY = f.y - ms.y * f.r;
       drawTouchStick(rd, f);
     }
+
+    this.drawCombo();
 
     if (this.state === STATE.PLAYING && p.protected) {
       // No number until the clock is actually running, since a number that

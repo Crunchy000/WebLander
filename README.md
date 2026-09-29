@@ -123,6 +123,27 @@ tiles of it, so the pad is always somewhere safe to sit and charge. Coming
 down on one from above -- descending, over it, feet within half a tile of
 its back -- bursts it into shadow for 60 points and bounces the bird back up.
 
+**Tricks stack** (`js/tricks.js`). Each trick adds its points to a pot and
+one to a multiplier (up to ten); the next has to come within four seconds
+of the last -- the bar under the stack shows how long is left -- or the
+stack is banked, pot times multiplier. Setting down banks it too; a crash
+loses it. The same trick again in one stack is worth half what it was the
+time before (never under a quarter), so variety pays.
+
+| trick | points |
+|---|---|
+| loop the loop -- all the way round, forwards (the pad or the thumb sticks) | 150 |
+| balloon bounce -- come down on top of a balloon; it throws you back up | 100 |
+| bunting -- fly through the line strung between two balloons | 60 |
+| timber -- knock over a stack of blocks, or a tree | what it is worth |
+| water skim -- a second low (feet within half a tile) and fast over the sea | 60 |
+| long skim -- three seconds of it | 100 |
+| close shave -- past a tree or a stack, within a third of a tile of it, quickly | 40 |
+| crab squash / crab flip | 60 / 40 |
+
+Balloons are springy now rather than ghosts: brushing one's side nudges the
+bird off it, and nothing about them can hurt you.
+
 **Fire bombs**: the phoenix can drop its own fire -- the right mouse
 button, <kbd>C</kbd>, a pad's bumpers, or on a touch screen a third finger
 (with both thumbs on the sticks, any finger not holding one) or, steering by
@@ -354,6 +375,7 @@ software rasterisation, so a phone GPU does not notice it.
 | `js/input.js` | mouse, keyboard, touch and tilt |
 | `js/settings.js` | the player's settings, kept between visits |
 | `js/firebombs.js` | the phoenix's dropped fire |
+| `js/tricks.js` | tricks, and stacking them into combos |
 | `js/audio.js` | synthesised sound, no assets |
 | `js/font.js` | 5×8 bitmap font for the HUD, caps and lowercase |
 | `js/game.js` | main loop, landscape scan, HUD, game states |
