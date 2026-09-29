@@ -13,7 +13,7 @@ import { TILE, rnd, rndSigned } from './maths.js';
 import { landAltitude, SEA_LEVEL } from './landscape.js';
 import { drawLamp } from './model.js';
 import { spawn, spawnSkimSpray, P_RISE, P_GLOW, P_GRAVITY } from './particles.js';
-import { flipCrabsNear } from './crabs.js';
+import { flipCrabsNear, hitKing } from './crabs.js';
 
 const MAX_BOMBS = 10;
 const FALL = (TILE * 0.004) | 0;   // gravity on a bomb, a step: it drops, half a second from hover height
@@ -86,6 +86,9 @@ export function updateBombs(game) {
     }
     const flipped = flipCrabsNear(b.x, b.z, BURST);
     if (game.onBombBurst) game.onBombBurst(b.x, ground, b.z, flipped);
+    // ... and the king, if it caught him.
+    const left = hitKing(b.x, b.z);
+    if (left >= 0 && game.onKingHit) game.onKingHit(left);
   }
 }
 

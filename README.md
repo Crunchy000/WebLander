@@ -123,6 +123,22 @@ tiles of it, so the pad is always somewhere safe to sit and charge. Coming
 down on one from above -- descending, over it, feet within half a tile of
 its back -- bursts it into shadow for 60 points and bounces the bird back up.
 
+**The king crab and the sunset** (`js/crabs.js`, `js/game.js`). With four
+flames gathered the ground shakes and the king crab rises out of it beside
+the last one, over sixty steps: the same crab two and a half times the
+size, crimson, with a gold crown, and the last flame lifted up above him out
+of reach until he is beaten. He keeps within a couple of tiles of it, comes
+at the bird when it is within nine, rears for longer than a small crab
+before he pinches, and a pinch takes a quarter of a full load of energy and
+throws the bird further. Landing on his shell only bounces off. Three fire
+bombs on him turn him over (500 points, as a trick), and the flame comes
+down. Taking it -- all five, the whole bird -- runs the day on to sunset,
+the sun stopping big and orange on the horizon while the sky reddens; then
+climbing six and a half tiles above the highest ground is rising into it.
+The phoenix goes up in a stream of embers as the light fills the screen,
+and the flight ends on a card with the time it took and the quickest yet
+(kept on the device).
+
 **Tricks stack** (`js/tricks.js`). Each trick adds its points to a pot and
 one to a multiplier (up to ten); the next has to come within four seconds
 of the last -- the bar under the stack shows how long is left -- or the
@@ -140,16 +156,18 @@ time before (never under a quarter), so variety pays.
 | long skim -- two and a half seconds of it | 100 |
 | close shave -- past a tree or a stack, within a third of a tile of it, quickly | 40 |
 | crab squash / crab flip | 60 / 40 |
+| king crab overturned | 500 |
 
 Balloons are springy now rather than ghosts: brushing one's side nudges the
 bird off it, and nothing about them can hurt you.
 
-**Awards** (`js/achievements.js`): twenty-seven things to tick off, kept on
+**Awards** (`js/achievements.js`): thirty things to tick off, kept on
 the device between visits -- some a count across every flight (flip fifty
 crabs, bounce off ten balloons, knock over twenty-five block towers, land on
 five canoes, fly ten loops), some a single feat (three balloon bounces in
 one stack, three crabs with one bomb, a x10 stack, being in the air at
-midnight). Earning one puts its name at the foot of the screen with a
+midnight, overturning the king crab, reaching the sunset inside fifteen
+minutes). Earning one puts its name at the foot of the screen with a
 chime; the awards page on the card lists them all, ticked or not, with how
 far along each count is.
 
@@ -374,7 +392,7 @@ software rasterisation, so a phone GPU does not notice it.
 | `js/objects.js` | scenery models and the stateless object map |
 | `js/tanks.js` | roving armour, their gunnery and their destruction |
 | `js/boats.js` | canoes on the sea, the one moving thing left out there |
-| `js/crabs.js` | shadow crabs: wander the land, pinch the bird, squash from above |
+| `js/crabs.js` | shadow crabs and the king crab: wander the land, pinch the bird, squash from above |
 | `js/sam.js` | radar and missile sites, and what they do to anyone flying high |
 | `js/player.js` | faceted hull, flight physics, collisions |
 | `js/particles.js` | exhaust, bullets, explosions, smoke, spray |

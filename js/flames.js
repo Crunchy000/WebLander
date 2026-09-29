@@ -92,7 +92,29 @@ const flames = MARKS.map(([dx, dz], k) => {
 });
 
 export function resetFlames() {
-  for (const f of flames) f.taken = false;
+  for (const f of flames) { f.taken = false; f.guarded = false; }
+}
+
+// The last flame, guarded by the king crab (see crabs.js): it cannot be taken
+// while the king stands over it.
+export function setGuarded(k, on) {
+  const f = flames[k];
+  if (f) f.guarded = on;
+}
+
+// The one flame still burning, when only one is. -1 otherwise.
+export function lastFlame() {
+  let k = -1;
+  for (const f of flames) {
+    if (f.taken) continue;
+    if (k >= 0) return -1;
+    k = f.k;
+  }
+  return k;
+}
+
+export function flameAt(k) {
+  return flames[k] || null;
 }
 
 // A flame given back to the world: the one a death takes from the bird's tail
@@ -104,14 +126,15 @@ export function restoreFlame(k) {
 
 function heightOf(f) {
   const bob = Math.sin(sky.tick * 0.05 + f.phase) * 0.12;
-  return (f.ground - (HOVER + bob) * TILE) | 0;
+  // Guarded, it floats over the king's crown rather than inside his shell.
+  return (f.ground - (HOVER + (f.guarded ? 1.4 : 0) + bob) * TILE) | 0;
 }
 
 // Called every step. Hands a flame to the game when the bird flies into it.
 export function updateFlames(player, game) {
   if (player.dead) return;
   for (const f of flames) {
-    if (f.taken) continue;
+    if (f.taken || f.guarded) continue;
     const dx = ((f.x - player.x) | 0) / TILE, dz = ((f.z - player.z) | 0) / TILE;
     if (dx * dx + dz * dz > REACH * REACH) continue;
     const up = (heightOf(f) - player.y) / TILE;      // + when the bird is above it

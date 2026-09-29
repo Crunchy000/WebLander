@@ -7,7 +7,7 @@ import {
   UNDERCARRIAGE_Y,
 } from './landscape.js';
 import {
-  sky, sun, moon, STARS, advanceDay, skyColourAt, SKY_BAND_1, SKY_BAND_2, beacon,
+  sky, sun, moon, STARS, advanceDay, setPhase, holdSun, skyColourAt, SKY_BAND_1, SKY_BAND_2, beacon,
   lightGen,
 } from './daylight.js';
 import { drawRidges, drawNearGround, drawHorizonHaze, backdropAt } from './ridges.js';
@@ -15,6 +15,7 @@ import { flowersInRow, nearestFlower, takeFlower, resetFlowers } from './flowers
 import { sampleRibbon, drawRibbon, resetRibbon, setRibbonLength } from './ribbon.js';
 import {
   FLAME_COUNT, resetFlames, restoreFlame, updateFlames, flamesInRow, drawFlame, drawBeacons,
+  setGuarded, lastFlame, flameAt,
 } from './flames.js';
 import { serene } from './style.js';
 import { seaShade } from './sea.js';
@@ -93,7 +94,7 @@ import {
 } from './lanterns.js';
 import {
   updateParticles, drawParticles, resetParticles, particleData,
-  spawnExplosion, spawnSparks, spawnSmoke, particleCount, P_BULLET,
+  spawnExplosion, spawnSparks, spawnSmoke, spawnEmber, particleCount, P_BULLET,
 } from './particles.js';
 import { drawText, drawTextCentred, textWidth } from './font.js';
 import {
@@ -102,7 +103,7 @@ import {
 import {
   updateBoats, drawBoat, boatsInRow, boatHit, boatBlast, resetBoats, BOAT_SCORE,
 } from './boats.js';
-import { updateCrabs, drawCrab, crabsInRow, resetCrabs, CRAB_SCORE } from './crabs.js';
+import { updateCrabs, drawCrab, crabsInRow, resetCrabs, CRAB_SCORE, spawnKing, kingInfo } from './crabs.js';
 import { updateBombs, drawBombs, resetBombs } from './firebombs.js';
 import { Combo, COMBO_WINDOW } from './tricks.js';
 import { count as countAward, unlock as unlockAward, onEarn } from './achievements.js';
@@ -116,6 +117,7 @@ const TRICK = {
   longSkim: ['long skim', 100],
   shave: ['close shave', 40],
   canoe: ['canoe landing', 120],
+  king: ['king crab overturned', 500],
   squash: ['crab squash', 60],
   flip: ['crab flip', 40],
 };
@@ -135,6 +137,17 @@ const TRICK_STAT = {
 };
 // How long an award stays on the screen.
 const AWARD_SHOW = 170;
+
+// The ending. With all five flames the day runs on to SUNSET_PHASE -- the
+// sky at its reddest -- and holds there, the sun stopping at SUN_HELD, big
+// and orange where it touches the horizon on the way; climbing above
+// SUNSET_Y then is rising into it, and the phoenix goes up in a stream of
+// embers for ASCENT steps while the light fills the screen.
+const SUNSET_PHASE = 0.745;
+const SUN_HELD = 0.664;
+const SUNSET_Y = -(0x01000000 * 6.5);
+const ASCENT = 170;
+const BEST_TIME_KEY = 'weblander.besttime';
 // A crab thrown on its back by a fire bomb.
 const FLIP_SCORE = 40;
 
@@ -302,6 +315,10 @@ export class Game {
     this.flameOrder = [];
     this.combo = new Combo();
     this.skimRun = 0;
+    this.kingSpawned = false;
+    this.finale = null;
+    holdSun(-1);
+    this.flightSteps = 0;
     this.grow();
     this.player.reset();
     this.input.newFlight();
@@ -326,6 +343,19 @@ export class Game {
     this.flames = Math.min(FLAME_COUNT, this.flames + 1);
     countAward('flames');
     if (this.flames >= FLAME_COUNT) unlockAward('whole');
+    // Four held: the last is guarded.
+    if (this.flames === FLAME_COUNT - 1 && !this.kingSpawned) {
+      const k = lastFlame();
+      const f = k >= 0 ? flameAt(k) : null;
+      if (f) {
+        spawnKing(f.x, f.z, k);
+        setGuarded(k, true);
+        this.kingSpawned = true;
+        this.kingFlame = k;
+        this.audio.bigBoom();
+        setTimeout(() => this.setMessage('the king crab guards the last flame', 180), 1600);
+      }
+    }
     (this.flameOrder || (this.flameOrder = [])).push(k);
     this.grow();
     // Taking a flame fills the bird to its new size.
@@ -336,6 +366,11 @@ export class Game {
     for (let i = 0; i <= this.flames + 1; i++) setTimeout(() => this.audio.chime(i + 2), i * 90);
     this.setMessage(this.flames >= FLAME_COUNT ? 'the phoenix is whole  +' + FLAME_SCORE
       : 'flame ' + this.flames + ' of ' + FLAME_COUNT + '  +' + FLAME_SCORE, 120);
+    // Five: the sun goes down, and the ending is up there in it.
+    if (this.flames >= FLAME_COUNT && !this.finale) {
+      this.finale = { stage: 'dusk', t: 0 };
+      setTimeout(() => this.setMessage('rise into the setting sun', 200), 2600);
+    }
   }
 
   // --- events from the player ---------------------------------------------
@@ -418,13 +453,15 @@ export class Game {
   // and away from the claws.
   onPinched(c) {
     const p = this.player;
-    p.charge = Math.max(0, p.charge - PINCH_ENERGY);
+    // The king takes a quarter of a load, and throws you further.
+    const k = c.king ? 1.6 : 1;
+    p.charge = Math.max(0, p.charge - (c.king ? CHARGE_MAX / 4 : PINCH_ENERGY));
     let ax = p.x - c.x, az = p.z - c.z;
     const len = Math.hypot(ax, az) || 1;
     ax /= len; az /= len;
-    p.vx = (p.vx * 0.3 + ax * TILE * 0.022) | 0;
-    p.vz = (p.vz * 0.3 + az * TILE * 0.022) | 0;
-    p.vy = Math.min(p.vy, -TILE * 0.028) | 0;
+    p.vx = (p.vx * 0.3 + ax * TILE * 0.022 * k) | 0;
+    p.vz = (p.vz * 0.3 + az * TILE * 0.022 * k) | 0;
+    p.vy = Math.min(p.vy, -TILE * 0.028 * k) | 0;
     this.energyFlash = 24;
     this.audio.tone(210, 0.06, 'square', 0.22);
     setTimeout(() => this.audio.tone(150, 0.09, 'square', 0.2), 70);
@@ -582,6 +619,75 @@ export class Game {
     countAward(isNatural(type) ? 'trees' : 'towers');
   }
 
+  // --- the ending -------------------------------------------------------------
+
+  beginAscent() {
+    this.finale = { stage: 'ascend', t: 0 };
+    this.bankCombo();
+    this.audio.engine(0);
+    this.setMessage('the phoenix is whole', ASCENT);
+  }
+
+  // Up, and faster, trailing fire; the controls let go. The camera follows as
+  // far as it can, and then the bird goes on up out of the top of the frame
+  // while the light fills it.
+  stepAscent() {
+    const p = this.player, f = this.finale;
+    f.t++;
+    p.vy = (-TILE * (0.02 + f.t * 0.0006)) | 0;
+    p.vx = (p.vx * 0.95) | 0;
+    p.vz = (TILE * 0.02) | 0;
+    p.x = (p.x + p.vx) | 0;
+    p.y = (p.y + p.vy) | 0;
+    p.z = (p.z + p.vz) | 0;
+    p.lean *= 0.94;
+    p.thrusting = 2;
+    p.rotorSpin = (p.rotorSpin + 0.7) % (Math.PI * 2);
+    p.landed = false;
+    p.face();
+    for (let i = 0; i < 3; i++) {
+      spawnEmber((p.x + (rnd() - 0.5) * TILE * 0.8) | 0, (p.y + TILE * 0.3) | 0, (p.z - TILE * 0.3) | 0,
+        (rnd() - 0.5) * TILE * 0.01, TILE * 0.01 * rnd(), -TILE * 0.01 * rnd());
+    }
+    if (f.t % 30 === 1) this.audio.chime(Math.min(7, 1 + ((f.t / 30) | 0)));
+    if (f.t >= ASCENT) this.endFlight();
+  }
+
+  endFlight() {
+    const steps = this.flightSteps;
+    let best = 0;
+    try { best = +localStorage.getItem(BEST_TIME_KEY) || 0; } catch { /* private mode */ }
+    const newBest = !best || steps < best;
+    if (newBest) { try { localStorage.setItem(BEST_TIME_KEY, String(steps)); } catch { /* private mode */ } }
+    unlockAward('sunset');
+    if (steps < 15 * 60 * 50) unlockAward('swift');
+    this.finale = { stage: 'done', t: 0 };
+    this.state = STATE.TITLE;
+    this.message = null;
+    if (this.onEnding) this.onEnding({ steps, best: newBest ? steps : best, newBest, score: this.score });
+  }
+
+  // The king crab: hit by a fire bomb, with `left` hits to go.
+  onKingHit(left) {
+    this.audio.bigBoom();
+    if (left > 0) {
+      this.setMessage('the king crab reels -- ' + left + ' more', 90);
+      return;
+    }
+    // Overturned: the flame is free.
+    setGuarded(this.kingFlame, false);
+    this.onTrick('king');
+    unlockAward('king');
+    this.audio.clatter(1);
+    for (let i = 0; i < 5; i++) setTimeout(() => this.audio.chime(2 + i * 2), i * 110);
+    this.setMessage('the king is overturned -- the flame is free', 180);
+  }
+
+  // Coming down on the king's shell: thrown off, and a thud.
+  onKingBounce() {
+    this.audio.tone(120, 0.12, 'sine', 0.25);
+  }
+
   // Set down on a canoe: a trick of its own (see Player.checkGround).
   onBoatLanding() {
     this.onTrick('canoe');
@@ -649,7 +755,16 @@ export class Game {
     if (this.input.tilt && this.input.tilt.setDrifting) {
       this.input.tilt.setDrifting(!inp.thrust);
     }
-    advanceDay(STEP_MS);
+    // The day runs on as it always does -- unless the phoenix is whole, and
+    // then it runs on to sunset, quickly, and waits there.
+    // The end card is shown against that same sunset, held.
+    if (this.finale && (this.state === STATE.PLAYING || this.finale.stage === 'done')) {
+      if (sky.phase >= SUN_HELD && sky.phase < 0.8) holdSun(SUN_HELD);
+      const d = (SUNSET_PHASE - sky.phase + 1) % 1;
+      setPhase(d > 0.0015 && d < 0.999 ? sky.phase + Math.min(d, 0.0016) : SUNSET_PHASE);
+    } else {
+      advanceDay(STEP_MS);
+    }
     updateWeather(this.player.x, this.player.z);
     // The beds run in every state, so the weather is still there behind the
     // title screen and while you are waiting to respawn.
@@ -661,7 +776,7 @@ export class Game {
       this.player.z = (this.player.z + TILE * 0.012) | 0;
       updateParticles(this.gravity, () => false);
       updateBlocks();
-      if (inp.consumeStart() || inp.thrust) {
+      if (!this.cardUp && (inp.consumeStart() || inp.thrust)) {
         this.audio.start();
         this.newGame();
       }
@@ -678,6 +793,20 @@ export class Game {
     }
 
     // Playing.
+    this.flightSteps++;
+    if (this.finale && this.finale.stage === 'ascend') {
+      this.stepAscent();
+      updateParticles(this.gravity, () => false);
+      updateCrabs(this.player, this);
+      if (this.messageTimer > 0 && --this.messageTimer === 0) this.message = null;
+      return;
+    }
+    // Whole, at sunset, and high enough: up into it.
+    if (this.finale && this.finale.stage === 'dusk') {
+      const p = this.player;
+      const set = Math.abs(sky.phase - SUNSET_PHASE) < 0.002;
+      if (set && p.launched && !p.dead && p.y < SUNSET_Y) this.beginAscent();
+    }
     this.player.update(inp.stick, inp.thrust, inp.fire, this.gravity, this, inp.throttle, inp.hold, inp.stay, inp.slide);
     // Gated on the style for the same reason the drawing is: a flower you
     // can drink from and cannot see would be worse than no flower at all.
@@ -735,6 +864,10 @@ export class Game {
   // smaller: a tongue of its tail, a fifth of its streamer and a tenth of its
   // room for energy. It rises from its flame on the pad, as it began.
   respawn() {
+    if (this.flames < FLAME_COUNT && this.finale) {
+      this.finale = null;
+      holdSun(-1);
+    }
     this.combo.reset();
     this.skimRun = 0;
     resetParticles();
@@ -921,6 +1054,11 @@ export class Game {
     if (this.state === STATE.PLAYING && on('player')) p.draw(rd, eyeX, eyeY, eyeZ);
     t = prof.lap('bird', t);
     if (on('weather')) drawWeather(rd, eyeX, eyeY, eyeZ);
+    // Rising into the sun: the evening light fills the screen.
+    if (this.finale && this.finale.stage === 'ascend') {
+      const a = Math.max(0, Math.min(1, (this.finale.t - 50) / (ASCENT - 50)));
+      if (a > 0) rd.rect(0, 0, SCREEN_W, SCREEN_H, [255, 186, 120, Math.round(245 * a * a)]);
+    }
     t = prof.lap('rain & snow', t);
     // Not under the title or pause card: it says all of that itself, and the
     // HUD showing through the wash behind it was clutter.
@@ -1336,6 +1474,26 @@ export class Game {
     }
   }
 
+  // What the ending wants of you: the king's hits left when near him, and
+  // how much higher to climb once the sun is setting.
+  drawGoal() {
+    const rd = this.rd, p = this.player;
+    const kc = kingInfo();
+    if (kc && !kc.flipped && kc.rise >= 1) {
+      const dx = ((kc.x - p.x) | 0) / TILE, dz = ((kc.z - p.z) | 0) / TILE;
+      if (dx * dx + dz * dz < 20 * 20) {
+        drawTextCentred(rd, 'king crab', CENTRE_X, SCREEN_H - 60, [236, 142, 120]);
+        for (let i = 0; i < 3; i++) {
+          rd.rect(CENTRE_X - 16 + i * 12, SCREEN_H - 49, 8, 4, i < kc.hp ? [236, 96, 80] : [70, 50, 50]);
+        }
+      }
+    }
+    if (this.finale && this.finale.stage === 'dusk' && Math.abs(sky.phase - SUNSET_PHASE) < 0.002) {
+      const togo = Math.max(0, (p.y - SUNSET_Y) / TILE);
+      drawTextCentred(rd, 'rise into the setting sun  ' + togo.toFixed(1), CENTRE_X, SCREEN_H - 60, [255, 206, 130]);
+    }
+  }
+
   // How long the award at the front stays up: less when others are waiting.
   awardShow() {
     return this.awards.length > 2 ? 80 : AWARD_SHOW;
@@ -1470,6 +1628,7 @@ export class Game {
 
     this.drawCombo();
     this.drawAward();
+    this.drawGoal();
 
     if (this.state === STATE.PLAYING && p.protected) {
       // No number until the clock is actually running, since a number that

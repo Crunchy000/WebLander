@@ -17,7 +17,7 @@
 // fly there are only a handful being walked about.
 
 import { TILE, matRotX, matRotY, matMul, matRotZ, rnd, rndSigned, rndInt } from './maths.js';
-import { Model, facet, drawModel, drawShadow } from './model.js';
+import { Model, facet, drawModel, drawShadow, recolour } from './model.js';
 import { landAltitude, SEA_LEVEL, isOnLaunchpad, UNDERCARRIAGE_Y } from './landscape.js';
 import { spawn, spawnSparks, P_RISE, P_GLOW, P_FADE } from './particles.js';
 
@@ -208,6 +208,173 @@ export const CRAB_MODEL = POSES[0][0][0];
 // On its back: FLIPPED[stride][shut], with the underneath built.
 const FLIPPED = [0, 1, 2, 3].map((f) => [false, true].map((shut) => buildCrab(f, shut, false, true)));
 
+// --- the king ----------------------------------------------------------------
+//
+// The last flame is guarded. When the phoenix holds four, the king crab rises
+// out of the ground at the fifth: more than twice the size of the others, in
+// crimson, with a crown, and the flame floating over its shell. It keeps
+// close to its flame, faces whatever comes, and pinches hard; it is too big
+// to squash -- come down on it and the bird is thrown off its shell -- and
+// it takes three fire bombs to overturn it. On its back, it lets the flame go.
+const KING_S = 2.4;
+const KING_HP = 3;
+const KING_LEASH = 2.2;          // tiles from its flame it will go
+const KING_NOTICE = 9;
+const KING_SPEED = 0.03;
+const KING_REACH = 1.9;          // tiles, across the ground, of its claws
+const KING_UP = 2.0;             // ... and the bird's feet within this of the ground
+const KING_BODY = 0.95;          // tiles: the shell, which the bird cannot be inside
+const KING_TOP = 0.52 * S * KING_S;   // tiles: the top of its shell
+const KING_WINDUP = 18;
+const KING_COOL = 110;
+const KING_BURST = 2.6;          // tiles: a fire bomb this close counts
+
+// Crimson for the violet, the eyes left white.
+const crimson = (c) => (c[0] > 200 ? null : [Math.min(255, Math.round(c[0] * 1.9 + 20)), Math.round(c[1] * 0.55), Math.round(c[2] * 0.6)]);
+const KING_POSES = POSES.map((f) => f.map((sh) => sh.map((m) => recolour(m, crimson))));
+const KING_FLIPPED = FLIPPED.map((f) => f.map((m) => recolour(m, crimson)));
+
+// The crown: a gold band round the top of the shell with five points.
+const GOLD = [238, 192, 84], GOLD_D = [196, 146, 52];
+const CROWN = (() => {
+  const m = new Model();
+  const v = (x, y, z) => m.vert(x * S, y * S, z * S);
+  const N = 10, lo = [], hi = [];
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2;
+    lo.push(v(Math.sin(a) * 0.16, -0.50, Math.cos(a) * 0.12));
+    hi.push(v(Math.sin(a) * 0.17, -0.57, Math.cos(a) * 0.13));
+  }
+  for (let i = 0; i < N; i++) {
+    const j = (i + 1) % N;
+    facet(m, [lo[i], lo[j], hi[j], hi[i]], i % 2 ? GOLD : GOLD_D);
+    if (i % 2 === 0) {
+      const a = ((i + 1) / N) * Math.PI * 2;
+      facet(m, [hi[i], hi[(i + 2) % N], v(Math.sin(a) * 0.19, -0.70, Math.cos(a) * 0.15)], GOLD);
+    }
+  }
+  return m;
+})();
+
+const king = { live: false, king: true };
+
+export function spawnKing(x, z, guard) {
+  Object.assign(king, {
+    live: true, x, z, hx: x, hz: z, h: 0, side: 1, gait: 0, snap: 0, windup: 0,
+    cool: 60, raised: 40, flipped: 0, flipSide: 1, hp: KING_HP, hurt: 0, rise: 0,
+    moving: false, scale: KING_S, guard,
+  });
+  // It comes up out of the ground in a burst of dust and shadow.
+  const y = landAltitude(x, z);
+  for (let i = 0; i < 40; i++) {
+    const a = rnd() * Math.PI * 2, sp = TILE * (0.01 + rnd() * 0.02);
+    spawn(x, y, z, Math.cos(a) * sp, -TILE * 0.01 * rnd(), Math.sin(a) * sp,
+      SMOKE[i % SMOKE.length], 50 + ((rnd() * 30) | 0), P_RISE | P_FADE, 3);
+  }
+}
+
+export function kingInfo() {
+  return king.live ? king : null;
+}
+
+// A fire bomb bursting at (x, z). Returns the king's hits left if it was
+// caught in it, or -1.
+export function hitKing(x, z, reach = KING_BURST) {
+  if (!king.live || king.flipped || king.rise < 1) return -1;
+  const dx = ((king.x - x) | 0) / TILE, dz = ((king.z - z) | 0) / TILE;
+  if (dx * dx + dz * dz > reach * reach) return -1;
+  king.hp--;
+  king.hurt = 24;
+  king.snap = 10;
+  king.windup = 0;
+  king.cool = Math.max(king.cool, 50);
+  if (king.hp <= 0) {
+    king.flipped = 1;
+    king.flipSide = rnd() < 0.5 ? 1 : -1;
+  }
+  return king.hp;
+}
+
+function updateKing(player, game) {
+  const c = king;
+  if (!c.live) return;
+  if (c.rise < 1) { c.rise = Math.min(1, c.rise + 1 / 60); return; }
+  if (c.flipped) {
+    c.flipped++;
+    c.gait = (c.gait + 0.25) % 4;
+    if (rnd() < 0.06) c.snap = 6;
+    return;
+  }
+  if (c.hurt > 0) c.hurt--;
+  if (c.cool > 0) c.cool--;
+  if (c.snap > 0) c.snap--;
+  if (c.raised > 0) c.raised--;
+
+  const dx = ((player.x - c.x) | 0) / TILE, dz = ((player.z - c.z) | 0) / TILE;
+  const across = Math.hypot(dx, dz);
+  const ground = landAltitude(c.x, c.z);
+  const up = (ground - (player.y + UNDERCARRIAGE_Y)) / TILE;
+  const live = !player.dead && player.launched;
+
+  // Its shell: too big to squash. Coming down on it throws the bird off, and
+  // nothing gets inside it.
+  if (live && across < KING_BODY && up < KING_TOP + 0.3) {
+    if (up > KING_TOP - 0.4 && player.vy > 0) {
+      player.vy = (-TILE * 0.05) | 0;
+      if (game && game.onKingBounce) game.onKingBounce();
+    } else if (across > 0.01) {
+      const k = KING_BODY / across;
+      player.x = (c.x + dx * k * TILE) | 0;
+      player.z = (c.z + dz * k * TILE) | 0;
+    }
+  }
+
+  // A pinch: rear up, then close, if the bird is still there.
+  const inReach = live && across < KING_REACH && up < KING_UP && !player.protected;
+  if (c.windup > 0) {
+    if (--c.windup === 0) {
+      c.cool = KING_COOL;
+      c.snap = SNAP;
+      if (inReach) {
+        spawnSparks(player.x, player.y, player.z, 10);
+        game.onPinched(c);
+      }
+    }
+    return;
+  }
+  if (inReach && c.cool === 0) {
+    c.windup = KING_WINDUP;
+    c.raised = RAISED_HOLD;
+    c.moving = false;
+    return;
+  }
+
+  // Face whatever comes near, and go to meet it -- never far from the flame.
+  const sees = live && across < KING_NOTICE && up < 6;
+  let tx = c.hx, tz = c.hz;
+  if (sees) {
+    c.raised = RAISED_HOLD;
+    let ox = ((player.x - c.hx) | 0) / TILE, oz = ((player.z - c.hz) | 0) / TILE;
+    const ol = Math.hypot(ox, oz);
+    if (ol > KING_LEASH) { ox *= KING_LEASH / ol; oz *= KING_LEASH / ol; }
+    tx = (c.hx + ox * TILE) | 0; tz = (c.hz + oz * TILE) | 0;
+    const want = Math.atan2(dx, dz);
+    let d = want - c.h;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    c.h += Math.max(-0.05, Math.min(0.05, d));
+  }
+  const mx = ((tx - c.x) | 0) / TILE, mz = ((tz - c.z) | 0) / TILE;
+  const ml = Math.hypot(mx, mz);
+  c.moving = ml > 0.2;
+  if (c.moving) {
+    const step = Math.min(ml, KING_SPEED);
+    c.x = (c.x + (mx / ml) * step * TILE) | 0;
+    c.z = (c.z + (mz / ml) * step * TILE) | 0;
+    c.gait = (c.gait + step * 10) % 4;
+  }
+}
+
 // --- state -------------------------------------------------------------------
 
 const crabs = [];
@@ -215,6 +382,7 @@ for (let i = 0; i < MAX_CRABS; i++) crabs.push({ live: false });
 
 export function resetCrabs() {
   for (const c of crabs) c.live = false;
+  king.live = false;
 }
 
 export function crabCount() {
@@ -261,6 +429,7 @@ function place(c, px, pz) {
 // --- update ------------------------------------------------------------------
 
 export function updateCrabs(player, game) {
+  updateKing(player, game);
   const px = player.x, pz = player.z;
   for (const c of crabs) {
     if (!c.live) {
@@ -367,6 +536,7 @@ export function updateCrabs(player, game) {
   }
 }
 
+// (The king, stepped from updateCrabs.)
 // Where the chase camera can see: the drawn landscape runs from ten to
 // thirty-four tiles in front of the eye, a little under half as wide as it
 // is far either side.
@@ -418,16 +588,29 @@ export function crabsInRow(zLo, zHi, out) {
   for (const c of crabs) {
     if (c.live && c.z >= zLo && c.z < zHi) out.push(c);
   }
+  if (king.live && king.z >= zLo && king.z < zHi) out.push(king);
   return out;
 }
 
 const rot = new Float64Array(9), tip = new Float64Array(9), mat = new Float64Array(9);
 const back = new Float64Array(9), mat2 = new Float64Array(9);
 
+const scaled = new Float64Array(9);
+// The matrix, with the model made k times its size.
+function grow(m, k) {
+  for (let i = 0; i < 9; i++) scaled[i] = m[i] * k;
+  return scaled;
+}
+
 export function drawCrab(rd, c, camX, camY, camZ, fog = 0, row = 0) {
   const ground = landAltitude(c.x, c.z);
+  // The king comes up out of the ground, growing as it comes; and shakes
+  // when it is hit.
+  const k = c.king ? KING_S * (0.25 + 0.75 * (1 - (1 - c.rise) * (1 - c.rise))) : 1;
+  const px = c.king && c.hurt > 0 ? (c.x + Math.sin(c.hurt * 2.1) * 0.06 * TILE * k) | 0 : c.x;
+  const poses = c.king ? KING_POSES : POSES, flippedPoses = c.king ? KING_FLIPPED : FLIPPED;
   // A pool of shadow under it, wider than it is: it is a shadow thing.
-  drawShadow(rd, c.x, c.z, TILE * 0.55, 0.75, camX, camY, camZ, row, fog, 0);
+  drawShadow(rd, c.x, c.z, TILE * 0.55 * k, 0.75, camX, camY, camZ, row, fog, 0);
   // Tipped across the slope it stands on, side to side, so its legs meet the
   // ground on a hillside.
   const d = TILE * 0.4;
@@ -444,21 +627,26 @@ export function drawCrab(rd, c, camX, camY, camZ, fog = 0, row = 0) {
     const e = t * t * (3 - 2 * t);
     matRotZ(-Math.PI * e * c.flipSide, back);
     matMul(mat, back, mat2);
-    const hop = Math.sin(Math.PI * t) * 0.6 * TILE;
-    const lie = 0.52 * S * TILE * e;
-    const pose = FLIPPED[(c.gait | 0) & 3][c.snap > 0 ? 1 : 0];
-    drawModel(rd, pose, mat2, c.x, (ground - hop - lie) | 0, c.z, camX, camY, camZ, fog);
+    const hop = Math.sin(Math.PI * t) * 0.6 * TILE * (c.king ? 1.5 : 1);
+    const lie = 0.52 * S * TILE * e * k;
+    const pose = flippedPoses[(c.gait | 0) & 3][c.snap > 0 ? 1 : 0];
+    const m2 = k !== 1 ? grow(mat2, k) : mat2;
+    drawModel(rd, pose, m2, px, (ground - hop - lie) | 0, c.z, camX, camY, camZ, fog);
+    if (c.king) drawModel(rd, CROWN, m2, px, (ground - hop - lie) | 0, c.z, camX, camY, camZ, fog);
     return;
   }
   // Rearing for a pinch: tipped back, claws up and open. Walking: a bob
   // with each step.
-  const rear = c.windup > 0 ? Math.min(1, (WINDUP - c.windup + 1) / 5) : 0;
+  const rear = c.windup > 0 ? Math.min(1, ((c.king ? KING_WINDUP : WINDUP) - c.windup + 1) / 5) : 0;
   if (rear > 0) {
     matRotX(0.35 * rear, back);
     matMul(mat, back, mat2);
     mat.set(mat2);
   }
-  const bob = c.moving ? Math.abs(Math.sin(c.gait * Math.PI)) * 0.025 * TILE : 0;
-  const pose = POSES[(c.gait | 0) & 3][c.snap > 0 ? 1 : 0][c.raised > 0 || rear > 0 ? 1 : 0];
-  drawModel(rd, pose, mat, c.x, (ground - bob - rear * 0.06 * TILE) | 0, c.z, camX, camY, camZ, fog);
+  const bob = c.moving ? Math.abs(Math.sin(c.gait * Math.PI)) * 0.025 * TILE * k : 0;
+  const pose = poses[(c.gait | 0) & 3][c.snap > 0 ? 1 : 0][c.raised > 0 || rear > 0 ? 1 : 0];
+  const m1 = k !== 1 ? grow(mat, k) : mat;
+  const y = (ground - bob - rear * 0.06 * TILE * k) | 0;
+  drawModel(rd, pose, m1, px, y, c.z, camX, camY, camZ, fog);
+  if (c.king) drawModel(rd, CROWN, m1, px, y, c.z, camX, camY, camZ, fog);
 }

@@ -103,7 +103,7 @@ export function setPhase(phase) {
   sky.star = lerp(a.star, b.star, t);
   sky.lamp = lerp(a.lamp, b.lamp, t);
 
-  placeBodies(sky.phase);
+  placeBodies(heldSun >= 0 ? heldSun : sky.phase);
 
   // Shadows are cast by whichever body is up, so they soften right down
   // overnight instead of vanishing -- a moonlit blob still tells you where
@@ -151,6 +151,15 @@ const SUN_RISE = 0.215, SUN_SET = 0.785;
 const SUN_LOW  = [255, 116,  44];
 const SUN_HIGH = [255, 248, 214];
 
+// The ending holds the sun where it sits on the horizon -- which on this
+// arc is earlier in the day than the sky's own sunset colours come round --
+// big and orange, while the sky goes on into its evening. -1 lets it go.
+let heldSun = -1;
+export function holdSun(phase) {
+  heldSun = phase;
+  placeBodies(phase >= 0 ? phase : sky.phase);
+}
+
 function placeBodies(phase) {
   // The sun is up between sunrise and sunset.
   const su = (phase - SUN_RISE) / (SUN_SET - SUN_RISE);
@@ -162,6 +171,10 @@ function placeBodies(phase) {
     // illusion the real one plays.
     sun.size = Math.round(lerp(30, 20, high));
     lerp3(sun.col, SUN_LOW, SUN_HIGH, Math.min(1, high * 1.9));
+    if (heldSun >= 0) {
+      sun.size = 36;
+      lerp3(sun.col, SUN_LOW, SUN_HIGH, 0.1);
+    }
   }
 
   // The moon takes the other half of the cycle, running from sunset round

@@ -38,6 +38,9 @@ export const ACHIEVEMENTS = [
   { id: 'nectar', name: 'sweet tooth', desc: 'sip nectar from ten tulips', stat: 'nectar', goal: 10 },
   { id: 'lamps', name: 'lamplighter', desc: 'gather twenty-five lamps off the water', stat: 'lamps', goal: 25 },
   { id: 'midnight', name: 'night owl', desc: 'be in the air at midnight' },
+  { id: 'king', name: 'regicide', desc: 'overturn the king crab' },
+  { id: 'sunset', name: 'into the sunset', desc: 'rise into the setting sun' },
+  { id: 'swift', name: 'swift wings', desc: 'rise into the sunset within fifteen minutes' },
 ];
 
 const record = load();

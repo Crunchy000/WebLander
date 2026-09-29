@@ -92,6 +92,12 @@ function showControlHelp() {
 }
 input.onPadChange = () => showControlHelp();
 
+// The ending: the card comes back to say so, with the time.
+game.onEnding = (info) => {
+  showCard('end', info);
+  if (document.pointerLockElement) document.exitPointerLock?.();
+};
+
 // --- the card: title, and pause -------------------------------------------
 //
 // One card for both. Before a flight it is the title; during one, the pause
@@ -106,9 +112,19 @@ let cardMode = 'title';          // 'title' | 'pause' | 'none'
 
 function labelStart() {
   const pad = input.padConnected;
-  startBtn.textContent = cardMode === 'pause'
-    ? (pad ? 'press A to resume' : 'resume')
+  startBtn.textContent = cardMode === 'pause' ? (pad ? 'press A to resume' : 'resume')
+    : cardMode === 'end' ? (pad ? 'press A to fly again' : 'fly again')
     : (pad ? 'press A to fly' : 'start flying');
+}
+
+// A flight's time, as minutes and seconds (steps are 50 a second).
+function clock(steps) {
+  const s = Math.round(steps / 50);
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+function bestTime() {
+  try { return +localStorage.getItem('weblander.besttime') || 0; } catch { return 0; }
 }
 
 function pad6(n) {
@@ -118,15 +134,21 @@ function pad6(n) {
 
 function showBest() {
   const el = document.getElementById('best');
-  el.textContent = game.highScore > 0 ? 'best score ' + pad6(game.highScore) : '';
+  const t = bestTime();
+  el.textContent = (game.highScore > 0 ? 'best score ' + pad6(game.highScore) : '')
+    + (t ? '   ·   quickest into the sunset ' + clock(t) : '');
 }
 
-function showCard(mode) {
+function showCard(mode, info) {
   cardMode = mode;
   restartBtn.hidden = mode !== 'pause';
   subtitle.textContent = mode === 'pause'
     ? 'paused · score ' + pad6(game.score) + ' · flames ' + (game.flames | 0) + ' of 5'
-    : SUBTITLE;
+    : mode === 'end'
+      ? 'the phoenix rose into the sunset · ' + clock(info.steps)
+        + (info.newBest ? ' · a new best' : ' · best ' + clock(info.best))
+        + ' · score ' + pad6(info.score)
+      : SUBTITLE;
   labelStart();
   showBest();
   if (!document.getElementById('page-awards').hidden) showAwards();
