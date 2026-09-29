@@ -16,7 +16,7 @@
 // dry land and retired once it has left them far behind, so however far you
 // fly there are only a handful being walked about.
 
-import { TILE, matRotY, matMul, matRotZ, rnd, rndSigned, rndInt } from './maths.js';
+import { TILE, matRotX, matRotY, matMul, matRotZ, rnd, rndSigned, rndInt } from './maths.js';
 import { Model, facet, drawModel, drawShadow } from './model.js';
 import { landAltitude, SEA_LEVEL, isOnLaunchpad, UNDERCARRIAGE_Y } from './landscape.js';
 import { spawn, spawnSparks, P_RISE, P_GLOW, P_FADE } from './particles.js';
@@ -36,30 +36,45 @@ const NOTICE = 7;                // tiles across the ground it will see the bird
 const NOTICE_UP = 3;             // ... when the bird is no higher than this over it
 const PINCH_REACH = 0.85;        // tiles, across the ground
 const PINCH_UP = 0.9;            // tiles: the bird's feet within this of the ground there
-const STOMP_REACH = 0.62;        // tiles: close enough over it to come down on it
+const STOMP_REACH = 0.72;        // tiles: close enough over it to come down on it
 const COOLDOWN = 150;            // frames a crab backs off after a pinch
 const SNAP = 12;                 // frames the claws stay shut after one
+// Before a pinch it stops and rears up, claws raised and open, for this
+// long -- a fifth of a second and a bit -- and only pinches if the bird is
+// still in reach at the end of it. It used to pinch the instant the bird
+// came in range, which gave nothing to react to: now there is a moment to
+// see it coming and get clear.
+const WINDUP = 14;
+// How long its claws stay raised after it has lost interest.
+const RAISED_HOLD = 40;
 
 // --- the model ---------------------------------------------------------------
 //
-// Units are tiles, ground at y = 0, up negative, facing +z. The shell is a low
-// six-sided dome; four legs a side, each two thin blades, hip to raised knee
-// and knee down to the ground; two arms forward with a big claw on each; and
-// two eyes on stalks, which make their own light -- by night they are all
-// there is of it to see.
-const SHELL = [52, 40, 74];
-const RIM = [38, 30, 56];
-const LEG = [30, 24, 42];
-const CLAW = [100, 40, 76];
-const CLAW_TIP = [156, 54, 88];
+// Units are tiles, ground at y = 0, up negative, facing +z. A shore crab: the
+// shell wider than it is long, low and flat, with a spiked front edge; four
+// walking legs a side, each two broad blades, hip to raised knee and knee
+// down to the ground; two arms forward, one claw big and one small, as a
+// shore crab's are; and two eyes on stalks, which make their own light -- by
+// night they are all there is of it to see.
+//
+// Posed four ways at once: where it is in its stride, whether its claws are
+// open or shut, and whether they are down, as it wanders, or raised, as it
+// comes for you -- which is the one thing about a crab you need to be able to
+// read from fifteen tiles away.
+const SHELL = [56, 42, 80];
+const SHELL_HI = [74, 56, 104];
+const RIM = [36, 28, 54];
+const LEG = [34, 27, 48];
+const CLAW = [112, 42, 82];
+const CLAW_TIP = [170, 58, 96];
 const EYE = [255, 64, 96];
-const S = 1.1;
+const S = 1.3;
 
-function buildCrab(frame, shut) {
+function buildCrab(frame, shut, raised) {
   const m = new Model();
   const v = (x, y, z) => m.vert(x * S, y * S, z * S);
 
-  // The shell.
+  // The shell: a low dome, wide across, on a dark rim.
   const SIDES = 6;
   const ring = (y, rx, rz) => {
     const r = [];
@@ -69,75 +84,82 @@ function buildCrab(frame, shut) {
     }
     return r;
   };
-  const r0 = ring(-0.10, 0.25, 0.17), r1 = ring(-0.17, 0.33, 0.22), r2 = ring(-0.25, 0.20, 0.13);
-  // No belly: it is only ever seen from above or level, and from level the
-  // skirt of the rim hides it.
-  const top = v(0, -0.28, -0.01);
+  const r0 = ring(-0.10, 0.28, 0.18), r1 = ring(-0.16, 0.36, 0.24), r2 = ring(-0.23, 0.22, 0.14);
+  const top = v(0, -0.26, -0.01);
   for (let i = 0; i < SIDES; i++) {
     const j = (i + 1) % SIDES;
     facet(m, [r0[i], r0[j], r1[j], r1[i]], RIM);
-    facet(m, [r1[i], r1[j], r2[j], r2[i]], SHELL);
+    facet(m, [r1[i], r1[j], r2[j], r2[i]], i === 0 || i === 5 ? SHELL_HI : SHELL);
     facet(m, [r2[i], r2[j], top], SHELL);
+  }
+  // Spikes along the front edge, either side of the eyes.
+  for (const sx of [1, -1]) {
+    facet(m, [v(sx * 0.20, -0.17, 0.20), v(sx * 0.30, -0.16, 0.12), v(sx * 0.33, -0.18, 0.22)], RIM);
+    facet(m, [v(sx * 0.10, -0.18, 0.23), v(sx * 0.20, -0.17, 0.20), v(sx * 0.19, -0.19, 0.29)], RIM);
   }
 
   // The legs, in two sets that step in turn: while one is swinging forward
   // with its feet lifted, the other is on the ground pushing back.
   const phase = (frame / 4) * Math.PI * 2;
-  const LEGS_Z = [0.11, 0.03, -0.05, -0.13];
+  const LEGS_Z = [0.10, 0.02, -0.06, -0.14];
   for (const sx of [1, -1]) {
     for (let k = 0; k < 4; k++) {
       const p = phase + (((k + (sx > 0 ? 0 : 1)) % 2) ? Math.PI : 0);
-      const dz = Math.sin(p) * 0.05, lift = Math.max(0, Math.cos(p)) * 0.05;
-      const z = LEGS_Z[k], spread = 1 + (k === 0 || k === 3 ? 0.1 : 0);
-      const hipA = v(sx * 0.26, -0.13, z - 0.03), hipB = v(sx * 0.26, -0.13, z + 0.03);
-      const kx = sx * 0.38 * spread, ky = -0.23, kz = z + dz * 0.5 + (z * 0.4);
+      const dz = Math.sin(p) * 0.06, lift = Math.max(0, Math.cos(p)) * 0.06;
+      const z = LEGS_Z[k], spread = 1 + (k === 0 || k === 3 ? 0.08 : 0);
+      const hipA = v(sx * 0.30, -0.13, z - 0.045), hipB = v(sx * 0.30, -0.13, z + 0.045);
+      const kx = sx * 0.44 * spread, ky = -0.24, kz = z + dz * 0.5 + (z * 0.4);
       const knee = v(kx, ky, kz);
-      const kneeA = v(kx, ky, kz - 0.025), kneeB = v(kx, ky, kz + 0.025);
-      const tip = v(sx * 0.47 * spread, -lift, z + dz + z * 0.7);
+      const kneeA = v(kx, ky, kz - 0.035), kneeB = v(kx, ky, kz + 0.035);
+      const tip = v(sx * 0.55 * spread, -lift, z + dz + z * 0.7);
       facet(m, [hipA, hipB, knee], LEG);
       facet(m, [kneeA, kneeB, tip], LEG);
     }
   }
 
-  // The arms and claws.
-  // Big, and brighter than the rest of it, so the claws are what you see
-  // coming. The palm is a closed wedge, so it reads as a solid lump from
-  // any side; the two jaws open up and down.
-  const gap = shut ? 0.015 : 0.12;
+  // The arms and claws: the big one on the right. Down in front of it as it
+  // wanders; raised high and forward, open, as it comes at you.
+  const gap = shut ? 0.015 : 0.14;
   for (const sx of [1, -1]) {
-    const shA = v(sx * 0.14, -0.12, 0.16), shB = v(sx * 0.19, -0.16, 0.16);
-    const el = v(sx * 0.32, -0.20, 0.28);
-    const elA = v(sx * 0.29, -0.18, 0.28), elB = v(sx * 0.34, -0.22, 0.28);
-    const bx = sx * 0.24, by = -0.20, bz = 0.40;
+    const k = sx > 0 ? 1.35 : 0.95;
+    const lift = raised ? 0.20 : 0;
+    const shA = v(sx * 0.16, -0.13, 0.17), shB = v(sx * 0.22, -0.17, 0.17);
+    const el = v(sx * 0.36, -0.22 - lift * 0.6, 0.28 + lift * 0.1);
+    const elA = v(sx * 0.33, -0.20 - lift * 0.6, 0.28 + lift * 0.1), elB = v(sx * 0.39, -0.25 - lift * 0.6, 0.28 + lift * 0.1);
+    const bx = sx * 0.27, by = -0.21 - lift, bz = 0.42 + lift * 0.15;
     const base = v(bx, by, bz);
     facet(m, [shA, shB, el], LEG);
     facet(m, [elA, elB, base], CLAW);
-    const w = 0.07, hU = 0.08, hD = 0.05;
-    const back = v(bx, by, bz - 0.06);
+    // The palm, a closed wedge, so it reads as a lump from any side.
+    const w = 0.08 * k, hU = 0.09 * k, hD = 0.06 * k;
+    const back = v(bx, by, bz - 0.07 * k);
     const pL = v(bx - w, by, bz + 0.03), pR = v(bx + w, by, bz + 0.03);
     const pU = v(bx, by - hU, bz + 0.04), pD = v(bx, by + hD, bz + 0.04);
     facet(m, [back, pL, pU], CLAW); facet(m, [back, pU, pR], CLAW);
     facet(m, [back, pR, pD], CLAW); facet(m, [back, pD, pL], CLAW);
     facet(m, [pL, pU, pR, pD], CLAW);
-    const jA = v(bx - 0.05, by - 0.03, bz + 0.04), jB = v(bx + 0.05, by - 0.03, bz + 0.04);
-    facet(m, [jA, jB, v(bx, by - 0.03 - gap, bz + 0.27)], CLAW_TIP);
-    const kA = v(bx - 0.04, by + 0.02, bz + 0.04), kB = v(bx + 0.04, by + 0.02, bz + 0.04);
-    facet(m, [kA, kB, v(bx, by + 0.02 + gap * 0.6, bz + 0.21)], CLAW_TIP);
+    // The two jaws, opening up and down.
+    const jA = v(bx - 0.055 * k, by - 0.03, bz + 0.04), jB = v(bx + 0.055 * k, by - 0.03, bz + 0.04);
+    facet(m, [jA, jB, v(bx, by - 0.03 - gap * k, bz + 0.28 * k)], CLAW_TIP);
+    const kA = v(bx - 0.045 * k, by + 0.02, bz + 0.04), kB = v(bx + 0.045 * k, by + 0.02, bz + 0.04);
+    facet(m, [kA, kB, v(bx, by + 0.02 + gap * 0.6 * k, bz + 0.22 * k)], CLAW_TIP);
   }
 
   // Eyes on stalks, lit.
   for (const sx of [1, -1]) {
-    facet(m, [v(sx * 0.05, -0.25, 0.12), v(sx * 0.08, -0.25, 0.12), v(sx * 0.08, -0.40, 0.17)], LEG);
+    facet(m, [v(sx * 0.05, -0.23, 0.13), v(sx * 0.09, -0.23, 0.13), v(sx * 0.09, -0.40, 0.18)], LEG);
     // Two crossed diamonds, so there is an eye to see from any side.
-    const ex = sx * 0.08, ey = -0.42, ez = 0.18, e = 0.04;
+    const ex = sx * 0.09, ey = -0.42, ez = 0.19, e = 0.045;
     m.faces.push({ idx: [v(ex, ey - e, ez), v(ex + e, ey, ez), v(ex, ey + e, ez), v(ex - e, ey, ez)], col: EYE, glow: true });
     m.faces.push({ idx: [v(ex, ey - e, ez), v(ex, ey, ez + e), v(ex, ey + e, ez), v(ex, ey, ez - e)], col: EYE, glow: true });
   }
   return m;
 }
 
-const POSES = [0, 1, 2, 3].map((f) => [buildCrab(f, false), buildCrab(f, true)]);
-export const CRAB_MODEL = POSES[0][0];
+// POSES[stride][shut][raised]
+const POSES = [0, 1, 2, 3].map((f) => [false, true].map((shut) =>
+  [false, true].map((raised) => buildCrab(f, shut, raised))));
+export const CRAB_MODEL = POSES[0][0][0];
 
 // --- state -------------------------------------------------------------------
 
@@ -179,6 +201,9 @@ function place(c, px, pz) {
     c.cool = 0;
     c.snap = 0;
     c.chasing = false;
+    c.windup = 0;
+    c.raised = 0;
+    c.moving = false;
     return true;
   }
   return false;
@@ -210,21 +235,40 @@ export function updateCrabs(player, game) {
       continue;
     }
 
-    // Close enough and low enough: a pinch. Never while the bird is still
-    // in its first few seconds, and never on the pad.
-    if (live && c.cool === 0 && across < PINCH_REACH && up < PINCH_UP &&
-        !player.protected && !(player.landed && isOnLaunchpad(px, pz))) {
-      c.cool = COOLDOWN;
-      c.snap = SNAP;
-      spawnSparks(player.x, player.y, player.z, 6);
-      game.onPinched(c);
+    // Close enough and low enough: it rears up for a pinch (see WINDUP),
+    // and pinches if the bird is still there when it comes down. Never while
+    // the bird is still in its first few seconds, and never on the pad.
+    const inReach = live && across < PINCH_REACH && up < PINCH_UP &&
+      !player.protected && !(player.landed && isOnLaunchpad(px, pz));
+    if (c.windup > 0) {
+      if (--c.windup === 0) {
+        c.cool = COOLDOWN;
+        c.snap = SNAP;
+        if (inReach) {
+          spawnSparks(player.x, player.y, player.z, 6);
+          game.onPinched(c);
+        }
+      }
+      continue;
     }
+    if (inReach && c.cool === 0) {
+      c.windup = WINDUP;
+      c.raised = RAISED_HOLD;
+      c.snap = 0;
+      c.moving = false;
+      continue;
+    }
+    if (c.raised > 0) c.raised--;
 
     // What it wants: the bird if it has seen it and is not backing off,
     // otherwise wherever it was going.
+    const was = c.chasing;
     c.chasing = live && c.cool === 0 && across < NOTICE && up < NOTICE_UP;
+    // It has just seen the bird: a clatter of claws, which is the warning.
+    if (c.chasing && !was && game.onCrabNotice) game.onCrabNotice(c, across);
     let speed = WANDER;
     if (c.chasing) {
+      c.raised = RAISED_HOLD;
       // Sideways at it: its side points along the way it wants to go.
       const bearing = Math.atan2(dx, dz);
       const want = bearing - Math.PI / 2;
@@ -251,9 +295,11 @@ export function updateCrabs(player, game) {
     // Move along its own side, turning back from the water and the pad.
     const mx = Math.cos(c.h) * c.side, mz = -Math.sin(c.h) * c.side;
     const nx = (c.x + mx * speed * TILE) | 0, nz = (c.z + mz * speed * TILE) | 0;
+    c.moving = false;
     if (speed > 0 && walkable(nx, nz)) {
       c.x = nx; c.z = nz;
       c.gait = (c.gait + speed * 14) % 4;
+      c.moving = true;
     } else if (speed > 0) {
       c.side = -c.side;
       c.h += rndSigned() * 0.6;
@@ -288,6 +334,7 @@ export function crabsInRow(zLo, zHi, out) {
 }
 
 const rot = new Float64Array(9), tip = new Float64Array(9), mat = new Float64Array(9);
+const back = new Float64Array(9), mat2 = new Float64Array(9);
 
 export function drawCrab(rd, c, camX, camY, camZ, fog = 0, row = 0) {
   const ground = landAltitude(c.x, c.z);
@@ -302,6 +349,15 @@ export function drawCrab(rd, c, camX, camY, camZ, fog = 0, row = 0) {
   matRotY(c.h, rot);
   matRotZ(Math.atan2(a - b, 2 * d), tip);
   matMul(rot, tip, mat);
-  const pose = POSES[(c.gait | 0) & 3][c.snap > 0 ? 1 : 0];
-  drawModel(rd, pose, mat, c.x, ground, c.z, camX, camY, camZ, fog);
+  // Rearing for a pinch: tipped back, claws up and open. Walking: a bob
+  // with each step.
+  const rear = c.windup > 0 ? Math.min(1, (WINDUP - c.windup + 1) / 5) : 0;
+  if (rear > 0) {
+    matRotX(0.35 * rear, back);
+    matMul(mat, back, mat2);
+    mat.set(mat2);
+  }
+  const bob = c.moving ? Math.abs(Math.sin(c.gait * Math.PI)) * 0.025 * TILE : 0;
+  const pose = POSES[(c.gait | 0) & 3][c.snap > 0 ? 1 : 0][c.raised > 0 || rear > 0 ? 1 : 0];
+  drawModel(rd, pose, mat, c.x, (ground - bob - rear * 0.06 * TILE) | 0, c.z, camX, camY, camZ, fog);
 }

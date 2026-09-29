@@ -91,8 +91,11 @@ still on the rails go up with them.
 **Shadow crabs** scuttle about the dry land, sideways, with red eyes on
 stalks that are all there is of them to see after dark. Left alone they
 wander; let the bird come down within about three tiles of the ground and
-seven across it and one will notice and come at it, claws working, at about
-two tiles a second. A pinch does not kill: it takes a sixth of a full load of
+seven across it and one will notice -- a clatter of claws says so -- and
+come at it with its claws raised, at about two tiles a second. In reach, it
+stops and rears up, claws open, for about a quarter of a second before it
+pinches, and only pinches if the bird is still there: that is the moment to
+climb away. A pinch does not kill: it takes a sixth of a full load of
 energy and throws the bird up and away, and the crab backs off for three
 seconds before it will try again -- it is the energy running out that does
 the killing. They never set foot on the launchpad, and none spawn within five

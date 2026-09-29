@@ -339,6 +339,18 @@ export class Game {
     this.setMessage('pinched!', 60);
   }
 
+  // A shadow crab has seen the bird: a clatter of claws, the warning that
+  // one is coming. Not more than once a second, however many look up.
+  onCrabNotice(c, across) {
+    const t = sky.tick;
+    if (this.crabHeardAt !== undefined && t - this.crabHeardAt < 50) return;
+    this.crabHeardAt = t;
+    const g = 0.10 * Math.max(0.4, 1 - across / 8);
+    for (let i = 0; i < 4; i++) {
+      setTimeout(() => this.audio.tone(1300 + i * 90, 0.025, 'square', g), i * 55);
+    }
+  }
+
   // ... and the bird has come down on one.
   onCrabSquashed(c) {
     const p = this.player;
