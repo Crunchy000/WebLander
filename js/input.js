@@ -349,11 +349,8 @@ export class Input {
 
     this.touchThrust = false;
     this.touchFire = false;
-    // A quick tap anywhere on the game drops a fire bomb: a finger down and
-    // up again in under a fifth of a second, hardly moved. It is held for a
-    // few steps so a bomb still reloading does not swallow it.
-    this._taps = new Map();
-    this._tapFire = 0;
+    // Fingers on the game that are not holding a stick. See _canvasTouch.
+    this.spareFingers = 0;
 
     // The tilt throttle: where it is set, 0 to 1, and the finger setting it.
     this.fingers = 0;     // on the game itself: under tilt, the engine
@@ -409,16 +406,7 @@ export class Input {
       const [bx, by] = toBuffer(t);
       if (e.type === 'touchstart') {
         (bx < SCREEN_W / 2 ? this.leftThumb : this.rightThumb).down(t.identifier, bx, by);
-        this._taps.set(t.identifier, { at: performance.now(), x: bx, y: by });
       } else {
-        const tap = this._taps.get(t.identifier);
-        if (tap && e.type !== 'touchmove') {
-          this._taps.delete(t.identifier);
-          if (e.type === 'touchend' && performance.now() - tap.at < 200 &&
-              Math.hypot(bx - tap.x, by - tap.y) < 8) this._tapFire = 12;
-        } else if (tap && Math.hypot(bx - tap.x, by - tap.y) >= 8) {
-          this._taps.delete(t.identifier);
-        }
         for (const s of sticks) {
           if (e.type === 'touchmove') s.move(t.identifier, bx, by);
           else s.up(t.identifier);
@@ -436,6 +424,14 @@ export class Input {
 
     // Fingers on the game itself, not on anything laid over it.
     this.fingers = e.targetTouches.length;
+    // ... and of those, the ones not holding a stick: a finger that landed
+    // on a side whose stick was already taken -- with both thumbs steering,
+    // a third finger anywhere. That is the fire button (see sample).
+    let spare = 0;
+    for (const t of e.targetTouches) {
+      if (t.identifier !== this.leftThumb.id && t.identifier !== this.rightThumb.id) spare++;
+    }
+    this.spareFingers = spare;
   }
 
   // -- tilt -----------------------------------------------------------------
@@ -760,8 +756,13 @@ export class Input {
       : thumbs ? Math.sign(hx) * expo(Math.abs(hx))
       : 0;
 
-    if (this._tapFire > 0) this._tapFire--;
-    this.fire = this.mouseFire || this.touchFire || this.padFire || this._tapFire > 0
+    // Fire on the glass. Steering by thumbs, any finger that is not holding
+    // a stick -- a third one, with both thumbs down. Steering by tilt, where
+    // one finger is full power and two hover, three. Held, it drops a bomb
+    // every reload. (It was a quick tap, which lifting a thumb off its stick
+    // could not help doing, and which under tilt was a blip of power too.)
+    this.touchFire = (thumbs && this.spareFingers > 0) || (this.tiltTouch && this.fingers >= 3);
+    this.fire = this.mouseFire || this.touchFire || this.padFire
       || k.has('KeyC') || k.has('ShiftLeft');
 
     return this;

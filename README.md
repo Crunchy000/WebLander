@@ -106,8 +106,9 @@ down on one from above -- descending, over it, feet within half a tile of
 its back -- bursts it into shadow for 60 points and bounces the bird back up.
 
 **Fire bombs**: the phoenix can drop its own fire -- the right mouse
-button, <kbd>C</kbd>, a pad's bumpers, or a quick tap anywhere on a touch
-screen. A drop of fire leaves from under the bird carrying its speed, so you
+button, <kbd>C</kbd>, a pad's bumpers, or on a touch screen a third finger
+(with both thumbs on the sticks, any finger not holding one) or, steering by
+tilt, three fingers -- where one is full power and two hover. A drop of fire leaves from under the bird carrying its speed, so you
 aim by flying over the place, and bursts where it lands. Every shadow crab
 within about a tile and a half is thrown over onto its back, 40 points each,
 and lies there waving its legs, harmless, until it is off the screen. Over
