@@ -38,18 +38,36 @@ running; the copy in the repository says `dev`.
 
 ## Controls
 
-|            | Steer                          | Thrust                | Hover        | Fire         |
-|------------|--------------------------------|-----------------------|--------------|--------------|
-| **Mouse**  | pointer position on the canvas | left button           | middle       | right        |
-| **Keys**   | arrows / WASD                  | <kbd>Z</kbd> or space | <kbd>X</kbd> | <kbd>C</kbd> |
-| **Phone**  | tilt the handset               | one finger, anywhere  | —            | second finger |
+|                  | Steer          | Full power         | Hover         | Drop fire          | Pause         |
+|------------------|----------------|--------------------|---------------|--------------------|---------------|
+| **Mouse**        | move it        | left button        | middle button | right button       | <kbd>Esc</kbd> |
+| **Keys**         | arrows / WASD  | <kbd>Z</kbd>       | <kbd>X</kbd>  | <kbd>C</kbd>       | <kbd>P</kbd>  |
+| **Pad**          | left stick     | RT or A            | LT or X       | LB or RB           | Menu          |
+| **Thumb sticks** | left thumb     | right thumb up     | let the right thumb go | a third finger | the button at the top |
+| **Tilt**         | lean the phone | one finger         | two fingers   | three fingers      | the button at the top |
 
-On a phone the screen is free of buttons: one finger anywhere fires the
-engine, and putting a second finger down works the gun.
+<kbd>M</kbd> turns the sound on and off, and <kbd>F</kbd> toggles fullscreen.
 
-The gun points out through the ship's nose, so aiming means leaning: level
-flight shoots straight ahead, and tipping forward walks the shots down into
-the landscape.
+### The card, settings and pause
+
+Before a flight the title card has three pages -- **about**, **how to play**
+(the controls for the device you are on) and **settings** -- and a button to
+turn the sound off. Pausing brings the same card back, over the frozen world,
+with **resume** and **new flight**: <kbd>Esc</kbd> or <kbd>P</kbd>, the pad's
+Menu button, the pause button at the top of a touch screen, or switching away
+from the tab.
+
+Settings are kept on the device (`js/settings.js`): sound on or off; overall,
+music and effects volume; how far the mouse leans the bird for a given
+movement; thumb sticks or tilt on a touch screen; the picture -- sharp,
+balanced or fast, the share of the display's resolution the game is drawn at,
+for a machine that cannot keep up -- and clearing the best score. The
+defaults are the game as it was before there were settings.
+
+On a console the card is worked from the pad: the d-pad moves between the
+controls and moves a slider, the bumpers change page, A presses, and Menu
+starts or resumes.
+
 
 ## What shoots back
 
@@ -334,6 +352,8 @@ software rasterisation, so a phone GPU does not notice it.
 | `js/style.js` | the palette transform the serene style is made of |
 | `js/music.js` | the soundtrack, if there is one |
 | `js/input.js` | mouse, keyboard, touch and tilt |
+| `js/settings.js` | the player's settings, kept between visits |
+| `js/firebombs.js` | the phoenix's dropped fire |
 | `js/audio.js` | synthesised sound, no assets |
 | `js/font.js` | 5×8 bitmap font for the HUD, caps and lowercase |
 | `js/game.js` | main loop, landscape scan, HUD, game states |

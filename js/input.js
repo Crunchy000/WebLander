@@ -219,7 +219,9 @@ export class Input {
     // the first movement back off the rim is answered at once.
     const radius = () => {
       const h = c.getBoundingClientRect().height;
-      return h > 0 ? h / 2 : 0;
+      // The sensitivity setting divides it: at 2 half the movement is the
+      // same lean, at 0.5 twice as much.
+      return h > 0 ? h / 2 / (this.mouseSens || 1) : 0;
     };
     const rim = (x, y) => {
       const m = Math.hypot(x, y) / MOUSE_MAX;

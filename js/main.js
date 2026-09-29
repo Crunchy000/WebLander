@@ -3,7 +3,8 @@
 import { Renderer } from './renderer.js';
 import { Input } from './input.js';
 import { Audio } from './audio.js';
-import { startMusic, musicWanted } from './music.js';
+import { startMusic, musicWanted, setMusicVolume } from './music.js';
+import { settings, saveSettings, PICTURES } from './settings.js';
 import { Game, STEP_MS } from './game.js';
 import { perf, perfInit, perfFrame, perfDescribe } from './perf.js';
 import { DebugPanel } from './debugpanel.js';
@@ -78,23 +79,160 @@ const debug = new DebugPanel({ renderer, game, canvas });
 // may not admit to it until the first button press.
 function showControlHelp() {
   const touch = input.touchUi;
+  document.body.classList.toggle('touch', touch);
   document.getElementById('controls-desktop').hidden = touch;
+  document.getElementById('controls-pad').hidden = touch;
   document.getElementById('controls-touch').hidden = !touch;
-  // The tilt options live outside the help text now, so that the buttons can
-  // be laid out together on a short screen. They still belong to touch.
-  document.getElementById('tiltopts').hidden = !touch;
-  // Say which button, when we know there is one. On a television across the
-  // room "start flying" is a label, not an instruction; "press A" is the
-  // thing to do.
-  startBtn.textContent = input.padConnected ? 'press A to fly' : 'start flying';
-
+  labelStart();
   // Focused, so a console's A button activates it natively. That native
   // press carries user activation; a click synthesised from a gamepad poll
   // does not, which is why fullscreen needed cursor mode to work.
-  if (!overlay.hidden) startBtn.focus();
+  if (!overlay.hidden && !overlay.contains(document.activeElement)) startBtn.focus();
 }
-showControlHelp();
 input.onPadChange = () => showControlHelp();
+
+// --- the card: title, and pause -------------------------------------------
+//
+// One card for both. Before a flight it is the title; during one, the pause
+// screen, with resume and a new flight, over the frozen world. Either way it
+// has the same three pages -- about, how to play, settings -- so they are in
+// the same place whenever you look for them.
+const restartBtn = document.getElementById('restart');
+const subtitle = document.getElementById('subtitle');
+const SUBTITLE = subtitle.textContent;
+const pauseBtn = document.getElementById('pausebtn');
+let cardMode = 'title';          // 'title' | 'pause' | 'none'
+
+function labelStart() {
+  const pad = input.padConnected;
+  startBtn.textContent = cardMode === 'pause'
+    ? (pad ? 'press A to resume' : 'resume')
+    : (pad ? 'press A to fly' : 'start flying');
+}
+
+function pad6(n) {
+  const s = String(Math.max(0, Math.floor(n)));
+  return '0'.repeat(Math.max(0, 6 - s.length)) + s;
+}
+
+function showBest() {
+  const el = document.getElementById('best');
+  el.textContent = game.highScore > 0 ? 'best score ' + pad6(game.highScore) : '';
+}
+
+function showCard(mode) {
+  cardMode = mode;
+  restartBtn.hidden = mode !== 'pause';
+  subtitle.textContent = mode === 'pause'
+    ? 'paused · score ' + pad6(game.score) + ' · flames ' + (game.flames | 0) + ' of 5'
+    : SUBTITLE;
+  labelStart();
+  showBest();
+  overlay.hidden = false;
+  pauseBtn.hidden = true;
+  startBtn.focus();
+}
+
+function hideCard() {
+  cardMode = 'none';
+  overlay.hidden = true;
+  pauseBtn.hidden = !input.touchUi;
+}
+
+// Pages.
+const tabs = [...document.querySelectorAll('#tabs .tab')];
+function showPage(name) {
+  for (const t of tabs) {
+    const on = t.dataset.page === name;
+    t.setAttribute('aria-selected', String(on));
+    document.getElementById('page-' + t.dataset.page).hidden = !on;
+  }
+}
+for (const t of tabs) t.addEventListener('click', () => showPage(t.dataset.page));
+for (const a of document.querySelectorAll('[data-goto]')) {
+  a.addEventListener('click', (e) => { e.preventDefault(); showPage(a.dataset.goto); });
+}
+
+// --- settings -------------------------------------------------------------
+
+const muteBtn = document.getElementById('mute');
+const soundSwitch = document.getElementById('set-sound');
+const sliders = {
+  volume: document.getElementById('set-volume'),
+  music: document.getElementById('set-music'),
+  effects: document.getElementById('set-effects'),
+  mouse: document.getElementById('set-mouse'),
+};
+
+// Put every setting into effect, and every control in line with it.
+function applySettings() {
+  audio.setMuted(!settings.sound);
+  audio.setLevels(settings.volume, settings.effects);
+  setMusicVolume(settings.music);
+  input.mouseSens = settings.mouse;
+  renderer.want = PICTURES[settings.picture].scale;
+
+  soundSwitch.setAttribute('aria-checked', String(settings.sound));
+  muteBtn.setAttribute('aria-pressed', String(!settings.sound));
+  muteBtn.setAttribute('aria-label', settings.sound ? 'sound on' : 'sound off');
+  for (const k of ['volume', 'music', 'effects']) {
+    sliders[k].value = String(Math.round(settings[k] * 100));
+    document.getElementById('out-' + k).textContent = settings[k] > 0 ? Math.round(settings[k] * 100) + '%' : 'off';
+  }
+  sliders.mouse.value = String(Math.round(settings.mouse * 100));
+  document.getElementById('out-mouse').textContent = settings.mouse.toFixed(1) + '×';
+  for (const b of document.querySelectorAll('#picturepick .seg')) {
+    b.setAttribute('aria-pressed', String(+b.dataset.picture === settings.picture));
+  }
+}
+
+function change(fn) {
+  fn();
+  applySettings();
+  saveSettings();
+}
+
+function toggleSound() {
+  change(() => { settings.sound = !settings.sound; });
+  // Said on the screen too, since M in the middle of a flight is otherwise
+  // only confirmed by the silence.
+  if (overlay.hidden) game.setMessage(settings.sound ? 'sound on' : 'sound off', 50);
+}
+
+soundSwitch.addEventListener('click', toggleSound);
+muteBtn.addEventListener('click', toggleSound);
+for (const k of ['volume', 'music', 'effects']) {
+  sliders[k].addEventListener('input', () => change(() => {
+    settings[k] = +sliders[k].value / 100;
+    // Turning a level up means wanting to hear it.
+    if (settings[k] > 0) settings.sound = true;
+  }));
+}
+sliders.mouse.addEventListener('input', () => change(() => { settings.mouse = +sliders.mouse.value / 100; }));
+for (const b of document.querySelectorAll('#picturepick .seg')) {
+  b.addEventListener('click', () => change(() => { settings.picture = +b.dataset.picture; }));
+}
+
+// Clearing the best score asks twice.
+const clearBtn = document.getElementById('set-clear');
+let clearArmed = 0;
+clearBtn.addEventListener('click', () => {
+  if (performance.now() - clearArmed < 3000) {
+    game.clearHighScore();
+    clearBtn.textContent = 'cleared';
+    clearArmed = 0;
+    showBest();
+  } else {
+    clearArmed = performance.now();
+    clearBtn.textContent = 'sure?';
+    setTimeout(() => { if (clearBtn.textContent === 'sure?') clearBtn.textContent = 'clear'; }, 3000);
+  }
+});
+
+applySettings();
+showControlHelp();
+showBest();
+startBtn.focus();
 
 // Tilt or a thumb stick. Remembered, because it is a preference about hands
 // rather than about the game, and nobody wants to state it twice.
@@ -111,25 +249,37 @@ function setSteer(mode, save = true) {
 // The thumb stick is the default: it needs no sensor, no permission and no
 // getting used to, and tilt is one tap away for anyone who prefers it.
 try { setSteer(localStorage.getItem(STEER_KEY) || 'touch', false); } catch { setSteer('touch', false); }
-if (segTilt) segTilt.addEventListener('click', () => setSteer('tilt'));
+if (segTilt) segTilt.addEventListener('click', async () => {
+  setSteer('tilt');
+  // Chosen mid-flight, from the pause card: ask for the sensor now, while
+  // there is a tap to ask with.
+  if (cardMode === 'pause' && !input.tiltEnabled) {
+    if (!(await input.enableTilt())) setSteer('touch');
+  }
+});
 if (segTouch) segTouch.addEventListener('click', () => setSteer('touch'));
 
 // Live readout, so a misbehaving sensor is diagnosable rather than a mystery.
 const readout = document.getElementById('tiltread');
 setInterval(() => {
-  if (!readout || overlay.hidden) return;
-  input.sample();
+  if (!readout || overlay.hidden || !input.touchUi) return;
   const d = input.tiltDebug;
   readout.textContent = d
-    ? `tilt  ${d.tiltX}\u00b0 ${d.tiltY}\u00b0  ->  x ${d.x}  y ${d.y}  (${d.mode})`
-    : 'tilt: waiting for sensor\u2026';
+    ? `tilt  ${d.tiltX}° ${d.tiltY}°  ->  x ${d.x}  y ${d.y}  (${d.mode})`
+    : 'tilt: waiting for sensor…';
 }, 150);
 
 startBtn.addEventListener('click', async () => {
+  // A console can deliver the same press twice -- its own activation of the
+  // focused button, and ours from the pad poll -- and the second must not
+  // start a new flight over the one the first resumed.
+  if (overlay.hidden) return;
+  if (cardMode === 'pause') { resume(); return; }
+
   audio.start();
-  // Same gesture, same context, same master -- so one mute covers both and
-  // there is never a second volume control to find.
-  if (musicWanted()) startMusic(audio.ctx, audio.master);
+  audio.applyLevels();
+  // Same gesture, same context, same output -- so one volume covers both.
+  if (musicWanted()) startMusic(audio.ctx, audio.out);
 
   // Fullscreen first, and synchronously. It spends the gesture that got us
   // here, and everything below this line may await -- by which point the
@@ -167,6 +317,12 @@ startBtn.addEventListener('click', async () => {
   beginPlay();
 });
 
+restartBtn.addEventListener('click', () => {
+  if (cardMode !== 'pause') return;
+  game.newGame();
+  resume();
+});
+
 // See above: the thrust pad and the note go once tilt starts answering.
 function watchForLateTilt() {
   const until = performance.now() + 6000;
@@ -194,15 +350,8 @@ function toggleFullscreen() {
   else fullscreenOn();
 }
 
-addEventListener('keydown', (e) => {
-  if (e.code === 'KeyF' && !e.metaKey && !e.ctrlKey && !e.altKey) {
-    e.preventDefault();
-    toggleFullscreen();
-  }
-});
-
 function beginPlay() {
-  overlay.hidden = true;
+  hideCard();
   game.newGame();
 
   // Both of these need the gesture that got us here. The pointer goes first:
@@ -214,19 +363,150 @@ function beginPlay() {
   fullscreenOn();   // no-op if the click already got it
 }
 
+// --- pause ----------------------------------------------------------------
+
+function flying() {
+  return cardMode === 'none';
+}
+
+function pause() {
+  if (!flying()) return;
+  audio.engine(0);
+  showCard('pause');
+  // Let the pointer go, so the card can be used.
+  if (document.pointerLockElement) document.exitPointerLock?.();
+}
+
+function resume() {
+  hideCard();
+  input.newFlight();       // the sticks start from the middle again
+  input.grabPointer();     // needs the gesture that brought us here
+}
+
+pauseBtn.addEventListener('click', pause);
+
+// Escape lets go of the pointer before any key event reaches the page, so a
+// pointer lost mid-flight is the pause. Only a loss, and only while flying:
+// a browser that never gave the pointer at all is not a reason to stop.
+let lockedBefore = false;
+document.addEventListener('pointerlockchange', () => {
+  const locked = !!document.pointerLockElement;
+  if (lockedBefore && !locked && flying()) pause();
+  lockedBefore = locked;
+});
+
+addEventListener('keydown', (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.code === 'KeyF') { e.preventDefault(); toggleFullscreen(); }
+  else if (e.code === 'KeyM') { e.preventDefault(); toggleSound(); }
+  else if (e.code === 'KeyP' || e.code === 'Escape') {
+    if (flying()) { e.preventDefault(); pause(); }
+    else if (e.code === 'KeyP' && cardMode === 'pause') { e.preventDefault(); resume(); }
+  }
+});
+
 // Leaving fullscreen drops the pointer as well, so offer it back on the next
 // click rather than leaving the player wondering why steering went odd.
 document.addEventListener('fullscreenchange', () => {
-  if (document.fullscreenElement) input.grabPointer();
+  if (document.fullscreenElement && flying()) input.grabPointer();
 });
 
-// Pause when the tab is hidden, so the ship is not quietly falling out of the
-// sky while you read your email.
+// Hidden, everything stops; and a flight comes back to the pause card rather
+// than straight into the air, so there is a moment to find the controls.
 let paused = false;
 document.addEventListener('visibilitychange', () => {
   paused = document.hidden;
-  if (paused) audio.engine(0);
+  if (paused) {
+    audio.engine(0);
+    pause();
+  }
 });
+
+// --- the pad on the card ----------------------------------------------------
+//
+// A console has no mouse worth the name, so the card is worked from the pad:
+// up and down (or left and right) move between the controls, left and right
+// move a slider, the bumpers change page, A presses, and Menu -- or any other
+// face button or trigger -- starts or resumes. During a flight Menu pauses.
+// B stays the debug panel's.
+const padWas = [];
+function padEdge(pad, i) {
+  const b = pad.buttons[i];
+  const now = !!b && (b.pressed || b.value > 0.5);
+  const was = padWas[i];
+  padWas[i] = now;
+  return now && !was;
+}
+
+function focusables() {
+  return [...overlay.querySelectorAll('button, input, a[data-goto]')].filter((el) =>
+    !el.hidden && el.offsetParent !== null && !el.disabled);
+}
+
+function moveFocus(dir) {
+  const list = focusables();
+  if (!list.length) return;
+  const i = list.indexOf(document.activeElement);
+  const next = list[(i < 0 ? 0 : i + dir + list.length) % list.length];
+  next.focus();
+  next.scrollIntoView?.({ block: 'nearest' });
+}
+
+// A pad's A press on a focused button: some console browsers activate it
+// themselves, with the user activation fullscreen needs, and some do not.
+// So ours waits a moment and only clicks if theirs did not.
+let lastTrusted = { el: null, at: 0 };
+document.addEventListener('click', (e) => {
+  if (e.isTrusted) lastTrusted = { el: e.target.closest('button, a'), at: performance.now() };
+}, true);
+function padClick(el) {
+  const at = performance.now();
+  setTimeout(() => {
+    if (lastTrusted.el === el && lastTrusted.at >= at - 50) return;
+    el.click();
+  }, 120);
+}
+
+function padOnCard() {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  let pad = null;
+  for (const p of pads) if (p && p.connected) { pad = p; break; }
+  if (!pad) return;
+  const up = padEdge(pad, 12), down = padEdge(pad, 13), left = padEdge(pad, 14), right = padEdge(pad, 15);
+  const a = padEdge(pad, 0), lb = padEdge(pad, 4), rb = padEdge(pad, 5), menu = padEdge(pad, 9);
+  let other = false;
+  for (const i of [2, 3, 6, 7]) if (padEdge(pad, i)) other = true;
+  padEdge(pad, 1); padEdge(pad, 8);
+
+  if (flying()) {
+    if (menu) pause();
+    return;
+  }
+  if (overlay.hidden || debug.open) return;
+  const el = document.activeElement;
+  if (up) moveFocus(-1);
+  if (down) moveFocus(1);
+  if (left || right) {
+    if (el && el.type === 'range') {
+      const step = +el.step || 1;
+      el.value = String(Math.max(+el.min, Math.min(+el.max, +el.value + (right ? step : -step))));
+      el.dispatchEvent(new Event('input'));
+    } else {
+      moveFocus(right ? 1 : -1);
+    }
+  }
+  if (lb || rb) {
+    const i = tabs.findIndex((t) => t.getAttribute('aria-selected') === 'true');
+    const t = tabs[(i + (rb ? 1 : -1) + tabs.length) % tabs.length];
+    showPage(t.dataset.page);
+    t.focus();
+  }
+  if (a) {
+    if (el && overlay.contains(el) && el.tagName !== 'INPUT') padClick(el);
+    else padClick(startBtn);
+  }
+  if (menu || other) padClick(startBtn);
+}
 
 let last = performance.now();
 let acc = 0;
@@ -247,10 +527,14 @@ function frame(now) {
   // up a controller expecting to point at things, so any button starts the
   // game. Going through the button's own handler rather than beginPlay keeps
   // the audio unlock and the touch branches on one path.
-  if (!overlay.hidden && !debug.open) {
+  padOnCard();
+  if (!overlay.hidden) {
+    // Keep the pad detection and the tilt readout alive behind the card.
     input.sample();
-    if (input.padAnyButton) { startBtn.click(); return; }
   }
+  // The world behind the card: no HUD over it, and the canvas's own title
+  // lettering is the card's job now.
+  game.cardUp = !overlay.hidden;
 
   // Never try to catch up more than a few frames; if the tab was in the
   // background for a minute, just carry on from here.
@@ -259,7 +543,7 @@ function frame(now) {
 
   // With the debug panel open the flight holds still, but every frame is
   // still drawn: the figures it shows are what drawing costs.
-  if (debug.open) acc = 0;
+  if (debug.open || cardMode === 'pause') acc = 0;
 
   const t0 = performance.now();
   let steps = 0;

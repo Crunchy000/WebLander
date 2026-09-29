@@ -107,39 +107,56 @@ html, body {
   flex-direction: column;
   /* A wash rather than a blackout: the landscape stays faintly visible
      behind the card, which is friendlier than dropping the lights. */
-  background: linear-gradient(170deg, rgba(18, 20, 32, .90), rgba(38, 28, 30, .93));
+  background: linear-gradient(170deg, rgba(18, 20, 32, .86), rgba(38, 28, 30, .90));
   padding: 24px 16px;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  z-index: 10;
 }
 
 #overlay[hidden] { display: none; }
 
+/* Near the top rather than centred: the pages are different heights, and a
+   centred card jumped up and down as you moved between them. */
 #panel {
-  margin: auto;
+  margin: 0 auto auto;
+  padding-top: clamp(0px, 6vh, 64px);
   width: 100%;
-  max-width: 34em;
+  max-width: 36em;
   text-align: center;
 }
 
-#actions { margin-top: 1.4em; }
-
-#panel h1 {
-  margin: 0 0 .1em;
-  font-size: clamp(30px, 7vw, 46px);
+#head h1 {
+  margin: 0;
+  font-size: clamp(30px, 7vw, 48px);
   font-weight: 300;
-  letter-spacing: .06em;
+  letter-spacing: .08em;
   color: var(--ink);
+  /* A glow off the title, the colour of the phoenix. */
+  text-shadow: 0 0 24px rgba(255, 140, 50, .28);
+}
+
+#subtitle {
+  margin: .1em 0 0;
+  color: var(--sand);
+  font-size: .95em;
+  letter-spacing: .04em;
 }
 
 #panel p { margin: .5em 0; }
 #panel b { color: var(--sand); font-weight: 600; }
+#panel a { color: var(--sky); }
 .dim { color: var(--dim); font-size: .92em; }
-/* Which build is running, small and out of the way under the button. */
-.build { color: var(--dim); font: 11px/1.2 ui-monospace, Menlo, Consolas, monospace; opacity: .7; margin-top: .6em; }
+
+/* ---- the buttons ---- */
+
+#actions { margin: 1.4em 0 0; }
 
 #start {
-  padding: .8em 2.4em;
+  display: block;
+  margin: 0 auto;
+  min-width: 13em;
+  padding: .85em 2.4em;
   font: 600 16px/1 inherit;
   letter-spacing: .08em;
   color: #241f1a;
@@ -147,14 +164,184 @@ html, body {
   border: 0;
   border-radius: 999px;
   cursor: pointer;
+  box-shadow: 0 0 0 0 rgba(224, 189, 138, .0);
+  transition: background .15s, box-shadow .15s;
   -webkit-tap-highlight-color: transparent;
 }
 
-#start:hover { background: #eed2a6; }
+#start:hover, #start:focus-visible {
+  background: #eed2a6;
+  box-shadow: 0 0 0 4px rgba(224, 189, 138, .22);
+  outline: none;
+}
 
-/* ---- steering choice on the title card ---- */
+.ghost {
+  display: block;
+  margin: .7em auto 0;
+  padding: .6em 1.8em;
+  font: 500 14px/1 inherit;
+  letter-spacing: .06em;
+  color: var(--ink);
+  background: none;
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ghost[hidden] { display: none; }
+.ghost:hover, .ghost:focus-visible { border-color: var(--sand); color: var(--sand); outline: none; }
+.ghost.small { display: inline-block; margin: 0; padding: .4em 1.1em; font-size: 13px; }
 
-#steerpick {
+/* ---- tabs ---- */
+
+#tabs {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  margin: 1.2em auto 0;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--edge);
+}
+
+.tab {
+  padding: .6em .9em;
+  font: 500 14px/1 inherit;
+  color: var(--dim);
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -3px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.tab:hover, .tab:focus-visible { color: var(--ink); outline: none; }
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--sand); }
+
+.iconbtn {
+  width: 36px;
+  height: 36px;
+  margin-left: 6px;
+  padding: 7px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  color: var(--dim);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.iconbtn:hover, .iconbtn:focus-visible { color: var(--ink); border-color: var(--edge); outline: none; }
+.iconbtn svg { width: 100%; height: 100%; display: block; }
+.iconbtn path { stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.iconbtn .spk { fill: currentColor; }
+#mute .off { display: none; }
+#mute[aria-pressed="true"] { color: #d98b76; }
+#mute[aria-pressed="true"] .on { display: none; }
+#mute[aria-pressed="true"] .off { display: inline; }
+
+/* ---- the pages ---- */
+
+#pages { margin-top: 1.1em; text-align: left; }
+.page[hidden] { display: none; }
+
+.goals {
+  margin: .8em 0;
+  padding: 0;
+  list-style: none;
+}
+.goals li {
+  position: relative;
+  margin: .55em 0;
+  padding-left: 1.4em;
+}
+/* A small flame for a bullet. */
+.goals li::before {
+  content: "";
+  position: absolute;
+  left: .25em;
+  top: .45em;
+  width: .5em;
+  height: .72em;
+  background: linear-gradient(180deg, #ffe39a, #ff8a2a 60%, #c2400f);
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+}
+
+.best {
+  margin-top: 1em !important;
+  color: var(--sky);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .06em;
+}
+.best:empty { display: none; }
+
+table.keys {
+  width: 100%;
+  margin: .4em 0 .8em;
+  border-collapse: collapse;
+  font-size: .94em;
+}
+.keys th, .keys td {
+  padding: .32em .5em;
+  border-bottom: 1px solid var(--soft);
+  text-align: left;
+  vertical-align: top;
+}
+.keys thead th { color: var(--dim); font-weight: 500; font-size: .9em; letter-spacing: .05em; }
+.keys tbody th { color: var(--sand); font-weight: 500; white-space: nowrap; }
+kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: .05em .4em;
+  font: 600 .86em/1.4 ui-monospace, Menlo, Consolas, monospace;
+  text-align: center;
+  color: var(--ink);
+  border: 1px solid var(--edge);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+}
+
+/* ---- settings ---- */
+
+.set {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 2.6em;
+  border-bottom: 1px solid var(--soft);
+}
+.set-label { flex: 0 0 6.5em; color: var(--sand); }
+.set input[type="range"] { flex: 1; min-width: 0; accent-color: var(--sand); }
+.set output { flex: 0 0 3em; text-align: right; color: var(--dim); font-variant-numeric: tabular-nums; }
+
+/* The platform's own controls are kept -- a range is a range everywhere --
+   but coloured to match. A switch is a button styled as one, since there is
+   no native switch. */
+.switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  background: var(--soft);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.switch span {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--dim);
+  transition: transform .15s, background .15s;
+}
+.switch[aria-checked="true"] { background: rgba(224, 189, 138, .35); border-color: var(--sand); }
+.switch[aria-checked="true"] span { transform: translateX(20px); background: var(--sand); }
+.switch:focus-visible { outline: 2px solid var(--sand); outline-offset: 2px; }
+
+.segs {
   display: inline-flex;
   border: 1px solid var(--edge);
   border-radius: 999px;
@@ -162,7 +349,7 @@ html, body {
 }
 
 .seg {
-  padding: .55em 1em;
+  padding: .5em .95em;
   font: 500 13px/1 inherit;
   color: var(--dim);
   background: none;
@@ -170,40 +357,57 @@ html, body {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-
 .seg + .seg { border-left: 1px solid var(--edge); }
+.seg:focus-visible { outline: none; color: var(--ink); }
+.seg[aria-pressed="true"] { color: #241f1a; background: var(--sand); }
 
-.seg[aria-pressed="true"] {
-  color: #241f1a;
-  background: var(--sand);
-}
-
-/* ---- tilt options on the title card ---- */
-
-#tiltopts {
-  margin-top: 1.2em;
-  padding-top: 1em;
-  border-top: 1px solid var(--edge);
-}
+/* Which kind of device the card is showing, set on the body by main.js. */
+body.touch .desk-only, body:not(.touch) .touch-only { display: none; }
 
 .read {
-  margin-top: .8em;
+  margin: .5em 0 0;
   font-size: 12px;
   color: var(--dim);
   font-variant-numeric: tabular-nums;
 }
+
+/* Which build is running, small and out of the way at the foot. */
+.build { color: var(--dim); font: 11px/1.2 ui-monospace, Menlo, Consolas, monospace; opacity: .6; margin-top: 1.4em !important; }
+
+/* ---- the pause button, on touch ---- */
+
+#pausebtn {
+  position: fixed;
+  top: calc(4px + env(safe-area-inset-top, 0));
+  left: 50%;
+  transform: translateX(-50%);
+  width: 34px;
+  height: 34px;
+  padding: 8px;
+  border: 1px solid var(--edge);
+  border-radius: 50%;
+  background: rgba(18, 19, 26, .35);
+  color: var(--ink);
+  z-index: 5;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+#pausebtn[hidden] { display: none; }
+#pausebtn svg { width: 100%; height: 100%; display: block; fill: currentColor; }
 
 /* ---- short screens ------------------------------------------------------ */
 
 /* A phone in landscape, or a small window: everything gets tighter. */
 @media (max-height: 560px) {
   #overlay { padding: 12px 16px; }
-  #panel h1 { font-size: clamp(22px, 5.4vh, 34px); margin-bottom: 0; }
+  #head h1 { font-size: clamp(22px, 5.4vh, 34px); }
   #panel p { margin: .3em 0; }
   #actions { margin-top: .9em; }
-  #start { padding: .7em 2em; }
-  #tiltopts { margin-top: .8em; padding-top: .7em; }
-  .read { margin-top: .5em; }
+  #start { padding: .75em 2em; }
+  #tabs { margin-top: .8em; }
+  .tab { padding: .5em .7em; }
+  #pages { margin-top: .8em; }
+  .set { min-height: 2.3em; }
 }
 
 /* ... and when it is short *and* wide there is room to put the reading and
@@ -211,25 +415,29 @@ html, body {
    scrolling at all. */
 @media (orientation: landscape) and (max-height: 560px) {
   #panel {
-    max-width: 54em;
+    max-width: 58em;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(8.5em, 13em);
+    grid-template-columns: minmax(0, 1fr) minmax(11em, 15em);
+    grid-template-rows: auto 1fr auto;
     column-gap: 28px;
-    align-items: center;
     text-align: left;
   }
-  #panel h1 { grid-column: 1; grid-row: 1; }
-  #blurb { grid-column: 1; grid-row: 2; }
-  #controls-desktop, #controls-touch { grid-column: 1; grid-row: 3; }
-  #actions { grid-column: 2; grid-row: 1 / span 3; margin: 0; text-align: center; }
-  #start { width: 100%; padding: .8em .6em; }
+  #head { grid-column: 1; grid-row: 1; }
+  #pages { grid-column: 1; grid-row: 2; margin-top: .6em; }
+  #actions { grid-column: 2; grid-row: 1 / span 2; margin: 0; align-self: center; text-align: center; }
+  #build { grid-column: 1 / span 2; grid-row: 3; }
+  #panel { padding-top: 0; grid-template-columns: minmax(0, 1fr) minmax(12em, 16em); }
+  #start { width: 100%; min-width: 0; padding: .8em .6em; }
+  #tabs { gap: 0; flex-wrap: nowrap; }
+  .tab { padding: .45em .45em; font-size: 13px; }
+  .iconbtn { width: 30px; height: 30px; padding: 5px; margin-left: 2px; }
 }
 
 /* Shorter still -- a small phone in landscape with the browser's own bars
    taking their cut, which leaves about three hundred pixels. */
 @media (max-height: 420px) {
   #panel p { margin: .2em 0; }
-  #panel h1 { font-size: clamp(20px, 5vh, 28px); }
-  .read { margin-top: .35em; }
-  #tiltopts { margin-top: .6em; padding-top: .5em; }
+  #head h1 { font-size: clamp(20px, 5vh, 28px); }
+  #subtitle { font-size: .85em; }
+  .goals li { margin: .3em 0; }
 }

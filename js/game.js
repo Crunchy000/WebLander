@@ -503,6 +503,11 @@ export class Game {
     this.setMessage(DEATH_MESSAGE[how] || String(how), 110);
   }
 
+  clearHighScore() {
+    this.highScore = 0;
+    saveHighScore(0);
+  }
+
   setMessage(text, frames) {
     this.message = text;
     this.messageTimer = frames;
@@ -799,14 +804,16 @@ export class Game {
     t = prof.lap('bird', t);
     if (on('weather')) drawWeather(rd, eyeX, eyeY, eyeZ);
     t = prof.lap('rain & snow', t);
-    if (on('hud')) this.drawHud();
+    // Not under the title or pause card: it says all of that itself, and the
+    // HUD showing through the wash behind it was clutter.
+    if (on('hud') && !this.cardUp) this.drawHud();
     t = prof.lap('hud', t);
 
     // The touch stick goes over everything, because it is the one thing on
     // screen that is not part of the world -- it is the player's own thumb,
     // drawn back at them.
     // Only when it is steering: under tilt a finger is just the engine.
-    if (this.input.touchSteers) {
+    if (this.input.touchSteers && !this.cardUp) {
       drawTouchStick(this.rd, this.input.leftThumb.furniture);
       drawTouchStick(this.rd, this.input.rightThumb.furniture);
     }

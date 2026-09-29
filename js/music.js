@@ -37,6 +37,10 @@ let playing = null;
 let order = [];
 let at = 0;
 let enabled = false;
+// The music setting, 0 to 1 -- squared on the way in, as the others are --
+// through a stage of its own after the fades.
+let volume = 1;
+let vol = null;
 
 function shuffle(a) {
   for (let i = a.length - 1; i > 0; i--) {
@@ -57,7 +61,9 @@ export function startMusic(audioCtx, master) {
   ctx = audioCtx;
   bus = ctx.createGain();
   bus.gain.value = 0;
-  bus.connect(master);
+  vol = ctx.createGain();
+  vol.gain.value = volume * volume;
+  bus.connect(vol).connect(master);
 
   order = TRACKS.slice();
   enabled = true;
@@ -92,7 +98,7 @@ function next() {
   node.connect(bus);
 
   playing = { el, node };
-  el.play().catch(() => {});
+  if (volume > 0) el.play().catch(() => {});
 
   const t = ctx.currentTime;
   bus.gain.cancelScheduledValues(t);
@@ -113,6 +119,19 @@ function next() {
     bus.gain.linearRampToValueAtTime(0, t2 + FADE);
     setTimeout(next, (FADE + GAP) * 1000);
   });
+}
+
+// The music setting. Turned right down, the track is paused rather than
+// played into silence, so it is not streaming for nothing; turned back up it
+// carries on where it was.
+export function setMusicVolume(v) {
+  volume = v;
+  if (!vol) return;
+  vol.gain.setTargetAtTime(v * v, ctx.currentTime, 0.02);
+  if (playing) {
+    if (v <= 0) playing.el.pause();
+    else if (playing.el.paused) playing.el.play().catch(() => {});
+  }
 }
 
 // Whether a soundtrack is actually running, for anything that wants to know.

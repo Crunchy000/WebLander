@@ -4,11 +4,20 @@
 // whole game stays a handful of text files. The engine is a continuous voice
 // whose gain and filter track the throttle; everything else is one-shot.
 
+// The whole mix's level at full volume. Sliders are squared on the way in, so
+// that the middle of one is about half as loud rather than barely quieter.
+const LEVEL = 0.46;
+
 export class Audio {
   constructor() {
     this.ctx = null;
     this.enabled = false;
     this.muted = false;
+    // The settings: all of it (volume), and the effects on their own. The
+    // music has its own, in music.js. Kept here before there is a context
+    // to apply them to, and applied when there is.
+    this.volume = 1;
+    this.effects = 1;
   }
 
   // Browsers require a user gesture before audio will start.
@@ -25,8 +34,14 @@ export class Audio {
     const ctx = injected || new AC();
     this.ctx = ctx;
 
+    // Two stages. `out` is everything -- the volume setting and the mute --
+    // and it is what the music joins too (see startMusic). `master` is the
+    // effects, the engine and the weather, at the effects setting, into it.
+    // Every effect is written against `master`, so that name stays theirs.
+    this.out = ctx.createGain();
     this.master = ctx.createGain();
-    this.master.gain.value = 0.46;
+    this.master.connect(this.out);
+    this.applyLevels();
 
     // Overlapping blasts used to sum past full scale and clip. A limiter
     // catches the peaks, which is what makes it safe to drive everything
@@ -38,7 +53,7 @@ export class Audio {
     this.limiter.attack.value = 0.010;   // slow enough to let the crack past
     this.limiter.release.value = 0.30;
 
-    this.master.connect(this.limiter).connect(ctx.destination);
+    this.out.connect(this.limiter).connect(ctx.destination);
 
     // Three seconds of white noise, reused by every percussive effect. It is
     // long so that each burst can start at a random offset -- playing the same
@@ -235,7 +250,22 @@ export class Audio {
 
   setMuted(m) {
     this.muted = m;
-    if (this.master) this.master.gain.value = m ? 0 : 0.46;
+    this.applyLevels();
+  }
+
+  // Volume and effects, each 0 to 1.
+  setLevels(volume, effects) {
+    this.volume = volume;
+    this.effects = effects;
+    this.applyLevels();
+  }
+
+  applyLevels() {
+    if (!this.out) return;
+    const t = this.ctx.currentTime;
+    // A short glide rather than a jump, so dragging a slider does not click.
+    this.out.gain.setTargetAtTime(this.muted ? 0 : LEVEL * this.volume * this.volume, t, 0.02);
+    this.master.gain.setTargetAtTime(this.effects * this.effects, t, 0.02);
   }
 
   // Follow the throttle: 0 off, 1 hover, 2 full.
