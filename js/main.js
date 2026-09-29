@@ -5,6 +5,7 @@ import { Input } from './input.js';
 import { Audio } from './audio.js';
 import { startMusic, musicWanted, setMusicVolume } from './music.js';
 import { settings, saveSettings, PICTURES } from './settings.js';
+import { ACHIEVEMENTS, progress, isDone, earnedCount, clearAchievements } from './achievements.js';
 import { Game, STEP_MS } from './game.js';
 import { perf, perfInit, perfFrame, perfDescribe } from './perf.js';
 import { DebugPanel } from './debugpanel.js';
@@ -128,6 +129,7 @@ function showCard(mode) {
     : SUBTITLE;
   labelStart();
   showBest();
+  if (!document.getElementById('page-awards').hidden) showAwards();
   overlay.hidden = false;
   pauseBtn.hidden = true;
   startBtn.focus();
@@ -142,6 +144,7 @@ function hideCard() {
 // Pages.
 const tabs = [...document.querySelectorAll('#tabs .tab')];
 function showPage(name) {
+  if (name === 'awards') showAwards();
   for (const t of tabs) {
     const on = t.dataset.page === name;
     t.setAttribute('aria-selected', String(on));
@@ -151,6 +154,35 @@ function showPage(name) {
 for (const t of tabs) t.addEventListener('click', () => showPage(t.dataset.page));
 for (const a of document.querySelectorAll('[data-goto]')) {
   a.addEventListener('click', (e) => { e.preventDefault(); showPage(a.dataset.goto); });
+}
+
+// The awards page: each one ticked or not, with how far along a count is.
+function showAwards() {
+  const list = document.getElementById('award-list');
+  const done = earnedCount(), all = ACHIEVEMENTS.length;
+  document.getElementById('award-count').textContent = done + ' of ' + all + ' earned';
+  document.getElementById('award-bar').style.width = (100 * done / all).toFixed(1) + '%';
+  list.textContent = '';
+  // Earned first, then the rest in their order.
+  const order = [...ACHIEVEMENTS.filter((a) => isDone(a.id)), ...ACHIEVEMENTS.filter((a) => !isDone(a.id))];
+  for (const a of order) {
+    const li = document.createElement('li');
+    if (isDone(a.id)) li.className = 'done';
+    const tick = document.createElement('span');
+    tick.className = 'tick';
+    const text = document.createElement('span');
+    text.className = 'aname';
+    text.textContent = a.name;
+    const desc = document.createElement('span');
+    desc.className = 'adesc';
+    desc.textContent = a.desc;
+    text.appendChild(desc);
+    const prog = document.createElement('span');
+    prog.className = 'aprog';
+    if (a.stat && a.goal > 1) prog.textContent = progress(a) + '/' + a.goal;
+    li.append(tick, text, prog);
+    list.appendChild(li);
+  }
 }
 
 // --- settings -------------------------------------------------------------
@@ -226,6 +258,21 @@ clearBtn.addEventListener('click', () => {
     clearArmed = performance.now();
     clearBtn.textContent = 'sure?';
     setTimeout(() => { if (clearBtn.textContent === 'sure?') clearBtn.textContent = 'clear'; }, 3000);
+  }
+});
+
+// Clearing the awards asks twice too.
+const clearAwardsBtn = document.getElementById('set-clear-awards');
+let clearAwardsArmed = 0;
+clearAwardsBtn.addEventListener('click', () => {
+  if (performance.now() - clearAwardsArmed < 3000) {
+    clearAchievements();
+    clearAwardsBtn.textContent = 'cleared';
+    clearAwardsArmed = 0;
+  } else {
+    clearAwardsArmed = performance.now();
+    clearAwardsBtn.textContent = 'sure?';
+    setTimeout(() => { if (clearAwardsBtn.textContent === 'sure?') clearAwardsBtn.textContent = 'clear'; }, 3000);
   }
 });
 

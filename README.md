@@ -50,8 +50,8 @@ running; the copy in the repository says `dev`.
 
 ### The card, settings and pause
 
-Before a flight the title card has three pages -- **about**, **how to play**
-(the controls for the device you are on) and **settings** -- and a button to
+Before a flight the title card has four pages -- **about**, **controls**
+(for the device you are on), **awards** and **settings** -- and a button to
 turn the sound off. Pausing brings the same card back, over the frozen world,
 with **resume** and **new flight**: <kbd>Esc</kbd> or <kbd>P</kbd>, the pad's
 Menu button, the pause button at the top of a touch screen, or switching away
@@ -143,6 +143,19 @@ time before (never under a quarter), so variety pays.
 
 Balloons are springy now rather than ghosts: brushing one's side nudges the
 bird off it, and nothing about them can hurt you.
+
+**Awards** (`js/achievements.js`): twenty-five things to tick off, kept on
+the device between visits -- some a count across every flight (flip fifty
+crabs, bounce off ten balloons, knock over twenty-five block towers, land on
+five canoes, fly ten loops), some a single feat (three balloon bounces in
+one stack, three crabs with one bomb, a x10 stack, being in the air at
+midnight). Earning one puts its name at the foot of the screen with a
+chime; the awards page on the card lists them all, ticked or not, with how
+far along each count is.
+
+**Canoes** are somewhere to set down at sea: land on one between its ends
+and the bird rides along with it -- and charges, since the water it sits on
+is level. Landing on one is a trick too (120).
 
 **Fire bombs**: the phoenix can drop its own fire -- the right mouse
 button, <kbd>C</kbd>, a pad's bumpers, or on a touch screen a third finger
@@ -376,6 +389,7 @@ software rasterisation, so a phone GPU does not notice it.
 | `js/settings.js` | the player's settings, kept between visits |
 | `js/firebombs.js` | the phoenix's dropped fire |
 | `js/tricks.js` | tricks, and stacking them into combos |
+| `js/achievements.js` | awards to tick off, kept between visits |
 | `js/audio.js` | synthesised sound, no assets |
 | `js/font.js` | 5×8 bitmap font for the HUD, caps and lowercase |
 | `js/game.js` | main loop, landscape scan, HUD, game states |

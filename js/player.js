@@ -24,6 +24,7 @@ import { drawBird } from './bird.js';
 import { drawOrigami, shedEmbers } from './origami.js';
 import { drawEgg, hatch } from './flames.js';
 import { dropBomb } from './firebombs.js';
+import { boatUnder, BOAT_DECK } from './boats.js';
 
 // Which airframe to fly. The faceted lander, the quadrotor and the hoverbird
 // all fly on the same model -- tilt the body, push along its own up axis --
@@ -380,6 +381,7 @@ export class Player {
     this.hitFlash = 0;
     this.grace = LAUNCH_GRACE;
     this.launched = false;      // has the pilot asked for power yet?
+    this.onBoat = null;         // the canoe it is sat on, if it is
     this.rotorSpin = 0;
   }
 
@@ -489,6 +491,7 @@ export class Player {
       this.launched = true;
       // The phoenix breaks out of its flame. See drawEgg.
       if (AIRFRAME === 'origami') hatch(this.x, this.y, this.z);
+      if (game && game.onHatched) game.onHatched();
     }
     if (this.launched && this.grace > 0) this.grace--;
 
@@ -835,10 +838,15 @@ export class Player {
   checkGround(game) {
     if (this.hitScenery(game)) return;
 
-    const ground = landAltitude(this.x, this.z);
+    let ground = landAltitude(this.x, this.z);
+    // Over the sea a canoe is somewhere to set down: her rails are the
+    // ground there.
+    const boat = ground >= SEA_LEVEL ? boatUnder(this.x, this.z) : null;
+    if (boat) ground = BOAT_DECK;
     const feet = (this.y + UNDERCARRIAGE_Y) | 0;
 
     if (feet < ground) {
+      this.onBoat = null;
       // Just left the ground. The tilt steering takes this as the moment to
       // decide what straight ahead means -- see Game.onLiftoff.
       if (this.landed && game) game.onLiftoff();
@@ -882,6 +890,8 @@ export class Player {
 
     if (!this.landed) {
       this.landed = true;
+      this.onBoat = boat;
+      if (boat && game.onBoatLanding) game.onBoatLanding(boat);
       game.onTouchdown(onPad);
     }
 

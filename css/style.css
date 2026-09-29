@@ -300,6 +300,38 @@ kbd {
   border-radius: 4px;
 }
 
+/* ---- awards ---- */
+
+.awardsum { margin: .2em 0 .4em !important; color: var(--sand); }
+.awardbar { height: 4px; border-radius: 2px; background: var(--soft); overflow: hidden; margin-bottom: .8em; }
+.awardbar span { display: block; height: 100%; background: linear-gradient(90deg, #ff8a2a, #ffd27a); }
+.awards { list-style: none; margin: 0; padding: 0; }
+.awards li {
+  display: grid;
+  grid-template-columns: 1.5em 1fr auto;
+  column-gap: .6em;
+  align-items: baseline;
+  padding: .38em 0;
+  border-bottom: 1px solid var(--soft);
+  color: var(--dim);
+}
+.awards .tick {
+  width: 1.1em;
+  height: 1.1em;
+  align-self: center;
+  border: 1.5px solid var(--edge);
+  border-radius: 50%;
+}
+.awards li.done { color: var(--ink); }
+.awards li.done .tick {
+  border-color: var(--sand);
+  background: var(--sand) no-repeat center / 70% url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 6.5l2.5 2.5L10 3' fill='none' stroke='%23241f1a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+.awards .aname { font-weight: 600; }
+.awards li.done .aname { color: var(--sand); }
+.awards .adesc { display: block; font-size: .88em; font-weight: 400; color: var(--dim); }
+.awards .aprog { font-size: .85em; font-variant-numeric: tabular-nums; color: var(--dim); }
+
 /* ---- settings ---- */
 
 .set {
@@ -424,9 +456,11 @@ body.touch .desk-only, body:not(.touch) .touch-only { display: none; }
   }
   #head { grid-column: 1; grid-row: 1; }
   #pages { grid-column: 1; grid-row: 2; margin-top: .6em; }
-  #actions { grid-column: 2; grid-row: 1 / span 2; margin: 0; align-self: center; text-align: center; }
+  /* Pinned in view, however long the page beside it: centred against a
+     long page it ended up below the fold. */
+  #actions { grid-column: 2; grid-row: 1 / span 2; margin: 0; align-self: start; position: sticky; top: 8px; padding-top: 12px; text-align: center; }
   #build { grid-column: 1 / span 2; grid-row: 3; }
-  #panel { padding-top: 0; grid-template-columns: minmax(0, 1fr) minmax(12em, 16em); }
+  #panel { padding-top: 0; grid-template-columns: minmax(0, 1fr) minmax(12em, 18em); }
   #start { width: 100%; min-width: 0; padding: .8em .6em; }
   #tabs { gap: 0; flex-wrap: nowrap; }
   .tab { padding: .45em .45em; font-size: 13px; }

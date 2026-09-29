@@ -296,6 +296,11 @@ export function updateBoats(player, game) {
       b.heading += 1.4 + rnd() * 0.8;
       b.turnTimer = 60 + rndInt(90);
     } else {
+      // Whatever is sat on her comes too.
+      if (player.onBoat === b && player.landed) {
+        player.x = (player.x + nx - b.x) | 0;
+        player.z = (player.z + nz - b.z) | 0;
+      }
       b.x = nx; b.z = nz;
     }
 
@@ -314,6 +319,25 @@ export function updateBoats(player, game) {
     }
   }
 }
+
+// --- landing on one ---------------------------------------------------------
+//
+// A canoe is somewhere to set down at sea: the length of her between the
+// thwarts, a little wider than she is, at the height of her rails. What is
+// sat on her goes where she goes (see updateBoats).
+const DECK = (SEA_LEVEL - 0.15 * S * TILE) | 0;
+export function boatUnder(x, z) {
+  for (const b of boats) {
+    if (!b.live || b.state !== AFLOAT) continue;
+    const dx = ((x - b.x) | 0) / TILE, dz = ((z - b.z) | 0) / TILE;
+    if (dx * dx + dz * dz > 1.3 * 1.3) continue;
+    const sx = Math.sin(b.heading), sz = Math.cos(b.heading);
+    const along = dx * sx + dz * sz, across = dx * sz - dz * sx;
+    if (Math.abs(along) < 0.9 * S && Math.abs(across) < 0.34 * S) return b;
+  }
+  return null;
+}
+export const BOAT_DECK = DECK;
 
 // --- being hit -------------------------------------------------------------
 

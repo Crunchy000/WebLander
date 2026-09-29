@@ -105,6 +105,7 @@ import {
 import { updateCrabs, drawCrab, crabsInRow, resetCrabs, CRAB_SCORE } from './crabs.js';
 import { updateBombs, drawBombs, resetBombs } from './firebombs.js';
 import { Combo, COMBO_WINDOW } from './tricks.js';
+import { count as countAward, unlock as unlockAward, onEarn } from './achievements.js';
 
 // What each trick puts in the pot. See tricks.js.
 const TRICK = {
@@ -114,6 +115,7 @@ const TRICK = {
   skim: ['water skim', 60],
   longSkim: ['long skim', 100],
   shave: ['close shave', 40],
+  canoe: ['canoe landing', 120],
   squash: ['crab squash', 60],
   flip: ['crab flip', 40],
 };
@@ -123,6 +125,13 @@ const TRICK = {
 const SKIM_LOW = 0.55;
 const SKIM_SPEED = 0x01000000 * 0.03;
 const SKIM_ONE = 50, SKIM_LONG = 150;
+// Which lifetime count each trick adds to (see achievements.js).
+const TRICK_STAT = {
+  loop: 'loops', bounce: 'bounces', bunting: 'bunting', shave: 'shaves',
+  squash: 'crabs', flip: 'crabs', canoe: 'canoes',
+};
+// How long an award stays on the screen.
+const AWARD_SHOW = 170;
 // A crab thrown on its back by a fire bomb.
 const FLIP_SCORE = 40;
 
@@ -257,6 +266,13 @@ export class Game {
     this.pendingFlames = Array.from({ length: TILES_Z + 2 }, () => []);
     this.pendingCrabs = Array.from({ length: TILES_Z + 2 }, () => []);
     this.warnTick = 0;
+    // Awards earned, waiting their turn on the screen.
+    this.awards = [];
+    this.awardAt = 0;
+    onEarn((a) => {
+      this.awards.push(a.name);
+      if (this.awards.length === 1) this.awardAt = 0;
+    });
 
     this.newGame();
     this.state = STATE.TITLE;
@@ -305,6 +321,8 @@ export class Game {
 
   onFlameTaken(k) {
     this.flames = Math.min(FLAME_COUNT, this.flames + 1);
+    countAward('flames');
+    if (this.flames >= FLAME_COUNT) unlockAward('whole');
     (this.flameOrder || (this.flameOrder = [])).push(k);
     this.grow();
     // Taking a flame fills the bird to its new size.
@@ -345,6 +363,9 @@ export class Game {
     if (this.state !== STATE.PLAYING || this.player.dead) return;
     const [name, pts] = TRICK[key] || [key, base || 0];
     this.combo.add(name, base !== undefined ? base : pts);
+    if (TRICK_STAT[key]) countAward(TRICK_STAT[key]);
+    if (key === 'longSkim') unlockAward('skim');
+    if (key === 'bounce' && this.combo.counts['balloon bounce'] >= 3) unlockAward('bounce3');
     // A rising note for each one on the stack.
     this.audio.chime(Math.min(7, this.combo.n + 1));
   }
@@ -354,6 +375,9 @@ export class Game {
     if (!c || !c.active) return;
     const total = c.total;
     this.addScore(total);
+    if (c.mult >= 5) unlockAward('stack5');
+    if (c.mult >= 10) unlockAward('stack10');
+    if (total >= 1000) unlockAward('bank1000');
     this.setMessage((c.n > 1 ? 'stack x' + c.mult : c.names[0]) + '  +' + total, 90);
     // A flourish, longer for a bigger stack.
     for (let i = 0; i < Math.min(5, c.mult); i++) setTimeout(() => this.audio.chime(3 + i * 2), i * 70);
@@ -415,6 +439,7 @@ export class Game {
     if (flipped > 0) {
       this.audio.clatter(0.5);
       for (let i = 0; i < flipped; i++) this.onTrick('flip', FLIP_SCORE);
+      if (flipped >= 3) unlockAward('triple');
     }
   }
 
@@ -515,6 +540,7 @@ export class Game {
     this.nectarRun++;
     this.nectarAt = sky.tick;
     this.setMessage('nectar  +' + pts, 50);
+    countAward('nectar');
   }
 
   // A lantern gathered off the water.
@@ -542,6 +568,7 @@ export class Game {
     this.lanternRun++;
     this.lanternAt = sky.tick;
     this.lanternsTaken = (this.lanternsTaken || 0) + 1;
+    countAward('lamps');
   }
 
   // A structure has gone over. Points either way, but a stack shoved by the
@@ -549,6 +576,16 @@ export class Game {
   onBlocksKnocked(type, x, y, z, force) {
     this.audio.clatter(Math.min(1, force / 2.2));
     this.onTrick('timber', OBJ_SCORE[type] || 0);
+    countAward(isNatural(type) ? 'trees' : 'towers');
+  }
+
+  // Set down on a canoe: a trick of its own (see Player.checkGround).
+  onBoatLanding() {
+    this.onTrick('canoe');
+  }
+
+  onHatched() {
+    unlockAward('hatch');
   }
 
   // A bounce off the top of a balloon (see balloons.js): a trick, and a boing.
@@ -652,6 +689,12 @@ export class Game {
     updateCrabs(this.player, this);
     updateBombs(this);
     this.watchSkim();
+    // In the air at midnight.
+    {
+      const p = this.player;
+      if (p.launched && !p.landed && !p.dead && (sky.phase > 0.995 || sky.phase < 0.005)) unlockAward('midnight');
+    }
+    if (this.awards.length && ++this.awardAt >= this.awardShow()) { this.awards.shift(); this.awardAt = 0; }
     if (this.combo.tick()) this.bankCombo();
     updateBlocks();
     updateParticles(this.gravity, (i, bx, by, bz) => this.bulletHit(i, bx, by, bz));
@@ -1278,6 +1321,28 @@ export class Game {
     }
   }
 
+  // How long the award at the front stays up: less when others are waiting.
+  awardShow() {
+    return this.awards.length > 2 ? 80 : AWARD_SHOW;
+  }
+
+  // An award just earned: a line near the foot of the screen, and a chime.
+  drawAward() {
+    if (!this.awards.length) return;
+    const rd = this.rd;
+    const t = this.awardAt;
+    if (t === 1) this.audio.chime(6);
+    const y = SCREEN_H - 34;
+    const text = 'award: ' + this.awards[0];
+    const w = textWidth(text) + 16;
+    // Slides up at the start, fades at the end.
+    const rise = Math.max(0, 8 - t) * 1.5;
+    const a = Math.min(1, (this.awardShow() - t) / 30);
+    rd.rect(CENTRE_X - w / 2, y - 4 + rise, w, 15, [30, 26, 34, Math.round(190 * a)]);
+    rd.rect(CENTRE_X - w / 2, y - 4 + rise, 2, 15, [255, 170, 60, Math.round(255 * a)]);
+    drawTextCentred(rd, text, CENTRE_X, y + rise, [255, 226, 160]);
+  }
+
   drawHud() {
     const rd = this.rd;
     const p = this.player;
@@ -1389,6 +1454,7 @@ export class Game {
     }
 
     this.drawCombo();
+    this.drawAward();
 
     if (this.state === STATE.PLAYING && p.protected) {
       // No number until the clock is actually running, since a number that
