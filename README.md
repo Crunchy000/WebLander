@@ -136,15 +136,15 @@ time before (never under a quarter), so variety pays.
 | balloon bounce -- come down on top of a balloon; it throws you back up | 100 |
 | bunting -- fly through the line strung between two balloons | 60 |
 | timber -- knock over a stack of blocks, or a tree | what it is worth |
-| water skim -- a second low (feet within half a tile) and fast over the sea | 60 |
-| long skim -- three seconds of it | 100 |
+| water skim -- 0.8 s low (feet within a tile) and moving (1.2 tiles/s) over the sea; "skimming" shows while it builds | 60 |
+| long skim -- two and a half seconds of it | 100 |
 | close shave -- past a tree or a stack, within a third of a tile of it, quickly | 40 |
 | crab squash / crab flip | 60 / 40 |
 
 Balloons are springy now rather than ghosts: brushing one's side nudges the
 bird off it, and nothing about them can hurt you.
 
-**Awards** (`js/achievements.js`): twenty-five things to tick off, kept on
+**Awards** (`js/achievements.js`): twenty-seven things to tick off, kept on
 the device between visits -- some a count across every flight (flip fifty
 crabs, bounce off ten balloons, knock over twenty-five block towers, land on
 five canoes, fly ten loops), some a single feat (three balloon bounces in

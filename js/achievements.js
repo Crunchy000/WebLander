@@ -28,6 +28,8 @@ export const ACHIEVEMENTS = [
   { id: 'crabs10', name: 'crab wrangler', desc: 'squash or flip ten shadow crabs', stat: 'crabs', goal: 10 },
   { id: 'crabs50', name: 'scourge of the shore', desc: 'squash or flip fifty shadow crabs', stat: 'crabs', goal: 50 },
   { id: 'triple', name: 'hat trick', desc: 'flip three crabs with one fire bomb' },
+  { id: 'skim1', name: 'spray', desc: 'skim low and fast over the sea', stat: 'skims', goal: 1 },
+  { id: 'skim10', name: 'wave rider', desc: 'skim the sea ten times', stat: 'skims', goal: 10 },
   { id: 'skim', name: 'skipping stone', desc: 'hold a long skim over the sea' },
   { id: 'shave', name: 'close shaves', desc: 'twenty-five close shaves', stat: 'shaves', goal: 25 },
   { id: 'stack5', name: 'stacked', desc: 'bank a stack of x5 or more' },

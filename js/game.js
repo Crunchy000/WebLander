@@ -122,9 +122,12 @@ const TRICK = {
 // A skim: low over the sea and moving. Feet within SKIM_LOW tiles of the
 // water, at SKIM_SPEED or better; SKIM_ONE steps of it is a skim, SKIM_LONG
 // a long one.
-const SKIM_LOW = 0.55;
-const SKIM_SPEED = 0x01000000 * 0.03;
-const SKIM_ONE = 50, SKIM_LONG = 150;
+// Loose enough to match the spray: it used to want half a tile and a second
+// and a half-tile-a-second more, so a bird throwing up spray was often not
+// skimming at all as far as the score was concerned.
+const SKIM_LOW = 1.0;
+const SKIM_SPEED = 0x01000000 * 0.024;
+const SKIM_ONE = 40, SKIM_LONG = 125;
 // Which lifetime count each trick adds to (see achievements.js).
 const TRICK_STAT = {
   loop: 'loops', bounce: 'bounces', bunting: 'bunting', shave: 'shaves',
@@ -395,7 +398,7 @@ export class Game {
     if (!skimming) { this.skimRun = 0; return; }
     this.skimRun++;
     this.combo.hold();
-    if (this.skimRun === SKIM_ONE) this.onTrick('skim');
+    if (this.skimRun === SKIM_ONE) { this.onTrick('skim'); countAward('skims'); }
     else if (this.skimRun === SKIM_LONG) this.onTrick('longSkim');
   }
 
@@ -1318,6 +1321,18 @@ export class Game {
       rd.rect(CENTRE_X - w / 2, y + 22, Math.max(1, Math.round(w * left)), 2, [255, 170, 60]);
     } else if (c.lost > 0) {
       drawTextCentred(rd, 'stack lost', CENTRE_X, y, [232, 142, 116]);
+    }
+    // A skim building up, before it has counted: so you can see you are low
+    // and quick enough, and how long to keep it.
+    const run = this.skimRun | 0;
+    if (run > 8 && run < SKIM_LONG) {
+      const next = run < SKIM_ONE ? SKIM_ONE : SKIM_LONG;
+      const from = run < SKIM_ONE ? 0 : SKIM_ONE;
+      const yy = c.active ? y + 28 : y;
+      drawTextCentred(rd, run < SKIM_ONE ? 'skimming' : 'long skim...', CENTRE_X, yy, [170, 214, 236]);
+      const w = 40;
+      rd.rect(CENTRE_X - w / 2, yy + 10, w, 2, [60, 70, 80]);
+      rd.rect(CENTRE_X - w / 2, yy + 10, Math.max(1, Math.round(w * (run - from) / (next - from))), 2, [170, 214, 236]);
     }
   }
 
