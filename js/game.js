@@ -103,6 +103,9 @@ import {
   updateBoats, drawBoat, boatsInRow, boatHit, boatBlast, resetBoats, BOAT_SCORE,
 } from './boats.js';
 import { updateCrabs, drawCrab, crabsInRow, resetCrabs, CRAB_SCORE } from './crabs.js';
+import { updateBombs, drawBombs, resetBombs } from './firebombs.js';
+// A crab thrown on its back by a fire bomb.
+const FLIP_SCORE = 40;
 
 export const STATE = { TITLE: 0, PLAYING: 1, DYING: 2, GAMEOVER: 3 };
 
@@ -256,6 +259,7 @@ export class Game {
     resetFlowers();
     resetFlames();
     resetCrabs();
+    resetBombs();
     this.flames = 0;
     this.flameOrder = [];
     this.grow();
@@ -337,6 +341,26 @@ export class Game {
     this.audio.tone(210, 0.06, 'square', 0.22);
     setTimeout(() => this.audio.tone(150, 0.09, 'square', 0.2), 70);
     this.setMessage('pinched!', 60);
+  }
+
+  // Fire bombs: let go, burst, and hissing out in the sea.
+  onBombDropped() {
+    this.audio.tone(520, 0.08, 'triangle', 0.10);
+    setTimeout(() => this.audio.tone(380, 0.10, 'triangle', 0.08), 60);
+  }
+
+  onBombBurst(x, y, z, flipped) {
+    this.audio.blast();
+    if (flipped > 0) {
+      this.audio.clatter(0.5);
+      const pts = FLIP_SCORE * flipped;
+      this.addScore(pts);
+      this.setMessage((flipped > 1 ? flipped + ' crabs flipped' : 'crab flipped') + '  +' + pts, 60);
+    }
+  }
+
+  onBombFizzle() {
+    this.audio.splash();
   }
 
   // A shadow crab has seen the bird: a clatter of claws, the warning that
@@ -553,6 +577,7 @@ export class Game {
     updateLanterns(this.player, this);
     updateFlames(this.player, this);
     updateCrabs(this.player, this);
+    updateBombs(this);
     updateBlocks();
     updateParticles(this.gravity, (i, bx, by, bz) => this.bulletHit(i, bx, by, bz));
 
@@ -591,6 +616,7 @@ export class Game {
   respawn() {
     resetParticles();
     resetRibbon();
+    resetBombs();
     let lost = false;
     if (this.flames > 0) {
       const k = (this.flameOrder || []).pop();
@@ -767,6 +793,7 @@ export class Game {
     if (on('ribbon')) drawRibbon(rd, eyeX, eyeY, eyeZ);
     t = prof.lap('streamer', t);
     if (on('particles')) drawParticles(rd, eyeX, eyeY, eyeZ);
+    drawBombs(rd, eyeX, eyeY, eyeZ);
     t = prof.lap('particles', t);
     if (this.state === STATE.PLAYING && on('player')) p.draw(rd, eyeX, eyeY, eyeZ);
     t = prof.lap('bird', t);

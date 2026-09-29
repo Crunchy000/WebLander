@@ -241,6 +241,8 @@ function place(c, px, pz) {
     c.windup = 0;
     c.raised = 0;
     c.moving = false;
+    c.flipped = 0;          // 0 upright; counts up once thrown over
+    c.flipSide = 1;
     return true;
   }
   return false;
@@ -261,6 +263,16 @@ export function updateCrabs(player, game) {
 
     if (c.cool > 0) c.cool--;
     if (c.snap > 0) c.snap--;
+
+    // On its back: harmless, legs going, claws snapping at nothing, until it
+    // is off the screen -- and then it is gone, and another will come.
+    if (c.flipped) {
+      c.flipped++;
+      c.gait = (c.gait + 0.35) % 4;
+      if (rnd() < 0.08) c.snap = 5;
+      if (c.flipped > FLIP_TIME && !onScreen(c, player)) c.live = false;
+      continue;
+    }
 
     const ground = landAltitude(c.x, c.z);
     const up = (ground - (player.y + UNDERCARRIAGE_Y)) / TILE;   // the bird's feet over its ground
@@ -345,6 +357,35 @@ export function updateCrabs(player, game) {
   }
 }
 
+// Where the chase camera can see: the drawn landscape runs from ten to
+// thirty-four tiles in front of the eye, a little under half as wide as it
+// is far either side.
+function onScreen(c, player) {
+  const dz = ((c.z - player.camZ) | 0) / TILE;
+  const dx = ((c.x - player.camX) | 0) / TILE;
+  return dz > 9 && dz < 35 && Math.abs(dx) < dz * 0.48 + 1;
+}
+
+// A fire bomb's burst: every crab within `reach` tiles is thrown over onto
+// its back. Returns how many.
+const FLIP_TIME = 24;            // steps the throw takes, before it can go
+export function flipCrabsNear(x, z, reach) {
+  let n = 0;
+  for (const c of crabs) {
+    if (!c.live || c.flipped) continue;
+    const dx = ((c.x - x) | 0) / TILE, dz = ((c.z - z) | 0) / TILE;
+    if (dx * dx + dz * dz > reach * reach) continue;
+    c.flipped = 1;
+    c.windup = 0;
+    c.chasing = false;
+    // Over away from the burst.
+    const sx = Math.cos(c.h), sz = -Math.sin(c.h);
+    c.flipSide = dx * sx + dz * sz >= 0 ? 1 : -1;
+    n++;
+  }
+  return n;
+}
+
 // Burst into shadow: a puff of dark smoke and a few embers from its eyes.
 const SMOKE = [[40, 30, 58], [26, 20, 38], [58, 44, 80]];
 function squash(c, ground, game) {
@@ -386,6 +427,19 @@ export function drawCrab(rd, c, camX, camY, camZ, fog = 0, row = 0) {
   matRotY(c.h, rot);
   matRotZ(Math.atan2(a - b, 2 * d), tip);
   matMul(rot, tip, mat);
+  // Thrown over: rolled onto its back about its own length, in a hop, and
+  // lying there shell-down.
+  if (c.flipped) {
+    const t = Math.min(1, c.flipped / 14);
+    const e = t * t * (3 - 2 * t);
+    matRotZ(-Math.PI * e * c.flipSide, back);
+    matMul(mat, back, mat2);
+    const hop = Math.sin(Math.PI * t) * 0.6 * TILE;
+    const lie = 0.52 * S * TILE * e;
+    const pose = POSES[(c.gait | 0) & 3][c.snap > 0 ? 1 : 0][0];
+    drawModel(rd, pose, mat2, c.x, (ground - hop - lie) | 0, c.z, camX, camY, camZ, fog);
+    return;
+  }
   // Rearing for a pinch: tipped back, claws up and open. Walking: a bob
   // with each step.
   const rear = c.windup > 0 ? Math.min(1, (WINDUP - c.windup + 1) / 5) : 0;

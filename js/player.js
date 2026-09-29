@@ -23,6 +23,7 @@ import { drawUav } from './uav.js';
 import { drawBird } from './bird.js';
 import { drawOrigami, shedEmbers } from './origami.js';
 import { drawEgg, hatch } from './flames.js';
+import { dropBomb } from './firebombs.js';
 
 // Which airframe to fly. The faceted lander, the quadrotor and the hoverbird
 // all fly on the same model -- tilt the body, push along its own up axis --
@@ -177,6 +178,10 @@ const DRAW_FULL = 8;     // ... and under full thrust
 // Where the bomb leaves the craft, and how hard it is pushed clear. Barely
 // any push: it should fall away rather than be shot downwards.
 const BAY_OFFSET = TILE * 0.34;
+// A fire bomb: a fiftieth of a full load of energy, and a third of a second
+// between them.
+const BOMB_ENERGY = CHARGE_MAX / 50;
+const BOMB_RELOAD = 16;
 const RELEASE_SPEED = TILE * 0.010;
 // Clearance, in tiles, within which the rotors start lifting dust.
 const WASH_HEIGHT = 2.6;
@@ -480,6 +485,16 @@ export class Player {
       if (AIRFRAME === 'origami') hatch(this.x, this.y, this.z);
     }
     if (this.launched && this.grace > 0) this.grace--;
+
+    // Fire: a drop of the bird's own fire let go from under it. In the air
+    // only, a little energy each, and not faster than BOMB_RELOAD.
+    if (this.fireCooldown > 0) this.fireCooldown--;
+    if (fire && this.launched && !this.landed && this.fireCooldown === 0 &&
+        this.charge > BOMB_ENERGY && dropBomb(this)) {
+      this.charge -= BOMB_ENERGY;
+      this.fireCooldown = BOMB_RELOAD;
+      if (game && game.onBombDropped) game.onBombDropped();
+    }
 
     // Rotor phase: idling at rest, winding up with the throttle.
     this.rotorSpin = (this.rotorSpin + 0.34 + this.thrusting * 0.30) % (Math.PI * 2);

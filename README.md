@@ -105,6 +105,15 @@ tiles of it, so the pad is always somewhere safe to sit and charge. Coming
 down on one from above -- descending, over it, feet within half a tile of
 its back -- bursts it into shadow for 60 points and bounces the bird back up.
 
+**Fire bombs**: the phoenix can drop its own fire -- the right mouse
+button, <kbd>C</kbd>, a pad's bumpers, or a quick tap anywhere on a touch
+screen. A drop of fire leaves from under the bird carrying its speed, so you
+aim by flying over the place, and bursts where it lands. Every shadow crab
+within about a tile and a half is thrown over onto its back, 40 points each,
+and lies there waving its legs, harmless, until it is off the screen. Over
+the sea it only hisses out. Each costs a fiftieth of a full load of energy,
+and they come a third of a second apart.
+
 The phoenix **starts small**: a single tail feather, no streamer, and half a full load of
 energy. Five teardrop flames burn across the whole world, each about fifty
 tiles further ahead of the launchpad than the last and swinging wider left

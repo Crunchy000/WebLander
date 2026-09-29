@@ -349,6 +349,11 @@ export class Input {
 
     this.touchThrust = false;
     this.touchFire = false;
+    // A quick tap anywhere on the game drops a fire bomb: a finger down and
+    // up again in under a fifth of a second, hardly moved. It is held for a
+    // few steps so a bomb still reloading does not swallow it.
+    this._taps = new Map();
+    this._tapFire = 0;
 
     // The tilt throttle: where it is set, 0 to 1, and the finger setting it.
     this.fingers = 0;     // on the game itself: under tilt, the engine
@@ -404,7 +409,16 @@ export class Input {
       const [bx, by] = toBuffer(t);
       if (e.type === 'touchstart') {
         (bx < SCREEN_W / 2 ? this.leftThumb : this.rightThumb).down(t.identifier, bx, by);
+        this._taps.set(t.identifier, { at: performance.now(), x: bx, y: by });
       } else {
+        const tap = this._taps.get(t.identifier);
+        if (tap && e.type !== 'touchmove') {
+          this._taps.delete(t.identifier);
+          if (e.type === 'touchend' && performance.now() - tap.at < 200 &&
+              Math.hypot(bx - tap.x, by - tap.y) < 8) this._tapFire = 12;
+        } else if (tap && Math.hypot(bx - tap.x, by - tap.y) >= 8) {
+          this._taps.delete(t.identifier);
+        }
         for (const s of sticks) {
           if (e.type === 'touchmove') s.move(t.identifier, bx, by);
           else s.up(t.identifier);
@@ -746,7 +760,8 @@ export class Input {
       : thumbs ? Math.sign(hx) * expo(Math.abs(hx))
       : 0;
 
-    this.fire = this.mouseFire || this.touchFire || this.padFire
+    if (this._tapFire > 0) this._tapFire--;
+    this.fire = this.mouseFire || this.touchFire || this.padFire || this._tapFire > 0
       || k.has('KeyC') || k.has('ShiftLeft');
 
     return this;
