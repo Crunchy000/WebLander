@@ -104,7 +104,7 @@ import {
   updateBoats, drawBoat, boatsInRow, boatHit, boatBlast, resetBoats, BOAT_SCORE,
 } from './boats.js';
 import { updateCrabs, drawCrab, crabsInRow, resetCrabs, CRAB_SCORE, spawnKing, kingInfo } from './crabs.js';
-import { updateBombs, drawBombs, resetBombs } from './firebombs.js';
+import { updateBombs, drawBombs, resetBombs, burstFlash } from './firebombs.js';
 import { Combo, COMBO_WINDOW } from './tricks.js';
 import { count as countAward, unlock as unlockAward, onEarn } from './achievements.js';
 
@@ -148,7 +148,7 @@ const SUN_HELD = 0.664;
 const SUNSET_Y = -(0x01000000 * 6.5);
 const ASCENT = 170;
 const BEST_TIME_KEY = 'weblander.besttime';
-// A crab thrown on its back by a fire bomb.
+// A crab thrown on its back by a fire burst.
 const FLIP_SCORE = 40;
 
 export const STATE = { TITLE: 0, PLAYING: 1, DYING: 2, GAMEOVER: 3 };
@@ -468,12 +468,7 @@ export class Game {
     this.setMessage('pinched!', 60);
   }
 
-  // Fire bombs: let go, burst, and hissing out in the sea.
-  onBombDropped() {
-    this.audio.tone(520, 0.08, 'triangle', 0.10);
-    setTimeout(() => this.audio.tone(380, 0.10, 'triangle', 0.08), 60);
-  }
-
+  // The phoenix's fire burst: a blast, and the crabs it caught.
   onBombBurst(x, y, z, flipped) {
     this.audio.blast();
     if (flipped > 0) {
@@ -481,10 +476,6 @@ export class Game {
       for (let i = 0; i < flipped; i++) this.onTrick('flip', FLIP_SCORE);
       if (flipped >= 3) unlockAward('triple');
     }
-  }
-
-  onBombFizzle() {
-    this.audio.splash();
   }
 
   // A shadow crab has seen the bird: a clatter of claws, the warning that
@@ -667,7 +658,7 @@ export class Game {
     if (this.onEnding) this.onEnding({ steps, best: newBest ? steps : best, newBest, score: this.score });
   }
 
-  // The king crab: hit by a fire bomb, with `left` hits to go.
+  // The king crab: hit by a fire burst, with `left` hits to go.
   onKingHit(left) {
     this.audio.bigBoom();
     if (left > 0) {
@@ -1063,6 +1054,9 @@ export class Game {
     if (this.state === STATE.PLAYING && on('player')) p.draw(rd, eyeX, eyeY, eyeZ);
     t = prof.lap('bird', t);
     if (on('weather')) drawWeather(rd, eyeX, eyeY, eyeZ);
+    // The fire burst lights everything up for a moment.
+    const fl = burstFlash();
+    if (fl > 0) rd.rect(0, 0, SCREEN_W, SCREEN_H, [255, 170, 90, Math.round(90 * fl * fl)]);
     // Rising into the sun: the evening light fills the screen.
     if (this.finale && this.finale.stage === 'ascend') {
       const a = Math.max(0, Math.min(1, (this.finale.t - 50) / (ASCENT - 50)));

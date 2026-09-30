@@ -38,7 +38,7 @@ running; the copy in the repository says `dev`.
 
 ## Controls
 
-|                  | Steer          | Power                      | Drop fire          | Pause         |
+|                  | Steer          | Power                      | Fire burst         | Pause         |
 |------------------|----------------|----------------------------|--------------------|---------------|
 | **Mouse**        | move it        | left or middle button      | right button       | <kbd>Esc</kbd> |
 | **Keys**         | arrows / WASD  | <kbd>Z</kbd> or <kbd>X</kbd> | <kbd>C</kbd>     | <kbd>P</kbd>  |
@@ -138,7 +138,7 @@ of reach until he is beaten. He keeps within a couple of tiles of it, comes
 at the bird when it is within nine, rears for longer than a small crab
 before he pinches, and a pinch takes a quarter of a full load of energy and
 throws the bird further. Landing on his shell only bounces off. Three fire
-bombs on him turn him over (500 points, as a trick), and the flame comes
+bursts close by turn him over (500 points, as a trick), and the flame comes
 down. Taking it -- all five, the whole bird -- runs the day on to sunset,
 the sun stopping big and orange on the horizon while the sky reddens; then
 climbing -- the two-tile ceiling lifted now -- six and a half tiles above
@@ -173,7 +173,7 @@ bird off it, and nothing about them can hurt you.
 the device between visits -- some a count across every flight (flip fifty
 crabs, bounce off ten balloons, knock over twenty-five block towers, land on
 five canoes, fly ten loops), some a single feat (three balloon bounces in
-one stack, three crabs with one bomb, a x10 stack, being in the air at
+one stack, three crabs with one burst, a x10 stack, being in the air at
 midnight, overturning the king crab, reaching the sunset inside fifteen
 minutes). Earning one puts its name at the foot of the screen with a
 chime; the awards page on the card lists them all, ticked or not, with how
@@ -183,15 +183,21 @@ far along each count is.
 and the bird rides along with it -- and charges, since the water it sits on
 is level. Landing on one is a trick too (120).
 
-**Fire bombs**: the phoenix can drop its own fire -- the right mouse
+**Fire burst** (`js/firebombs.js`): the phoenix flares -- the right mouse
 button, <kbd>C</kbd>, a pad's bumpers, or on a touch screen a third finger
-(with both thumbs on the sticks, any finger not holding one) or, steering by
-tilt, three fingers -- where one is full power and two hover. A drop of fire leaves from under the bird carrying its speed, so you
-aim by flying over the place, and bursts where it lands. Every shadow crab
-within about a tile and a half is thrown over onto its back, 40 points each,
-and lies there waving its legs, harmless, until it is off the screen. Over
-the sea it only hisses out. Each costs a fiftieth of a full load of energy,
-and they come a third of a second apart.
+(with both thumbs down) or, steering by tilt, a second one. It throws its
+own fire out in every direction at once, a shell of embers three tiles
+across with a ring of fire running out over the ground (or a skirt of spray
+over the sea) and the screen flushed warm for a moment, and it kicks the
+bird up a little off its own blast. Whatever is within three tiles of the
+bird, in any direction, is caught: every shadow crab is thrown over onto
+its back, 40 points each, and lies there waving its legs, harmless, until
+it is off the screen; the king crab takes a hit. The reach is a distance,
+so it is a thing done low: from half a tile up it catches crabs nearly
+three tiles out across the ground, from two and a half only those right
+under it, and from three and a half nothing. Each costs a twentieth of a
+full load of energy, and the fire takes nearly a second to come back. (It
+used to be a bomb, dropped to fall and burst where it landed.)
 
 The phoenix **starts small**: a single tail feather, no streamer, and half a full load of
 energy. Five teardrop flames burn across the whole world, each about fifty
@@ -494,7 +500,7 @@ software rasterisation, so a phone GPU does not notice it.
 | `js/music.js` | the soundtrack, if there is one |
 | `js/input.js` | mouse, keyboard, touch and tilt |
 | `js/settings.js` | the player's settings, kept between visits |
-| `js/firebombs.js` | the phoenix's dropped fire |
+| `js/firebombs.js` | the phoenix's fire burst, all round it |
 | `js/tricks.js` | tricks, and stacking them into combos |
 | `js/achievements.js` | awards to tick off, kept between visits |
 | `js/audio.js` | synthesised sound, no assets |

@@ -27,7 +27,7 @@ export const ACHIEVEMENTS = [
   { id: 'trees', name: 'timber!', desc: 'knock over twenty trees', stat: 'trees', goal: 20 },
   { id: 'crabs10', name: 'crab wrangler', desc: 'squash or flip ten shadow crabs', stat: 'crabs', goal: 10 },
   { id: 'crabs50', name: 'scourge of the shore', desc: 'squash or flip fifty shadow crabs', stat: 'crabs', goal: 50 },
-  { id: 'triple', name: 'hat trick', desc: 'flip three crabs with one fire bomb' },
+  { id: 'triple', name: 'hat trick', desc: 'flip three crabs with one fire burst' },
   { id: 'skim1', name: 'spray', desc: 'skim low and fast over the sea', stat: 'skims', goal: 1 },
   { id: 'skim10', name: 'wave rider', desc: 'skim the sea ten times', stat: 'skims', goal: 10 },
   { id: 'skim', name: 'skipping stone', desc: 'hold a long skim over the sea' },
