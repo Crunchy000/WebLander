@@ -543,6 +543,38 @@ export function updateBalloons(player, game) {
   }
 }
 
+// Hot air rises: the warm column over and round a group of balloons, and
+// along the bunting between them, lets the bird climb past its usual ceiling
+// (see GROUND_CEILING in player.js) to a little over the tops, so it can
+// still come down on one and bounce. Returns the world y of the highest top
+// whose air (x, z) is in, or 0x7fffffff when it is in none.
+const THERMAL_R = 2.6;          // tiles from a balloon's middle
+const THERMAL_CORD = 1.6;       // tiles either side of the bunting
+export function thermalTop(x, z) {
+  let top = 0x7fffffff;
+  for (const g of groups) {
+    if (!g.live) continue;
+    let near = false, high = 0x7fffffff;
+    for (let k = 0; k < g.n; k++) {
+      const b = g.bs[k];
+      const t = (b.y - ENVELOPE_TOP) | 0;
+      if (t < high) high = t;
+      if (near) continue;
+      const dx = ((x - b.x) | 0) / TILE, dz = ((z - b.z) | 0) / TILE;
+      if (dx * dx + dz * dz < THERMAL_R * THERMAL_R) near = true;
+      else if (k + 1 < g.n) {
+        const c = g.bs[k + 1];
+        const lx = ((c.x - b.x) | 0) / TILE, lz = ((c.z - b.z) | 0) / TILE;
+        const len2 = lx * lx + lz * lz;
+        const u = len2 > 0 ? (dx * lx + dz * lz) / len2 : -1;
+        if (u > 0 && u < 1 && Math.abs(lx * dz - lz * dx) / Math.sqrt(len2) < THERMAL_CORD) near = true;
+      }
+    }
+    if (near && high < top) top = high;
+  }
+  return top;
+}
+
 // Everything beyond the drawn landscape, furthest first.
 //
 // It cannot go in a row, because there are no rows out there -- so it is

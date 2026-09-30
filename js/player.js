@@ -51,6 +51,18 @@ export const HIGHEST_ALTITUDE = -(TILE * 10);
 // Where lift starts fading rather than where it stops. A tile and a bit of
 // warning is enough to feel the air thinning and back off.
 const CEILING_SOFT = HIGHEST_ALTITUDE + TILE * 1.2;
+
+// ... and the one that is actually met: two tiles over whatever is under the
+// bird. Above it the lift fades out over GROUND_FADE, so a hover sinks back
+// to it and full power tops out a little way into it. It keeps the bird down
+// among things -- a tree, a tower, a hill is to be flown round or through,
+// not over the top of. Two things lift it: the warm air over a balloon (the
+// game says where, as `thermal`), so they can still be climbed to and
+// bounced on; and the sunset, when the phoenix is whole (`openSky`).
+export const GROUND_CEILING = TILE * 2.0;
+const GROUND_FADE = TILE * 0.5;
+const CEILING_BRAKE = 0.8;         // what is left of a climb each step past it
+const THERMAL_OVER = TILE * 1.2;   // how far over a balloon's top its air carries
 // Battery capacity. Doubled from the original tank so a sortie lasts about
 // twice as long; the charge rate is doubled to match, so topping up still
 // takes the same time on the ground.
@@ -350,6 +362,8 @@ export class Player {
   }
 
   reset() {
+    this.thermal = 0x7fffffff;      // the top of the warm air over a balloon, if in it
+    this.openSky = false;
     // Start sitting on the launchpad at the world origin.
     this.x = TILE * 4;
     this.y = LAUNCHPAD_Y;
@@ -595,6 +609,23 @@ export class Player {
       lift = Math.max(0, (this.y - HIGHEST_ALTITUDE) / (CEILING_SOFT - HIGHEST_ALTITUDE));
       this.ceiling = 1 - lift;
     }
+    // Two tiles over the ground (or the sea) under the bird, or a little over
+    // the top of the balloon it is beside. See GROUND_CEILING.
+    // Climbing into it is braked as well, powered or coasting: without that
+    // a run at full power carried two tiles past it on its own speed.
+    let over = 0;
+    if (!this.openSky && !this.landed) {
+      let start = (Math.min(landAltitude(this.x, this.z), SEA_LEVEL) - UNDERCARRIAGE_Y - GROUND_CEILING) | 0;
+      if (this.thermal !== 0x7fffffff && this.thermal - THERMAL_OVER < start) start = (this.thermal - THERMAL_OVER) | 0;
+      over = start - this.y;
+      if (over > 0 && thrust && t > 0) {
+        const g = Math.max(0, 1 - over / GROUND_FADE);
+        if (g < lift) {
+          lift = g;
+          this.ceiling = 1 - lift;
+        }
+      }
+    }
     this.thrusting = thrust;
 
     // Hover holds the height it is at, but only once there is a height worth
@@ -652,10 +683,14 @@ export class Player {
     this.vx = (this.vx * DRAG) | 0;
     this.vy = (this.vy * DRAG) | 0;
     this.vz = (this.vz * DRAG) | 0;
+    if (over > 0 && this.vy < 0) this.vy = (this.vy * CEILING_BRAKE) | 0;
 
     // ... and whatever vertical speed it still had is bled away, so it comes
     // to rest at the height it was given rather than drifting off it.
-    if (holding) this.vy = (this.vy * HOVER_SETTLE) | 0;
+    // Not once the air is too thin to hold at all, though: over the edge of a
+    // cliff, or out of a balloon's warm air, it comes down to where it can
+    // hold rather than settling there a tile a minute.
+    if (holding && lift > 0) this.vy = (this.vy * HOVER_SETTLE) | 0;
     // ... but not into the ground coming up under it.
     if (holding && hold && this.altitude < HOLD_FLOOR && this.vy > -HOLD_RISE) this.vy = -HOLD_RISE;
     // ... and the same across the ground, when it has been told to stay.

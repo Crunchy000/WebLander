@@ -110,7 +110,7 @@ still on the rails go up with them.
 things, a tall faceted shell with two big white eyes on its front, heavy
 block claws dark along the edges that close, and short spiky legs. The eyes
 make their own light, so after dark they are what you see of them. Left alone they
-wander; let the bird come down within about three tiles of the ground and
+wander; let the bird come down within about a tile and a half of the ground and
 seven across it and one will notice -- a clatter of claws says so -- and
 come at it with its claws raised, at about two tiles a second. In reach, it
 stops and rears up, claws open, for about a quarter of a second before it
@@ -134,7 +134,8 @@ throws the bird further. Landing on his shell only bounces off. Three fire
 bombs on him turn him over (500 points, as a trick), and the flame comes
 down. Taking it -- all five, the whole bird -- runs the day on to sunset,
 the sun stopping big and orange on the horizon while the sky reddens; then
-climbing six and a half tiles above the highest ground is rising into it.
+climbing -- the two-tile ceiling lifted now -- six and a half tiles above
+the highest ground is rising into it.
 The phoenix goes up in a stream of embers as the light fills the screen,
 and the flight ends on a card with the time it took and the quickest yet
 (kept on the device).
@@ -254,6 +255,17 @@ nothing descends.** Both lean the same distance, all the way round: hover
 used to be capped at 45° and barred from looping, but since it carries the
 craft's weight whatever the lean, the cap bought no safety, only a machine
 that handled differently depending on which power it was on.
+
+**The ceiling is two tiles over the ground** -- whatever ground, or sea,
+is under the bird at the time. Above that the lift fades out over half a
+tile and any climb is braked, so hover settles back to 2.0 and full power
+tops out at about 2.4; fly off a cliff edge and it comes back down to two
+tiles over the new ground below. It keeps the bird down among things: the
+tallest trees and towers can only be flown round or through, not over.
+Two things lift it. The warm air over and round a group of balloons, and
+along the bunting between them, lets it climb to a tile and a bit over their
+tops, so they can still be bounced on. And once the phoenix is whole, for
+the sunset, the sky is open.
 
 There is no separate turn control, because steering *is* turning. The bird
 is drawn facing where it is going once it is moving -- towards you when it

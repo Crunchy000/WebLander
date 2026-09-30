@@ -87,7 +87,7 @@ import {
 } from './objects.js';
 import { topple, updateBlocks, drawPile, pileAt } from './blocks.js';
 import {
-  updateBalloons, drawBalloon, drawFarBalloons, balloonsInRow, resetBalloons,
+  updateBalloons, drawBalloon, drawFarBalloons, balloonsInRow, resetBalloons, thermalTop,
 } from './balloons.js';
 import {
   updateLanterns, drawLantern, lanternsInRow, resetLanterns,
@@ -807,6 +807,10 @@ export class Game {
       const set = Math.abs(sky.phase - SUNSET_PHASE) < 0.002;
       if (set && p.launched && !p.dead && p.y < SUNSET_Y) this.beginAscent();
     }
+    // The ceiling: two tiles over the ground, more in a balloon's warm air,
+    // and none at all once the phoenix is whole and the sun is going down.
+    this.player.thermal = thermalTop(this.player.x, this.player.z);
+    this.player.openSky = !!this.finale;
     this.player.update(inp.stick, inp.thrust, inp.fire, this.gravity, this, inp.throttle, inp.hold, inp.stay, inp.slide);
     // Gated on the style for the same reason the drawing is: a flower you
     // can drink from and cannot see would be worse than no flower at all.
