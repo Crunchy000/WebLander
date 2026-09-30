@@ -18,20 +18,14 @@ import { SCREEN_W, SCREEN_H } from './renderer.js';
 // strafe was also a gentle climb or sink, and every climb a slow slide.
 const AXIS_DEAD = 0.15;
 
-// How far the mouse and the keys may push the stick. Short of LOOP_AT (see
-// player.js), because neither can be let go of: a pad's stick springs back
-// to the middle and a thumb lifts off the glass, but the mouse's stick stays
-// wherever it was left -- with the pointer captured there is no cursor to
-// show where that is -- and an arrow key held is a stick held hard over.
-// At the rim either of them started the bird looping and kept it looping,
-// and half of every loop is flying backwards. Measured: the up arrow held
-// for four seconds took the bird round 358 degrees, moving towards the
-// camera for 45 of 200 steps. Loops belong to the pad and the thumbs.
-const MOUSE_MAX = 0.94;
+// How far the mouse and the keys may push the stick. The mouse all of it:
+// it was kept short of the rim, where a loop used to start, and pointing
+// there is no loop any more (see MAX_LEAN in player.js).
+const MOUSE_MAX = 1;
 // ... and the keys less than that: a key is all or nothing, so held it goes
-// to wherever this is. 0.6 is a lean of about 80 degrees, a fast dash that
+// to wherever this is. 0.85 is a lean of about 76 degrees, a fast dash that
 // still keeps the bird up.
-const KEY_MAX = 0.6;
+const KEY_MAX = 0.85;
 // A mouse cannot find the exact middle by hand, so near it counts as it.
 const MOUSE_DEAD = 0.05;
 function axisDead(v) {
@@ -178,8 +172,6 @@ export class Input {
         e.preventDefault();
       }
       if (e.code === 'Enter' || e.code === 'Space') this.startPressed = true;
-      // V: a loop the loop, on the press. See Player.update, `loopAsked`.
-      if (e.code === 'KeyV' && !e.repeat) this.loopPressed = true;
     };
     const up = (e) => this.keys.delete(e.code);
     addEventListener('keydown', down);
@@ -293,8 +285,6 @@ export class Input {
     stage.addEventListener('mousedown', (e) => {
       if (e.target !== c && e.target !== stage) return;
       e.preventDefault();
-      // The side buttons, back or forward: a loop the loop.
-      if (e.button === 3 || e.button === 4) this.loopPressed = true;
       // Any click takes the pointer back, so wandering out of the window or
       // pressing Escape costs one click rather than the rest of the flight.
       this.grabPointer();
@@ -303,16 +293,6 @@ export class Input {
     addEventListener('mouseup', (e) => this._buttons(this._held &= e.buttons));
     addEventListener('blur', () => this._buttons(this._held = 0));
     c.addEventListener('contextmenu', (e) => e.preventDefault());
-    // ... and so is a turn of the wheel, one loop a flick however far it
-    // goes: the mouse steers by where it is, and a loop needs the stick held
-    // hard over, which the mouse is kept short of (see MOUSE_MAX).
-    stage.addEventListener('wheel', (e) => {
-      if (e.target !== c && e.target !== stage) return;
-      e.preventDefault();
-      const now = performance.now();
-      if (now - (this._wheelAt || 0) > 400) this.loopPressed = true;
-      this._wheelAt = now;
-    }, { passive: false });
 
     this.mouseStick = { x: 0, y: 0 };
     this.mouseZero = { x: 0, y: 0 };
@@ -662,7 +642,8 @@ export class Input {
     }
     this.padAnyButton = any;
 
-    // Y: a loop the loop, on the press.
+    // Y: a loop the loop, on the press -- steering relative; pointing there
+    // is no loop (see MAX_LEAN in player.js).
     const loopNow = btn(3);
     if (loopNow && !this._padLoopWas) this.loopPressed = true;
     this._padLoopWas = loopNow;
@@ -770,18 +751,17 @@ export class Input {
       if (this.fingers >= 2) thrust = thrust || 1;
       else if (this.fingers === 1) thrust = 2;
     }
-    // Flying relative there is no hover: power is held, and let go of it
-    // falls. The height stick is a throttle -- up is power, centred none,
-    // down a push downwards -- and a hover button is full power.
-    if (this.relativeSteer) {
-      hold = false;
-      if (lift !== null && !this.padThrust) {
-        thrust = lift === 0 ? 0 : 2;
-        throttle = lift;
-      } else if (thrust === 1) {
-        thrust = 2;
-        throttle = 1;
-      }
+    // There is no hover: power is held, and let go of it falls. The height
+    // stick is a throttle -- up is power, centred none, down a push downwards
+    // -- and what was a hover button (the middle mouse button, X, the pad's
+    // left trigger and X, two fingers under tilt) is full power.
+    hold = false;
+    if (lift !== null && !this.padThrust) {
+      thrust = lift === 0 ? 0 : 2;
+      throttle = lift;
+    } else if (thrust === 1) {
+      thrust = 2;
+      throttle = 1;
     }
     this.thrust = thrust;
     this.throttle = throttle;

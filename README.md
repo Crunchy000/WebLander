@@ -38,13 +38,21 @@ running; the copy in the repository says `dev`.
 
 ## Controls
 
-|                  | Steer          | Full power         | Hover         | Drop fire          | Pause         |
-|------------------|----------------|--------------------|---------------|--------------------|---------------|
-| **Mouse**        | move it        | left button        | middle button | right button       | <kbd>Esc</kbd> |
-| **Keys**         | arrows / WASD  | <kbd>Z</kbd>       | <kbd>X</kbd>  | <kbd>C</kbd>       | <kbd>P</kbd>  |
-| **Pad**          | left stick     | RT or A            | LT or X       | LB or RB           | Menu          |
-| **Thumb sticks** | left thumb     | right thumb up     | let the right thumb go | a third finger | the button at the top |
-| **Tilt**         | lean the phone | one finger         | two fingers   | three fingers      | the button at the top |
+|                  | Steer          | Power                      | Drop fire          | Pause         |
+|------------------|----------------|----------------------------|--------------------|---------------|
+| **Mouse**        | move it        | left or middle button      | right button       | <kbd>Esc</kbd> |
+| **Keys**         | arrows / WASD  | <kbd>Z</kbd> or <kbd>X</kbd> | <kbd>C</kbd>     | <kbd>P</kbd>  |
+| **Pad**          | left stick     | RT, LT, A or X; right stick up | LB or RB       | Menu          |
+| **Thumb sticks** | left thumb     | right thumb up             | a third finger     | the button at the top |
+| **Tilt**         | lean the phone | one or two fingers         | three fingers      | the button at the top |
+
+**There is no hover**, in any mode: power is held to stay up and eased off to
+come down, and let go of, it falls. The height stick -- the pad's right
+stick, the right thumb -- is a throttle: up is power, centred none, down a
+push downwards. What were hover buttons are full power. (Hover, and a height
+held with the stick centred, came from the drone this began as; with loops,
+dives and a two-tile ceiling it was one more mode to be caught out by. The
+sections below describing it are its history.)
 
 <kbd>M</kbd> turns the sound on and off, and <kbd>F</kbd> toggles fullscreen.
 
@@ -149,7 +157,7 @@ time before (never under a quarter), so variety pays.
 
 | trick | points |
 |---|---|
-| loop the loop -- all the way round: Y, V or the mouse wheel, or a stick held right over | 150 |
+| loop the loop -- pitch all the way round, steering relative (or Y) | 150 |
 | balloon bounce -- come down on top of a balloon; it throws you back up | 100 |
 | bunting -- fly through the line strung between two balloons | 60 |
 | timber -- knock over a stack of blocks, or a tree | what it is worth |
@@ -257,25 +265,24 @@ still reaches the ground. And relative, the power never pushes the bird **down**
 upside down and too slow for the wings, the push out of its back used to
 drive it into the ground at nearly five g; now only its upward and
 sideways share acts, and a slow bird left upside down rights itself in
-about a second. **There is no hover** when
-steering relative: the right stick is a throttle -- up is power, centred is
-none, down pushes down -- a hover button is full power, and nothing holds a
-height but holding the power. The stay-put assist is for pointing, not for
-flying. The camera does not turn with the bird, so flying towards it the
+about a second. The stay-put assist is for pointing, not for flying. The camera does not turn with the bird, so flying towards it the
 turns feel reversed, as they do for a car driven towards you. The mouse and
 tilt always point.
+
+**Pointing** -- the mouse, the keys, tilt, and the sticks when the setting
+says so -- leans the bird at most a quarter turn: at the rim the thrust is
+flat along the heading, a dash that sinks past about 78 degrees. There is
+no loop pointing. There used to be one at the rim, and the lean went on to
+three quarters of a turn; but a stick that says where to lean means
+nothing past upright, and the loop it made was the bird spinning round its
+own middle. Loops are relative steering's -- pitch held all the way round,
+or <kbd>Y</kbd> on the pad for one whole loop the way the bird is going.
 
 The mouse is that stick. With the pointer captured there is no cursor, so a
 ring in the bottom-right corner shows where the stick is; half a canvas
 height of movement takes it from the middle to the rim, and near the middle
-counts as the middle. The mouse and the keys stop just short of the rim that
-starts a loop: neither can be let go of the way a pad's stick or a thumb
-can, and at the rim they kept the bird looping -- flying backwards for half
-of every turn. So a loop is also **a button**: <kbd>Y</kbd> on the pad,
-<kbd>V</kbd>, a turn of the mouse wheel or a mouse side button. One press
-flies one whole loop the way the bird is going, whatever the stick is doing
-meanwhile -- which is the easy way on the pad too, where a thumb easing off
-the rim during a loop (below 0.8) let go of it halfway round.
+counts as the middle. The keys, all or nothing, lean it to about 76 degrees
+held -- a fast dash that still keeps the bird up.
 
 **Hover does not make that trade** — it keeps the height it is at. The
 sky-facing share of its thrust goes on carrying the craft's weight rather than

@@ -120,36 +120,16 @@ const THRUST_FULL  = 0x0C000;   // full-throttle thrust, doubled again
 // this one has its hold point drift up the travel as the day wears on rather
 // than sitting exactly half way. Half, a little over half, and six tenths.
 export const HOLD_THROTTLE = GRAVITY_START / THRUST_FULL;
-// Radians of tilt at full stick. Pi, so the craft can go all the way over --
-// nose straight down, and every attitude on the way there. Combined with the
-// heading, which already covers the whole circle, that is the full sphere.
-//
-// It has a consequence worth knowing rather than discovering: thrust acts
-// along the roof, so past ninety degrees it points at the ground. Bury the
-// stick under full power and the craft drives itself down rather than merely
-// failing to climb. Hover is still capped at forty-five and still holds its
-// height, so there is always a setting that behaves.
-// How far the stick alone may lean the craft.
-//
-// It was a half turn, so that a held stick could put the machine on its back
-// -- but a half turn of range over one stick is a lot of degrees per
-// millimetre, and spreading it unevenly to protect the middle only moved the
-// problem: it bought ten degrees of bank per tenth of stick down at the
-// bottom and forty-three at the top, so pushing past ninety leapt to a
-// hundred and thirty-five instead of settling.
-//
-// Three quarters of a turn, spread evenly, is fourteen degrees per tenth of
-// stick everywhere -- the same answer wherever you are, which is the whole
-// of what "settles" means. Ninety sits at two thirds of stick with room
-// either side of it rather than on a cliff.
-//
-// Nothing acrobatic goes. A hundred and thirty-five is well past vertical,
-// and all the way over is what the loop is for: bury the stick and the lean
-// stops being a position and becomes a rate, which carries it round through
-// inverted and back. That was always the acrobatic route -- holding the
-// stick at exactly the right spot to hang upside down was the bug that
-// started all this.
-const MAX_LEAN = (Math.PI * 3) / 4;
+// How far the stick alone may lean the craft, pointing: a quarter turn, the
+// thrust flat along the heading at full stick. It was a half turn, then
+// three quarters with a loop at the rim, so that a held stick could put the
+// machine on its back and round -- but a stick that says where to lean has
+// no sensible meaning past upright, and the loop it made was a fake one,
+// the bird spun round its own middle. Acrobatics are relative steering's:
+// there the stick is a rate of pitch, and a loop is a loop (see PITCH_RATE).
+// Past about 78 degrees full power no longer holds the height, so the last
+// part of the travel is a dash that sinks.
+const MAX_LEAN = Math.PI / 2;
 // Hover leans as far as anything else. It used to be capped at forty-five
 // degrees, and barred from looping, on the grounds that it was the mode for
 // placing the craft; but hover carries the craft's weight whatever the lean
@@ -181,8 +161,8 @@ const MAX_LEAN = (Math.PI * 3) / 4;
 // range still ran to a half turn; with the range brought in, the knife edge
 // sits at two thirds of its own accord and the curve was only buying unequal
 // gain. Even is what settles.
-const LOOP_AT = 0.96;      // stick deflection at which it becomes a rate
-const LOOP_KEEP = 0.80;    // ... and where it goes back to being a position
+// (The rim loop this described is gone: pointing, there is no loop; see
+// MAX_LEAN.)
 const LOOP_RATE = 0.060;   // radians a step, so a full turn takes about 2.1 s
 // A loop is flown on the wings. The push turning round on its own did nothing
 // with the speed the bird came in with: flying forward into a loop, the push
@@ -697,13 +677,14 @@ export class Player {
     // easier one for any. Airborne only, and not over one already going.
     if (this.loopAsked) {
       this.loopAsked = false;
-      if (!this.landed && !this.looping) {
+      if (!this.landed && !this.looping && this.relative) {
         const sp = Math.hypot(this.vx, this.vz);
         if (sp > TILE * 0.01) this.leanDir = Math.atan2(this.vx, this.vz);
         this.loopOrder = true;
       }
     }
-    this.looping = this.loopOrder || (!rel && mag >= (this.looping ? LOOP_KEEP : LOOP_AT));
+    // Only ever a loop asked for, relative: pointing, there is no loop.
+    this.looping = this.loopOrder;
     // Which way round: forward, up and over if it is going the way it leans
     // as the loop starts, and the other way if it is backing into it. See
     // LOOP_CARRY.
@@ -775,7 +756,7 @@ export class Player {
     // Past the handling, the hold is a hover. See above.
     if (hold) thrust = 1;
     // A loop asked for by button is flown under power, at least a hover's.
-    if (this.loopOrder && !thrust) thrust = this.relative ? 2 : 1;
+    if (this.loopOrder && !thrust) thrust = 2;
 
     // A flat battery means no thrust at all. Remembering that it was asked
     // for lets the HUD say so, rather than the machine simply going quiet.
