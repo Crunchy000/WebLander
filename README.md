@@ -267,6 +267,18 @@ run-up and a pull into a loop carries over it on momentum -- a full-power
 blast straight up from the ground coasts to about 4.4 -- and comes back
 down, with nothing to stay up on. Fly off a cliff edge on hover and it sinks
 at no more than a tile and a half a second to two tiles over the new ground.
+The ground it is measured from is the highest of what is underfoot and
+what the bird will be over in half a second and a second (up to three
+tiles ahead), so the ceiling rises before a hill does. Flying under power
+at a slope that rises ahead, within two and a half tiles of it, **ridge
+lift** -- the air pushed up the face -- carries the bird up the slope's
+angle at the speed it is going: a scripted pilot at the ceiling crashed
+into the steepest slopes on one run in four without it, and on none with
+it. And **a loop carries its own weight** on any power, and the ceiling
+does not apply during one: the push goes all the way round and comes to
+nothing over a turn, so gravity alone took three tiles off every loop and
+any loop begun near the ceiling ended in the sea. Carried, it rises a tile
+and a bit and comes back round to where it began.
 The one ceiling that is never broken is the old one in world y, ten tiles
 over the tallest peak: climbs into it are braked, and at it they stop.
 Two things lift the two-tile one. The warm air over and round a group of

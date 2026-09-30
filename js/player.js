@@ -78,6 +78,16 @@ export const GROUND_CEILING = TILE * 2.0;
 const GROUND_FADE = TILE * 0.5;
 const GROUND_LIFT_MIN = 0.12;      // under a fifth of full power's: never enough to hold on
 const HOVER_SINK = TILE * 0.03;    // a step: a tile and a half a second
+const LOOK_AHEAD = 25;             // steps: the ground is looked for this far ahead, and twice it
+const LOOK_MAX = TILE * 3;         // ... but never more than this far
+// Ridge lift. Held down among the hills, the bird meets them at speed, and
+// its own push could not lift it up a steep face fast enough: a pilot flying
+// at the ceiling into the steepest tenth of the slopes crashed into one run in
+// four. Flying under power at ground that rises ahead, within RIDGE_NEAR of
+// it, the air pushed up the face carries the bird up the slope's angle at the
+// speed it is going.
+const RIDGE_NEAR = TILE * 2.5;
+const RIDGE_EASE = 0.3;            // how much of the way to that each step
 const CEILING_BRAKE = 0.8;         // what is left of a climb each step in the world-y ceiling's thin air
 const THERMAL_OVER = TILE * 1.2;   // how far over a balloon's top its air carries
 // Battery capacity. Doubled from the original tank so a sortie lasts about
@@ -630,8 +640,19 @@ export class Player {
     // the top of the balloon it is beside: `climb` is the share of the upward
     // push it still gets. See GROUND_CEILING.
     let over = 0, climb = 1, warm = false;
-    if (!this.openSky && !this.landed) {
-      let start = (Math.min(landAltitude(this.x, this.z), SEA_LEVEL) - UNDERCARRIAGE_Y - GROUND_CEILING) | 0;
+    if (!this.openSky && !this.landed && !this.looping) {
+      // The ground is the highest of what is under the bird and what it will
+      // be over in a half and a whole second, so the ceiling rises ahead of a
+      // hill rather than on it: measured from underfoot alone, the way up a
+      // slope opened only once the bird was already on it.
+      let ground = Math.min(landAltitude(this.x, this.z), SEA_LEVEL);
+      for (let k = 1; k <= 2; k++) {
+        const ax = (this.x + clamp(this.vx * LOOK_AHEAD * k, -LOOK_MAX, LOOK_MAX)) | 0;
+        const az = (this.z + clamp(this.vz * LOOK_AHEAD * k, -LOOK_MAX, LOOK_MAX)) | 0;
+        const a = landAltitude(ax, az);
+        if (a < ground) ground = a;
+      }
+      let start = (ground - UNDERCARRIAGE_Y - GROUND_CEILING) | 0;
       if (this.thermal !== 0x7fffffff && this.thermal - THERMAL_OVER < start) {
         start = (this.thermal - THERMAL_OVER) | 0;
         warm = true;
@@ -695,7 +716,25 @@ export class Player {
     // all but the share the thinning air at the ceiling has already stopped
     // it from answering. Push a hover up there and it starts to sink, same as
     // anything else.
-    this.vy = (this.vy + (holding ? Math.round(gravity * (1 - lift * climb)) : gravity)) | 0;
+    // Up a rising slope, the ridge lift. See RIDGE_NEAR.
+    if (thrust > 0 && !this.landed && !this.looping && this.altitude < RIDGE_NEAR) {
+      const sp = Math.hypot(this.vx, this.vz);
+      if (sp > TILE * 0.01) {
+        const dx = clamp(this.vx * LOOK_AHEAD, -LOOK_MAX, LOOK_MAX), dz = clamp(this.vz * LOOK_AHEAD, -LOOK_MAX, LOOK_MAX);
+        const rise = Math.min(landAltitude(this.x, this.z), SEA_LEVEL) - Math.min(landAltitude((this.x + dx) | 0, (this.z + dz) | 0), SEA_LEVEL);
+        if (rise > 0) {
+          const want = -sp * rise / Math.hypot(dx, dz);
+          if (this.vy > want) this.vy = (this.vy + (want - this.vy) * RIDGE_EASE) | 0;
+        }
+      }
+    }
+    // So does a loop in progress, on any power: the push goes all the way
+    // round and comes to nothing over a turn, and gravity alone would take
+    // three tiles off it -- every loop from anywhere near the two-tile
+    // ceiling ended in the sea. Carried, it comes back round to about where
+    // it began.
+    const carried = holding || (this.looping && thrust > 0);
+    this.vy = (this.vy + (carried ? Math.round(gravity * (1 - lift * climb)) : gravity)) | 0;
     // Staying put: the lean stick centred on an assisted control, in the
     // air, with power to do it. A craft falling with its engine off, or a
     // flat pack, gets no help.
