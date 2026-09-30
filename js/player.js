@@ -285,6 +285,9 @@ const FACE_EASE = 0.15;
 const PITCH_KNEE = 1.0;
 const PITCH_SOFT = 0.4;
 function drawnPitch(lean) {
+  // Nose up (a lean past the half turn: a flare, or the climb of a loop) is
+  // the same curve the other way.
+  if (lean > Math.PI) return -drawnPitch(Math.PI * 2 - lean);
   if (lean <= PITCH_KNEE) return lean * PITCH_SOFT;
   if (lean >= Math.PI) return lean;
   return PITCH_KNEE * PITCH_SOFT + (lean - PITCH_KNEE) * (Math.PI - PITCH_KNEE * PITCH_SOFT) / (Math.PI - PITCH_KNEE);
@@ -668,8 +671,25 @@ export class Player {
       this.loopTurn = 0;
     }
     if (this.looping) {
-      this.lean += LOOP_RATE;
+      // The lean goes round with the path: nose up and over, the way the
+      // wings are carrying it (see LOOP_CARRY), eased onto it from whatever
+      // the lean was going in. It used to turn on forwards, nose down, while
+      // the path went up and over the other way: the bird was drawn
+      // tumbling against its own loop, 88 degrees off the way it was going
+      // on average and tail first at the worst.
       this.loopTurn += LOOP_RATE;
+      if (this.loopSense > 0) {
+        // Going forward into it, the nose is simply where the bird is going,
+        // up and over (the velocity trails the ideal circle a little).
+        const vD = this.vx * Math.sin(this.leanDir) + this.vz * Math.cos(this.leanDir);
+        let dl = -Math.atan2(-this.vy, vD) - this.lean;
+        dl -= Math.round(dl / (Math.PI * 2)) * Math.PI * 2;
+        this.lean += dl * 0.5;
+      } else {
+        let dl = this.loopTurn - this.lean;
+        dl -= Math.round(dl / (Math.PI * 2)) * Math.PI * 2;
+        this.lean += dl * LEAN_RATE + LOOP_RATE;
+      }
       // All the way round from where it went in: a loop the loop. (Counted
       // from the entry rather than at the lean's own wrap, since the loop is
       // flown from where it began -- see LOOP_CARRY.)
@@ -959,7 +979,7 @@ export class Player {
     const speed = Math.hypot(this.vx, this.vz) / TILE;
     // Not in a loop, or leaning past upright: there the travel swings right
     // round and the bird would spin to follow it. It faces its lean.
-    const w = this.looping || this.lean > Math.PI / 2 ? 0
+    const w = this.looping || this.tilt > Math.PI / 2 ? 0
       : clamp((speed - FACE_SLOW) / (FACE_FAST - FACE_SLOW), 0, 1);
     let want = this.leanDir;
     if (w > 0) {
@@ -975,7 +995,12 @@ export class Player {
     let off = this.leanDir - this.facing;
     while (off > Math.PI) off -= Math.PI * 2;
     while (off < -Math.PI) off += Math.PI * 2;
-    matFromAim(this.facing, drawnPitch(this.lean) * Math.max(0, Math.cos(off)), this.pose);
+    // In a loop it is drawn at its whole pitch -- the softening is for
+    // reading ordinary flight -- blended in and out so neither end pops.
+    this.loopPose = (this.loopPose || 0) + ((this.looping ? 1 : 0) - (this.loopPose || 0)) * 0.15;
+    const whole = this.lean > Math.PI ? this.lean - Math.PI * 2 : this.lean;
+    const pitch = drawnPitch(this.lean) + (whole - drawnPitch(this.lean)) * this.loopPose;
+    matFromAim(this.facing, pitch * Math.max(0, Math.cos(off)), this.pose);
   }
 
   // Downwash off the ground. Only close in, and only over land -- it is grit
