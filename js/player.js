@@ -196,6 +196,22 @@ const LOOP_RATE = 0.060;   // radians a frame, so a full turn takes about 1.7s
 // The loop is as big as the run-up -- its radius is the speed over
 // LOOP_RATE. The two-tile ceiling does not apply during one; the world-y
 // limit does.
+// Relative steering, for the sticks when the setting asks for it: across
+// turns the heading, and the momentum round with it, as a banked turn does;
+// forward pitches the nose down along the heading, up to REL_DIVE; back
+// flares the nose up a little (REL_FLARE) while the wings turn the bird's
+// forward speed up into a climb, up to REL_CLIMB, PULL_RATE a step at full
+// pull; right back is a loop. Centred, it levels out and keeps its heading
+// -- and its speed: the stay-put assist is for pointing, not for flying.
+const TURN_RATE = 0.045;           // radians a step at full stick: round in 2.8 s
+const TURN_GRIP = 0.9;             // how much of the turn the momentum follows
+const REL_DIVE = 1.3;              // radians of lean at full forward: about 75 degrees
+const REL_FLARE = 0.15;            // ... and back, at full pull short of a loop
+const REL_CLIMB = 1.0;             // the steepest climb a pull turns speed into
+const PULL_RATE = 0.08;            // radians a step at full pull: speed turned to climb in a fifth of a second
+// ... and while pulling, drag is only LOOP_DRAG: it is the wings flying, as
+// in a loop, and at the ordinary drag half the speed was gone in the second
+// it took to turn it upwards.
 const LOOP_CARRY = 0.2;
 const LOOP_DRAG = 0.997;
 const LOOP_MIN = TILE * 0.05;      // a step: a loop from a standstill is still a loop
@@ -597,8 +613,31 @@ export class Player {
     // the two now agree: square on its skids until it is off them, then
     // whatever you ask for, from a neutral that was taken as you left.
     const mag = this.landed ? 0 : Math.min(1, Math.hypot(stick.x, stick.y));
-    const targetLean = mag * MAX_LEAN;
-    const targetDir = (mag > 0.02) ? Math.atan2(stick.x, stick.y) : this.leanDir;
+    let targetLean = mag * MAX_LEAN;
+    let targetDir = (mag > 0.02) ? Math.atan2(stick.x, stick.y) : this.leanDir;
+    // Relative steering. See TURN_RATE.
+    const rel = this.relative && !this.landed;
+    const pull = rel ? Math.max(0, -stick.y) : 0;
+    if (rel) {
+      if (!this.looping) {
+        const turn = stick.x * TURN_RATE;
+        this.leanDir += turn;
+        if (this.leanDir > Math.PI) this.leanDir -= Math.PI * 2;
+        else if (this.leanDir < -Math.PI) this.leanDir += Math.PI * 2;
+        // The momentum comes round with it, if it is going the way it faces.
+        const fwd = this.vx * Math.sin(this.leanDir) + this.vz * Math.cos(this.leanDir);
+        if (turn && fwd > 0) {
+          const d = turn * TURN_GRIP, c = Math.cos(d), sn = Math.sin(d);
+          const vx = this.vx;
+          this.vx = (vx * c + this.vz * sn) | 0;
+          this.vz = (this.vz * c - vx * sn) | 0;
+        }
+      }
+      targetDir = this.leanDir;
+      targetLean = stick.y > 0 ? stick.y * REL_DIVE : -pull * REL_FLARE;
+      // Right back: a loop, pulled up and over the way it is going.
+      if (pull >= LOOP_AT && !this.looping) this.loopAsked = true;
+    }
 
     // Interpolate the direction the short way round the circle.
     let dd = targetDir - this.leanDir;
@@ -620,7 +659,7 @@ export class Player {
         this.loopOrder = true;
       }
     }
-    this.looping = this.loopOrder || mag >= (this.looping ? LOOP_KEEP : LOOP_AT);
+    this.looping = this.loopOrder || (!rel && mag >= (this.looping ? LOOP_KEEP : LOOP_AT));
     // Which way round: forward, up and over if it is going the way it leans
     // as the loop starts, and the other way if it is backing into it. See
     // LOOP_CARRY.
@@ -807,11 +846,27 @@ export class Player {
     // Staying put: the lean stick centred on an assisted control, in the
     // air, with power to do it. A craft falling with its engine off, or a
     // flat pack, gets no help.
-    const staying = stay && !this.landed && thrust > 0 && mag === 0;
-    const drag = winged ? LOOP_DRAG : DRAG;
+    const staying = stay && !rel && !this.landed && thrust > 0 && mag === 0;
+    const drag = winged || (rel && pull > 0.1) ? LOOP_DRAG : DRAG;
     this.vx = (this.vx * drag) | 0;
     this.vy = (this.vy * drag) | 0;
     this.vz = (this.vz * drag) | 0;
+    // Pulling up, short of a loop: the wings turn forward speed into climb,
+    // keeping the speed. See TURN_RATE.
+    if (rel && pull > 0.1 && !winged) {
+      const sy = Math.sin(this.leanDir), cy = Math.cos(this.leanDir);
+      const vD = this.vx * sy + this.vz * cy, vU = -this.vy;
+      if (vD > TILE * 0.005) {
+        const a = Math.atan2(vU, vD), want = pull * REL_CLIMB;
+        if (a < want) {
+          const sp = Math.hypot(vD, vU), a2 = Math.min(want, a + PULL_RATE * pull);
+          const nD = sp * Math.cos(a2);
+          this.vx = (this.vx + (nD - vD) * sy) | 0;
+          this.vz = (this.vz + (nD - vD) * cy) | 0;
+          this.vy = (-sp * Math.sin(a2)) | 0;
+        }
+      }
+    }
     // Round the loop on the wings. See LOOP_CARRY.
     if (winged) {
       const vD = this.vx * wsy + this.vz * wcy;      // along the lean, now
@@ -842,7 +897,7 @@ export class Player {
     // hold -- at a steady HOVER_SINK -- rather than settling a tile a minute.
     if (holding && over > GROUND_FADE) {
       if (this.vy > HOVER_SINK) this.vy = HOVER_SINK;
-    } else if (holding && lift > 0 && !winged) this.vy = (this.vy * HOVER_SETTLE) | 0;
+    } else if (holding && lift > 0 && !winged && !(rel && pull > 0.1)) this.vy = (this.vy * HOVER_SETTLE) | 0;
     // ... but not into the ground coming up under it.
     if (holding && hold && !winged && this.altitude < HOLD_FLOOR && this.vy > -HOLD_RISE) this.vy = -HOLD_RISE;
     // ... and the same across the ground, when it has been told to stay.

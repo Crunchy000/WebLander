@@ -229,6 +229,22 @@ becomes the craft's heading, and how far you push it becomes how far its nose
 drops. Thrust acts along the roof, so a nose-down attitude carries you along
 the heading — trading lift for speed.
 
+**Relative steering** is the other way the sticks -- the pad's left stick
+and the left thumb on the glass -- can fly, and the default (settings:
+*sticks* -- *turn & pitch* or *point*). Across turns the heading, round in
+2.8 seconds at full stick, and carries nine tenths of the momentum round
+with it, as a banked turn does. Forward pitches the nose down along the
+heading, up to about 75 degrees. Back flares the nose up a little while the
+wings turn the forward speed into a climb (up to about 57 degrees, at full
+pull within a fifth of a second), and while pulling the drag is only a
+loop's: a second's pull at 0.6 from a 5.8 tiles-a-second cruise climbs a
+tile and two thirds and keeps 3.6. Right back is a loop, pulled up and over
+the way the bird is going; held there, loop after loop. Centred, it levels
+out and keeps its heading -- the stay-put assist is for pointing, not for
+flying. The camera does not turn with the bird, so flying towards it the
+turns feel reversed, as they do for a car driven towards you. The mouse and
+tilt always point.
+
 The mouse is that stick. With the pointer captured there is no cursor, so a
 ring in the bottom-right corner shows where the stick is; half a canvas
 height of movement takes it from the middle to the rim, and near the middle

@@ -15,6 +15,7 @@ export const DEFAULTS = {
   effects: 1,        // 0 to 1: everything else
   mouse: 1,          // how far a given hand movement leans the bird; 0.5 to 2
   picture: 0,        // index into PICTURES
+  steer: 'relative', // the sticks: 'relative' (turn and pitch) or 'screen' (lean where you point)
 };
 
 // How sharp the picture is: the share of the display's own resolution the
@@ -41,6 +42,7 @@ function load() {
   out.effects = clamp01(out.effects);
   out.mouse = Math.max(0.5, Math.min(2, out.mouse));
   out.picture = Math.max(0, Math.min(PICTURES.length - 1, out.picture | 0));
+  if (out.steer !== 'relative' && out.steer !== 'screen') out.steer = DEFAULTS.steer;
   return out;
 }
 

@@ -98,7 +98,7 @@
             <table class="keys">
               <thead><tr><th></th><th>gamepad</th></tr></thead>
               <tbody>
-                <tr><th>steer</th><td>left stick</td></tr>
+                <tr><th>steer</th><td>left stick: left and right turn, forward dives, back pulls up &mdash; right back loops (or <em>point</em> in settings: lean where you push)</td></tr>
                 <tr><th>height, sidestep</th><td>right stick &mdash; let go and it holds its height</td></tr>
                 <tr><th>full power</th><td><kbd>RT</kbd> or <kbd>A</kbd></td></tr>
                 <tr><th>hover</th><td><kbd>LT</kbd> or <kbd>X</kbd></td></tr>
@@ -181,6 +181,13 @@
             </div>
           </div>
           <p id="tiltread" class="read touch-only">tilt: waiting for sensor&hellip;</p>
+          <div class="set">
+            <span class="set-label">sticks</span>
+            <div id="sticksteer" class="segs" role="group" aria-label="how the sticks steer">
+              <button class="seg" data-steer="relative" aria-pressed="true">turn &amp; pitch</button>
+              <button class="seg" data-steer="screen" aria-pressed="false">point</button>
+            </div>
+          </div>
           <div class="set">
             <span class="set-label">picture</span>
             <div id="picturepick" class="segs" role="group" aria-label="picture">

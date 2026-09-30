@@ -224,6 +224,7 @@ function applySettings() {
   audio.setLevels(settings.volume, settings.effects);
   setMusicVolume(settings.music);
   input.mouseSens = settings.mouse;
+  input.relative = settings.steer === 'relative';
   renderer.want = PICTURES[settings.picture].scale;
 
   soundSwitch.setAttribute('aria-checked', String(settings.sound));
@@ -237,6 +238,9 @@ function applySettings() {
   document.getElementById('out-mouse').textContent = settings.mouse.toFixed(1) + '×';
   for (const b of document.querySelectorAll('#picturepick .seg')) {
     b.setAttribute('aria-pressed', String(+b.dataset.picture === settings.picture));
+  }
+  for (const b of document.querySelectorAll('#sticksteer .seg')) {
+    b.setAttribute('aria-pressed', String(b.dataset.steer === settings.steer));
   }
 }
 
@@ -265,6 +269,9 @@ for (const k of ['volume', 'music', 'effects']) {
 sliders.mouse.addEventListener('input', () => change(() => { settings.mouse = +sliders.mouse.value / 100; }));
 for (const b of document.querySelectorAll('#picturepick .seg')) {
   b.addEventListener('click', () => change(() => { settings.picture = +b.dataset.picture; }));
+}
+for (const b of document.querySelectorAll('#sticksteer .seg')) {
+  b.addEventListener('click', () => change(() => { settings.steer = b.dataset.steer; }));
 }
 
 // Clearing the best score asks twice.

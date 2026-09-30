@@ -71,6 +71,7 @@ export class Input {
     // it is 1 for the ones that only say yes.
     this.throttle = 1;
     this.steerMode = 'touch';
+    this.relative = true;  // the setting; relativeSteer is whether it applies now
     this.thrust = 0;      // 0 none, 1 hover, 2 full
     this.hold = false;    // the height stick centred: stay at this height
     this.stay = false;    // an assisted lean stick: centred, stay put
@@ -725,6 +726,9 @@ export class Input {
     // stick is (see Game.drawHud): with the pointer captured nothing else
     // does.
     this.mouseSteers = !this.padOwns && !thumbs && !tilt && !keyActive && !this.touchUi;
+    // The sticks -- the pad's left, the left thumb -- fly relative when the
+    // setting says so: across turns, forward and back pitch. See Player.update.
+    this.relativeSteer = this.relative && (this.padOwns || thumbs);
 
     // Thrust, from whichever source is active, and how much of it.
     //

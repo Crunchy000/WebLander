@@ -812,6 +812,7 @@ export class Game {
     // The ceiling: two tiles over the ground, more in a balloon's warm air,
     // and none at all once the phoenix is whole and the sun is going down.
     this.player.thermal = thermalTop(this.player.x, this.player.z);
+    this.player.relative = inp.relativeSteer;
     // A loop asked for by button -- V, the wheel, a side button, pad Y.
     if (this.input.consumeLoop()) this.player.loopAsked = true;
     this.player.openSky = !!this.finale;
