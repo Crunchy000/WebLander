@@ -280,11 +280,16 @@ quarter of full power (over a g) at the surface, fading to nothing at a
 tile and a half, and any descent towards it cushioned. Flying forward at
 0.7 of the stick used to put the bird in the sea in a second and a half;
 now it rides half a tile over it. Hover is left out: it is already holding
-the height it was asked for, for a skim or a landing. And **a loop carries its own weight** on any power, and the ceiling
-does not apply during one: the push goes all the way round and comes to
-nothing over a turn, so gravity alone took three tiles off every loop and
-any loop begun near the ceiling ended in the sea. Carried, it rises a tile
-and a bit and comes back round to where it began.
+the height it was asked for, for a skim or a landing. And **a loop is flown on the wings**: it carries its own weight, the
+ceiling does not apply during one, and the speed the bird came in with is
+carried round a circle that starts where it went in -- forward, up, back
+over the top, down and out the way it came -- losing a little to drag and
+nothing to the push, which turned with the lean had braked the climb. The
+loop is as big as the run-up (its radius is the speed over the rate the
+lean turns): from a standstill it stands a tile and a half tall, after a
+two-second run along the water four and a half, coming out at three
+quarters of the speed it went in with. The trick counts one full turn from
+the entry.
 The one ceiling that is never broken is the old one in world y, ten tiles
 over the tallest peak: climbs into it are braked, and at it they stop.
 Two things lift the two-tile one. The warm air over and round a group of

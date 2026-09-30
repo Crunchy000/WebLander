@@ -184,6 +184,21 @@ const MAX_LEAN = (Math.PI * 3) / 4;
 const LOOP_AT = 0.96;      // stick deflection at which it becomes a rate
 const LOOP_KEEP = 0.80;    // ... and where it goes back to being a position
 const LOOP_RATE = 0.060;   // radians a frame, so a full turn takes about 1.7s
+// A loop is flown on the wings. The push turning round on its own did nothing
+// with the speed the bird came in with: flying forward into a loop, the push
+// went forward and then down, and the speed carried it into a dive; and drag
+// took four fifths of what it had over the turn. So while looping, the
+// bird's speed in the plane of the loop is carried round a circle that
+// starts where it went in -- forward, up, back over the top, down and out
+// the way it came in -- LOOP_CARRY of the way onto it each step, losing only
+// LOOP_DRAG a step and never slower than LOOP_MIN. The push does nothing to
+// it there: turned by the lean, it braked the climb over the second quarter.
+// The loop is as big as the run-up -- its radius is the speed over
+// LOOP_RATE. The two-tile ceiling does not apply during one; the world-y
+// limit does.
+const LOOP_CARRY = 0.2;
+const LOOP_DRAG = 0.997;
+const LOOP_MIN = TILE * 0.05;      // a step: a loop from a standstill is still a loop
 // How fast a hovering craft settles to a standstill vertically. Applied every
 // frame to whatever vertical speed is left, so arriving at a hover from a
 // dive is a catch rather than a wall: a 2 tiles/s descent is down to a tenth
@@ -398,6 +413,8 @@ export class Player {
 
   reset() {
     this.thermal = 0x7fffffff;      // the top of the warm air over a balloon, if in it
+    this.loopSense = 1;
+    this.loopTurn = 0;
     this.openSky = false;
     // Start sitting on the launchpad at the world origin.
     this.x = TILE * 4;
@@ -587,9 +604,25 @@ export class Player {
     while (dd < -Math.PI) dd += Math.PI * 2;
     this.leanDir += dd * LEAN_RATE;
 
+    const wasLooping = this.looping;
     this.looping = mag >= (this.looping ? LOOP_KEEP : LOOP_AT);
+    // Which way round: forward, up and over if it is going the way it leans
+    // as the loop starts, and the other way if it is backing into it. See
+    // LOOP_CARRY.
+    if (this.looping && !wasLooping) {
+      this.loopSense = this.vx * Math.sin(this.leanDir) + this.vz * Math.cos(this.leanDir) >= 0 ? 1 : -1;
+      this.loopTurn = 0;
+    }
     if (this.looping) {
       this.lean += LOOP_RATE;
+      this.loopTurn += LOOP_RATE;
+      // All the way round from where it went in: a loop the loop. (Counted
+      // from the entry rather than at the lean's own wrap, since the loop is
+      // flown from where it began -- see LOOP_CARRY.)
+      if (this.loopTurn >= Math.PI * 2) {
+        this.loopTurn -= Math.PI * 2;
+        if (!this.landed && game && game.onTrick) game.onTrick('loop');
+      }
     } else {
       // Ease the short way round, the same as the heading does. Without this
       // a craft coming off a loop at five radians would unwind backwards
@@ -599,11 +632,7 @@ export class Player {
       while (dl < -Math.PI) dl += Math.PI * 2;
       this.lean += dl * LEAN_RATE;
     }
-    if (this.lean >= Math.PI * 2) {
-      this.lean -= Math.PI * 2;
-      // All the way round, forwards: a loop the loop.
-      if (!this.landed && game && game.onTrick) game.onTrick('loop');
-    }
+    if (this.lean >= Math.PI * 2) this.lean -= Math.PI * 2;
     else if (this.lean < 0) this.lean += Math.PI * 2;
 
     matFromAim(this.leanDir, this.lean, this.matrix);
@@ -683,6 +712,11 @@ export class Player {
     // A height stick held centred is a hold at any height (see above).
     const holding = thrust === 1 && !this.landed && (hold || this.altitude > HOVER_CLEAR);
 
+    // In a loop the wings fly it, from the speed it had coming into this step
+    // (see LOOP_CARRY); the push's own share in the plane is set aside below.
+    const winged = this.looping && thrust > 0 && !this.landed;
+    const wsy = Math.sin(this.leanDir), wcy = Math.cos(this.leanDir);
+    const wD0 = this.vx * wsy + this.vz * wcy, wU0 = -this.vy;
     if (thrust) {
       const power = (thrust === 2 ? THRUST_FULL * t : THRUST_HOVER) * lift;
       // "Up" in ship space is -y, since y points down.
@@ -756,9 +790,25 @@ export class Player {
     // air, with power to do it. A craft falling with its engine off, or a
     // flat pack, gets no help.
     const staying = stay && !this.landed && thrust > 0 && mag === 0;
-    this.vx = (this.vx * DRAG) | 0;
-    this.vy = (this.vy * DRAG) | 0;
-    this.vz = (this.vz * DRAG) | 0;
+    const drag = winged ? LOOP_DRAG : DRAG;
+    this.vx = (this.vx * drag) | 0;
+    this.vy = (this.vy * drag) | 0;
+    this.vz = (this.vz * drag) | 0;
+    // Round the loop on the wings. See LOOP_CARRY.
+    if (winged) {
+      const vD = this.vx * wsy + this.vz * wcy;      // along the lean, now
+      const sp = Math.max(LOOP_MIN, Math.hypot(wD0, wU0) * LOOP_DRAG);
+      const tD = this.loopSense * Math.cos(this.loopTurn), tU = Math.sin(this.loopTurn);
+      let nD = wD0 + (sp * tD - wD0) * LOOP_CARRY, nU = wU0 + (sp * tU - wU0) * LOOP_CARRY;
+      // Turned, not slowed: easing across the corner shortens the vector,
+      // and over a loop that alone took three fifths of the speed.
+      const nl = Math.hypot(nD, nU) || 1;
+      nD *= sp / nl;
+      nU *= sp / nl;
+      this.vx = (this.vx + (nD - vD) * wsy) | 0;
+      this.vz = (this.vz + (nD - vD) * wcy) | 0;
+      this.vy = (-nU) | 0;
+    }
     // The world-y ceiling is the one that is not to be broken: a climb into
     // its thin air is braked, and at the top it stops (below, after moving).
     if (this.y < CEILING_SOFT && this.vy < 0) this.vy = (this.vy * CEILING_BRAKE) | 0;
