@@ -198,29 +198,28 @@ const LOOP_RATE = 0.060;   // radians a step, so a full turn takes about 2.1 s
 // limit does.
 // Relative steering, for the sticks when the setting asks for it: across
 // turns the heading, and the momentum round with it, as a banked turn does.
-// Forward and back fly the wings once the bird is moving (see PITCH_RATE);
-// off a hover, forward leans the nose down along the heading, up to
-// REL_DIVE, and back flares it up a little (REL_FLARE). Centred, it levels
-// out and keeps its heading -- and its speed: the stay-put assist is for
-// pointing, not for flying.
+// Forward and back pitch, with no limit (see PITCH_RATE). The stay-put
+// assist is for pointing, not for flying.
 const TURN_RATE = 0.045;           // radians a step at full stick: round in 2.8 s
 const TURN_GRIP = 0.9;             // how much of the turn the momentum follows
-const REL_DIVE = 1.3;              // radians of lean at full forward: about 75 degrees
-const REL_FLARE = 0.15;            // ... and back
-// Flying on the wings: moving along its heading faster than FLY_SPEED with
-// the stick off the middle, forward and back no longer lean the bird -- they
-// turn its path, nose down or nose up, at up to PITCH_RATE a step, with no
-// limit on the angle. Held, that goes all the way round: back an inside
-// loop, forward an outside one, and either is a loop the loop. The speed is
-// momentum: gravity takes it climbing and gives it diving, drag is only
-// LOOP_DRAG, and power adds FLY_PUSH of itself along the path. Slower than
-// that -- off a hover -- the stick leans the bird as before, so pushing
-// forward moves it off rather than nosing it into the ground. Centred, the
-// wings let go.
+// Pitch, relative: forward and back are a rate of pitch, up to PITCH_RATE a
+// step, at every speed and with no limit on the angle. Held, that goes all
+// the way round -- back an inside loop, forward an outside one -- and either
+// is a loop the loop. Moving along its heading faster than FLY_SPEED the bird
+// is flying on the wings: the stick turns its path, the nose follows it, and
+// the speed is momentum -- gravity takes it climbing and gives it diving,
+// drag is only LOOP_DRAG, and power adds FLY_PUSH of itself along the path;
+// centred, the path holds. Slower, the stick turns the bird itself and the
+// power pushes along its roof, as ever; centred, it keeps its attitude.
+// There is no hover relative: power is held (see Input.sample).
 const PITCH_RATE = LOOP_RATE;      // radians a step at full stick: round in 2.1 s, as a loop by button
-const FLY_SPEED = TILE * 0.05;     // a step, along the heading: 2.5 tiles a second
+const FLY_SPEED = TILE * 0.05;     // a step, along the nose: 2.5 tiles a second
 const FLY_PUSH = 0.1;
 const FLY_DEAD = 0.1;              // stick this near the middle is centred
+// How much of the way the wings turn the path onto the nose each step. The
+// nose is the stick's, always: the path follows it, and never the other way
+// -- when it did, the nose jumped back as the bird got up to flying speed.
+const WING_GRIP = 0.25;
 const LOOP_CARRY = 0.2;
 const LOOP_DRAG = 0.997;
 const LOOP_MIN = TILE * 0.05;      // a step: a loop from a standstill is still a loop
@@ -445,7 +444,6 @@ export class Player {
     this.loopTurn = 0;
     this.loopOrder = false;       // a loop asked for by button, under way
     this.flying = false;          // on the wings: see PITCH_RATE
-    this.settingOff = false;
     this.pitchRate = 0;
     this.pitchTurn = 0;
     this.loopAsked = false;
@@ -649,22 +647,27 @@ export class Player {
         }
       }
       targetDir = this.leanDir;
-      targetLean = stick.y > 0 ? stick.y * REL_DIVE : stick.y * REL_FLARE;
       // On the wings, or not. See PITCH_RATE.
       const fwd = this.vx * Math.sin(this.leanDir) + this.vz * Math.cos(this.leanDir);
       const off = Math.abs(stick.y) > FLY_DEAD;
-      // Holding forward off a hover to set off is a lean the whole way, not a
-      // dive once it gets going: forward pushed while slow is `settingOff`
-      // until the stick comes back to the middle or goes back. Anything else
-      // off the middle at speed is the wings.
-      if (stick.y > FLY_DEAD && fwd <= FLY_SPEED && !this.flying) this.settingOff = true;
-      else if (stick.y <= FLY_DEAD) this.settingOff = false;
-      this.flying = off && !this.loopOrder && !this.settingOff && (this.flying || fwd > FLY_SPEED);
-      this.pitchRate = this.flying ? -stick.y * PITCH_RATE : 0;
+      // Forward and back are a rate of pitch at every speed, with no limit.
+      // Moving, it turns the path, on the wings; slower than FLY_SPEED it
+      // turns the bird itself, and the power pushes along its roof. Centred,
+      // the wings keep the path, and slow, the bird keeps its attitude.
+      // Flying is speed along the nose, the way a wing works. Not the forward
+      // speed alone -- by that the wings let go at the vertical, halfway
+      // round an outside loop, and it fell out of it -- and not all the
+      // speed: a climb straight up on the rotors, nose level, is not flying,
+      // and the wings bent every take-off over flat.
+      const lam = this.lean > Math.PI ? this.lean - Math.PI * 2 : this.lean;
+      const alongNose = fwd * Math.cos(lam) + this.vy * Math.sin(lam);
+      this.flying = !this.loopOrder && alongNose > (this.flying ? FLY_SPEED * 0.7 : FLY_SPEED);
+      this.pitchRate = off ? -stick.y * PITCH_RATE : 0;
     } else {
       this.flying = false;
     }
-    if (!this.flying) this.pitchTurn = 0;
+    if (!this.flying && !rel) this.pitchTurn = 0;
+    if (rel && Math.abs(stick.y) <= FLY_DEAD) this.pitchTurn = 0;
 
     // Interpolate the direction the short way round the circle.
     let dd = targetDir - this.leanDir;
@@ -722,18 +725,12 @@ export class Player {
         this.loopOrder = false;
         if (!this.landed && game && game.onTrick) game.onTrick('loop');
       }
-    } else if (this.flying) {
-      // On the wings the nose is where the path goes. See PITCH_RATE.
-      const vD = this.vx * Math.sin(this.leanDir) + this.vz * Math.cos(this.leanDir);
-      let dl = -Math.atan2(-this.vy, vD) - this.lean;
-      dl -= Math.round(dl / (Math.PI * 2)) * Math.PI * 2;
-      this.lean += dl * 0.5;
-      // All the way round, either way: a loop the loop.
+    } else if (rel) {
+      // Relative: the stick turns the bird itself, nose up or down, and it
+      // stays where it is left; moving, the wings bring the path round after
+      // the nose (see WING_GRIP).
+      this.lean -= this.pitchRate;
       this.pitchTurn += this.pitchRate;
-      if (Math.abs(this.pitchTurn) >= Math.PI * 2) {
-        this.pitchTurn -= Math.sign(this.pitchTurn) * Math.PI * 2;
-        if (game && game.onTrick) game.onTrick('loop');
-      }
     } else {
       // Ease the short way round, the same as the heading does. Without this
       // a craft coming off a loop at five radians would unwind backwards
@@ -743,6 +740,11 @@ export class Player {
       while (dl < -Math.PI) dl += Math.PI * 2;
       this.lean += dl * LEAN_RATE;
     }
+    // All the way round in pitch, either way, relative: a loop the loop.
+    if (Math.abs(this.pitchTurn) >= Math.PI * 2) {
+      this.pitchTurn -= Math.sign(this.pitchTurn) * Math.PI * 2;
+      if (!this.landed && game && game.onTrick) game.onTrick('loop');
+    }
     if (this.lean >= Math.PI * 2) this.lean -= Math.PI * 2;
     else if (this.lean < 0) this.lean += Math.PI * 2;
 
@@ -751,7 +753,7 @@ export class Player {
     // Past the handling, the hold is a hover. See above.
     if (hold) thrust = 1;
     // A loop asked for by button is flown under power, at least a hover's.
-    if (this.loopOrder && !thrust) thrust = 1;
+    if (this.loopOrder && !thrust) thrust = this.relative ? 2 : 1;
 
     // A flat battery means no thrust at all. Remembering that it was asked
     // for lets the HUD say so, rather than the machine simply going quiet.
@@ -911,7 +913,10 @@ export class Player {
     // See PITCH_RATE.
     if (winged && this.flying) {
       const vD = this.vx * wsy + this.vz * wcy;
-      const ang = Math.atan2(wU0, wD0) + this.pitchRate;
+      const path = Math.atan2(wU0, wD0);
+      let dn = -(this.lean > Math.PI ? this.lean - Math.PI * 2 : this.lean) - path;
+      dn -= Math.round(dn / (Math.PI * 2)) * Math.PI * 2;
+      const ang = path + dn * WING_GRIP;
       const push = thrust === 2 ? THRUST_FULL * Math.max(0, t) : thrust ? THRUST_HOVER : 0;
       const sp = Math.max(LOOP_MIN, Math.hypot(wD0, wU0) * LOOP_DRAG - gravity * Math.sin(ang) + push * FLY_PUSH);
       const nD = sp * Math.cos(ang), nU = sp * Math.sin(ang);

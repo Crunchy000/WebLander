@@ -770,6 +770,19 @@ export class Input {
       if (this.fingers >= 2) thrust = thrust || 1;
       else if (this.fingers === 1) thrust = 2;
     }
+    // Flying relative there is no hover: power is held, and let go of it
+    // falls. The height stick is a throttle -- up is power, centred none,
+    // down a push downwards -- and a hover button is full power.
+    if (this.relativeSteer) {
+      hold = false;
+      if (lift !== null && !this.padThrust) {
+        thrust = lift === 0 ? 0 : 2;
+        throttle = lift;
+      } else if (thrust === 1) {
+        thrust = 2;
+        throttle = 1;
+      }
+    }
     this.thrust = thrust;
     this.throttle = throttle;
     this.hold = hold;

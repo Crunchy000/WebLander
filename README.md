@@ -233,18 +233,21 @@ the heading — trading lift for speed.
 and the left thumb on the glass -- can fly, and the default (settings:
 *sticks* -- *turn & pitch* or *point*). Across turns the heading, round in
 2.8 seconds at full stick, and carries nine tenths of the momentum round
-with it, as a banked turn does. Once the bird is moving (faster than 2.5
-tiles a second along its heading), forward and back **fly the wings**: they
-turn its path, nose down or nose up, at a rate set by how far the stick is
-pushed -- a full turn in 2.1 seconds at the rim -- and there is no limit on
-the angle. Held, that goes all the way round: back is an inside loop,
-forward an outside one, and either counts as a loop the loop. The speed is
-momentum: climbing costs it, diving gives it, drag is only a loop's, and
-power adds a little along the path. Off a hover, forward leans the nose
-down along the heading instead, up to about 75 degrees, so pushing forward
-sets off rather than diving into the ground -- until the stick comes back
-to the middle or goes back. Centred, the wings let go, the bird levels out
-and keeps its heading -- the stay-put assist is for pointing, not for
+with it, as a banked turn does. Forward and back are a **rate of pitch** at
+every speed, with no limit on the angle -- a full turn in 2.1 seconds at the
+rim -- and centred, the bird keeps whatever attitude it was left at. Held,
+pitch goes all the way round: back an inside loop, forward an outside one,
+and either counts as a loop the loop. When the bird is moving along its
+nose faster than 2.5 tiles a second it is **flying on the wings**: the path
+is swung round after the nose, a quarter of the way each step, and the
+speed is momentum -- climbing costs it, diving gives it, drag is only a
+loop's, and power adds a little along the path. (Along the nose, not just
+forward: that way a dive straight down is still flying, and a climb
+straight up on the rotors, nose level, is not.) Slower than that, the power
+pushes along the bird's roof as it always has. **There is no hover** when
+steering relative: the right stick is a throttle -- up is power, centred is
+none, down pushes down -- a hover button is full power, and nothing holds a
+height but holding the power. The stay-put assist is for pointing, not for
 flying. The camera does not turn with the bird, so flying towards it the
 turns feel reversed, as they do for a car driven towards you. The mouse and
 tilt always point.
