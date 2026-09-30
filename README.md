@@ -257,15 +257,23 @@ craft's weight whatever the lean, the cap bought no safety, only a machine
 that handled differently depending on which power it was on.
 
 **The ceiling is two tiles over the ground** -- whatever ground, or sea,
-is under the bird at the time. Above that the lift fades out over half a
-tile and any climb is braked, so hover settles back to 2.0 and full power
-tops out at about 2.4; fly off a cliff edge and it comes back down to two
-tiles over the new ground below. It keeps the bird down among things: the
-tallest trees and towers can only be flown round or through, not over.
-Two things lift it. The warm air over and round a group of balloons, and
-along the bunting between them, lets it climb to a tile and a bit over their
-tops, so they can still be bounced on. And once the phoenix is whole, for
-the sunset, the sky is open.
+is under the bird at the time -- and it is soft, and only ever takes the
+climbing away. Past it the upward share of the push fades out over half a
+tile (to nothing while still climbing, and to an eighth on the way back
+down, too little to hold height on), so hover settles back to 2.0 and full
+power holds about 2.4. The push across the ground is untouched, and so is
+the push downwards at the top of a loop. Nothing brakes speed there: a
+run-up and a pull into a loop carries over it on momentum -- a full-power
+blast straight up from the ground coasts to about 4.4 -- and comes back
+down, with nothing to stay up on. Fly off a cliff edge on hover and it sinks
+at no more than a tile and a half a second to two tiles over the new ground.
+The one ceiling that is never broken is the old one in world y, ten tiles
+over the tallest peak: climbs into it are braked, and at it they stop.
+Two things lift the two-tile one. The warm air over and round a group of
+balloons, and along the bunting between them, lets the bird climb to a tile
+and a bit over their tops (braked at the top of it, or a long climb up the
+column shot five tiles past), so they can still be bounced on. And once the
+phoenix is whole, for the sunset, the sky is open.
 
 There is no separate turn control, because steering *is* turning. The bird
 is drawn facing where it is going once it is moving -- towards you when it
