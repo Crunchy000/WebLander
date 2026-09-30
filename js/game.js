@@ -733,11 +733,13 @@ export class Game {
       this.highScore = this.score;
       saveHighScore(this.highScore);
     }
-    // Gravity ratchets up as you get better, exactly as the original does.
-    // Gravity ratchets up at the same score thresholds the original uses.
-    if (this.score >= 1488) this.gravity = 0x04400;
-    else if (this.score >= 1024) this.gravity = 0x03600;
-    else this.gravity = GRAVITY_START;
+    // The original ratcheted gravity up with the score -- x1.35 at 1024,
+    // x1.7 at 1488 -- when the score came slowly, from landings and kills.
+    // It comes from tricks now, and one good stack is worth 1488 on its own,
+    // so within minutes of starting the bird was flying at x1.7: half a
+    // stick's lean then left it a twelfth of a g to climb with, which down
+    // at the two-tile ceiling is no climb at all -- not up a hill, not out
+    // of a dip. Gravity stays where it starts.
   }
 
   // --- simulation ----------------------------------------------------------
