@@ -15,7 +15,7 @@ export const DEFAULTS = {
   effects: 1,        // 0 to 1: everything else
   mouse: 1,          // how far a given hand movement leans the bird; 0.5 to 2
   picture: 0,        // index into PICTURES
-  steer: 'relative', // the sticks: 'relative' (turn and pitch) or 'screen' (lean where you point)
+  steer: 'screen',   // the sticks: 'screen' (easy: lean where you point) or 'relative' (advanced: turn and pitch)
 };
 
 // How sharp the picture is: the share of the display's own resolution the

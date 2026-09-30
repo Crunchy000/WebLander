@@ -43,12 +43,11 @@ running; the copy in the repository says `dev`.
 | **Mouse**        | move it        | left or middle button      | right button       | <kbd>Esc</kbd> |
 | **Keys**         | arrows / WASD  | <kbd>Z</kbd> or <kbd>X</kbd> | <kbd>C</kbd>     | <kbd>P</kbd>  |
 | **Pad**          | left stick     | RT, LT, A or X; right stick up | LB or RB       | Menu          |
-| **Thumb sticks** | left thumb     | right thumb up             | a third finger     | the button at the top |
-| **Tilt**         | lean the phone | one or two fingers         | three fingers      | the button at the top |
+| **Thumb sticks** | left thumb     | right thumb held down      | a third finger     | the button at the top |
+| **Tilt**         | lean the phone | a finger down              | a second finger    | the button at the top |
 
 **There is no hover**, in any mode: power is held to stay up and eased off to
-come down, and let go of, it falls. The height stick -- the pad's right
-stick, the right thumb -- is a throttle: up is power, centred none, down a
+come down, and let go of, it falls. The pad's right stick is a throttle: up is power, centred none, down a
 push downwards. What were hover buttons are full power. (Hover, and a height
 held with the stick centred, came from the drone this began as; with loops,
 dives and a two-tile ceiling it was one more mode to be caught out by. The
@@ -237,9 +236,9 @@ becomes the craft's heading, and how far you push it becomes how far its nose
 drops. Thrust acts along the roof, so a nose-down attitude carries you along
 the heading — trading lift for speed.
 
-**Relative steering** is the other way the sticks -- the pad's left stick
-and the left thumb on the glass -- can fly, and the default (settings:
-*sticks* -- *turn & pitch* or *point*). Across turns the heading, round in
+**Relative steering** -- *advanced*, in settings under *sticks* -- is the
+other way the sticks (the pad's left stick and the left thumb on the glass)
+can fly; *easy*, pointing, is the default. Across turns the heading, round in
 2.8 seconds at full stick, and carries nine tenths of the momentum round
 with it, as a banked turn does. Forward and back are a **rate of pitch** at
 every speed, with no limit on the angle -- a full turn in 2.1 seconds at the
@@ -269,8 +268,8 @@ about a second. The stay-put assist is for pointing, not for flying. The camera 
 turns feel reversed, as they do for a car driven towards you. The mouse and
 tilt always point.
 
-**Pointing** -- the mouse, the keys, tilt, and the sticks when the setting
-says so -- leans the bird at most a quarter turn: at the rim the thrust is
+**Pointing** -- *easy* steering, the default: the mouse, the keys, tilt,
+and the sticks unless the setting says *advanced* -- leans the bird at most a quarter turn: at the rim the thrust is
 flat along the heading, a dash that sinks past about 78 degrees. There is
 no loop pointing. There used to be one at the rim, and the lean went on to
 three quarters of a turn; but a stick that says where to lean means

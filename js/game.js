@@ -1080,7 +1080,6 @@ export class Game {
     // Only when it is steering: under tilt a finger is just the engine.
     if (this.input.touchSteers && !this.cardUp) {
       drawTouchStick(this.rd, this.input.leftThumb.furniture);
-      drawTouchStick(this.rd, this.input.rightThumb.furniture);
     }
 
     rd.flush();

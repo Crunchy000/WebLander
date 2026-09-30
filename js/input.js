@@ -11,13 +11,6 @@ import { TiltSteering } from './tilt.js';
 import { TouchStick, throttleCurve, expo } from './stick.js';
 import { SCREEN_W, SCREEN_H } from './renderer.js';
 
-// A deadzone on one axis of a stick, with the travel beyond it rescaled so
-// the rim still reads 1. The thumb sticks on the glass are round, but the
-// right one is two controls on one thumb -- height and sidestep -- and a thumb
-// pushing one of them is never quite square to the other. Without this every
-// strafe was also a gentle climb or sink, and every climb a slow slide.
-const AXIS_DEAD = 0.15;
-
 // How far the mouse and the keys may push the stick. The mouse all of it:
 // it was kept short of the rim, where a loop used to start, and pointing
 // there is no loop any more (see MAX_LEAN in player.js).
@@ -28,10 +21,6 @@ const MOUSE_MAX = 1;
 const KEY_MAX = 0.85;
 // A mouse cannot find the exact middle by hand, so near it counts as it.
 const MOUSE_DEAD = 0.05;
-function axisDead(v) {
-  const a = Math.abs(v);
-  return a <= AXIS_DEAD ? 0 : Math.sign(v) * (a - AXIS_DEAD) / (1 - AXIS_DEAD);
-}
 
 export class Input {
   constructor(canvas) {
@@ -54,18 +43,18 @@ export class Input {
     // ... and the other way of steering a handset: a stick that appears under
     // whichever thumb arrives. Which of the two is in charge is `steerMode`,
     // and a device with no motion sensor gets the stick whatever it says.
-    // Two of them, one under each thumb, laid out as the pad's two sticks
-    // are: see _canvasTouch. The left is the lean, and is the steering stick
-    // it always was; the right carries two different controls and is shaped
-    // per axis in sample(), so it is linear.
+    // One, under the left thumb: the lean. The right thumb used to have a
+    // stick of its own too, for height and a sidestep; with no hover the
+    // height is only ever power or none, so the right thumb is now simply
+    // the power, held down anywhere on that half. See _canvasTouch.
     this.leftThumb = new TouchStick();
-    this.rightThumb = new TouchStick({ linear: true });
+    this.thrustFinger = -1;   // the touch holding the power, or -1
     // How much power is being asked for, 0 to 1. Whatever is steering, some
     // sources say only yes or no and some say how much; this is how much, and
     // it is 1 for the ones that only say yes.
     this.throttle = 1;
     this.steerMode = 'touch';
-    this.relative = true;  // the setting; relativeSteer is whether it applies now
+    this.relative = false; // the setting; relativeSteer is whether it applies now
     this.thrust = 0;      // 0 none, 1 hover, 2 full
     this.hold = false;    // the height stick centred: stay at this height
     this.stay = false;    // an assisted lean stick: centred, stay put
@@ -398,16 +387,18 @@ export class Input {
       ((t.clientY - r.top) / r.height) * SCREEN_H,
     ];
 
-    const sticks = [this.leftThumb, this.rightThumb];
+    const sticks = [this.leftThumb];
     for (const t of e.changedTouches) {
       const [bx, by] = toBuffer(t);
       if (e.type === 'touchstart') {
-        (bx < SCREEN_W / 2 ? this.leftThumb : this.rightThumb).down(t.identifier, bx, by);
+        if (bx < SCREEN_W / 2) this.leftThumb.down(t.identifier, bx, by);
+        else if (this.thrustFinger < 0) this.thrustFinger = t.identifier;
       } else {
         for (const s of sticks) {
           if (e.type === 'touchmove') s.move(t.identifier, bx, by);
           else s.up(t.identifier);
         }
+        if (e.type !== 'touchmove' && t.identifier === this.thrustFinger) this.thrustFinger = -1;
       }
     }
     // A finger lifted elsewhere can leave a stick owned by one that is no
@@ -418,15 +409,20 @@ export class Input {
       for (const t of e.touches) if (t.identifier === s.id) stillDown = true;
       if (!stillDown) s.up(s.id);
     }
+    if (this.thrustFinger >= 0) {
+      let stillDown = false;
+      for (const t of e.touches) if (t.identifier === this.thrustFinger) stillDown = true;
+      if (!stillDown) this.thrustFinger = -1;
+    }
 
     // Fingers on the game itself, not on anything laid over it.
     this.fingers = e.targetTouches.length;
-    // ... and of those, the ones not holding a stick: a finger that landed
-    // on a side whose stick was already taken -- with both thumbs steering,
-    // a third finger anywhere. That is the fire button (see sample).
+    // ... and of those, the ones neither steering nor holding the power --
+    // with both thumbs down, a third finger anywhere. That is the fire
+    // button (see sample).
     let spare = 0;
     for (const t of e.targetTouches) {
-      if (t.identifier !== this.leftThumb.id && t.identifier !== this.rightThumb.id) spare++;
+      if (t.identifier !== this.leftThumb.id && t.identifier !== this.thrustFinger) spare++;
     }
     this.spareFingers = spare;
   }
@@ -678,15 +674,11 @@ export class Input {
     const tilt = this._tiltStick();
     // The rings fade in and out whether or not they are steering.
     this.leftThumb.tick(1 / 50);
-    this.rightThumb.tick(1 / 50);
     // The thumbs win when they have been chosen, or when there is no tilt to
     // be had -- on a handset. A desktop has neither.
     this.touchSteers = this.steerMode === 'touch' || !tilt;
     const thumbs = this.touchUi && this.touchSteers;
-    // Each thumb's two axes, deadzoned one at a time (see axisDead) and zero
-    // when the thumb is not there.
-    const Lean = this.leftThumb, H = this.rightThumb;
-    const hx = H.active ? axisDead(H.x) : 0, hy = H.active ? axisDead(H.y) : 0;
+    const Lean = this.leftThumb;
 
     if (this.padOwns) {
       this.stick = this.padStick;
@@ -732,9 +724,9 @@ export class Input {
     // bottom. So the stick is
     // continuous through the middle, and a little either side of it is a
     // gentle climb or a gentle sink. A pad button held wins.
-    const lift = this.padOwns ? this.padLift
-      : thumbs ? hy
-      : null;
+    const lift = this.padOwns ? this.padLift : null;
+    // The right thumb, held down: the power.
+    if (thumbs && this.thrustFinger >= 0) thrust = 2;
     if (lift !== null && !this.padThrust) {
       if (lift === 0) {
         hold = true;
@@ -745,12 +737,10 @@ export class Input {
         throttle = throttleCurve(0.5 + lift / 2);
       }
     }
-    // Under tilt on a handset, fingers: one is everything, two hover.
+    // Under tilt on a handset, fingers: any finger down is the power, and a
+    // second one drops fire as well.
     this.tiltTouch = this.touchUi && !this.touchSteers;
-    if (this.tiltTouch && !this.padOwns) {
-      if (this.fingers >= 2) thrust = thrust || 1;
-      else if (this.fingers === 1) thrust = 2;
-    }
+    if (this.tiltTouch && !this.padOwns && this.fingers >= 1) thrust = 2;
     // There is no hover: power is held, and let go of it falls. The height
     // stick is a throttle -- up is power, centred none, down a push downwards
     // -- and what was a hover button (the middle mouse button, X, the pad's
@@ -770,16 +760,15 @@ export class Input {
     // stay where it is. See Player.update.
     this.stay = this.padOwns || thumbs;
     // ... and the height stick across is the sidestep.
-    this.slide = this.padOwns ? this.padSlide
-      : thumbs ? Math.sign(hx) * expo(Math.abs(hx))
-      : 0;
+    this.slide = this.padOwns ? this.padSlide : 0;
 
-    // Fire on the glass. Steering by thumbs, any finger that is not holding
-    // a stick -- a third one, with both thumbs down. Steering by tilt, where
-    // one finger is full power and two hover, three. Held, it drops a bomb
-    // every reload. (It was a quick tap, which lifting a thumb off its stick
-    // could not help doing, and which under tilt was a blip of power too.)
-    this.touchFire = (thumbs && this.spareFingers > 0) || (this.tiltTouch && this.fingers >= 3);
+    // Fire on the glass. Steering by thumbs, any finger that is neither
+    // steering nor holding the power -- a third one, with both thumbs down.
+    // Steering by tilt, where one finger is the power, two. Held, it drops a
+    // bomb every reload. (It was a quick tap, which lifting a thumb off its
+    // stick could not help doing, and which under tilt was a blip of power
+    // too.)
+    this.touchFire = (thumbs && this.spareFingers > 0) || (this.tiltTouch && this.fingers >= 2);
     this.fire = this.mouseFire || this.touchFire || this.padFire
       || k.has('KeyC') || k.has('ShiftLeft');
 

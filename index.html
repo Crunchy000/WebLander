@@ -96,7 +96,7 @@
             <table class="keys">
               <thead><tr><th></th><th>gamepad</th></tr></thead>
               <tbody>
-                <tr><th>steer</th><td>left stick: left and right turn, forward pitches the nose down and back pulls it up, with no limit &mdash; hold either all the way round for a loop</td></tr>
+                <tr><th>steer</th><td>left stick: lean the way you push (easy) &mdash; or, with advanced steering in settings, left and right turn, forward pitches the nose down and back pulls it up, with no limit: hold either all the way round for a loop</td></tr>
                 <tr><th>power, sidestep</th><td>right stick &mdash; up is power; let go and there is none</td></tr>
                 <tr><th>power</th><td><kbd>RT</kbd>, <kbd>LT</kbd>, <kbd>A</kbd> or <kbd>X</kbd></td></tr>
                 <tr><th>drop fire</th><td><kbd>LB</kbd> or <kbd>RB</kbd></td></tr>
@@ -111,18 +111,17 @@
               <thead><tr><th></th><th>thumb sticks</th><th>tilt</th></tr></thead>
               <tbody>
                 <tr><th>steer</th><td>left thumb</td><td>lean the handset</td></tr>
-                <tr><th>height, sidestep</th><td>right thumb</td><td></td></tr>
-                <tr><th>power</th><td>right thumb up</td><td>one or two fingers</td></tr>
-                <tr><th>drop fire</th><td>a third finger</td><td>three fingers</td></tr>
+                <tr><th>power</th><td>hold the right thumb down</td><td>a finger down</td></tr>
+                <tr><th>drop fire</th><td>a third finger</td><td>a second finger</td></tr>
                 <tr><th>pause</th><td colspan="2">the button at the top</td></tr>
               </tbody>
             </table>
-            <p class="dim">A stick appears under each thumb, wherever it lands. Choose thumb sticks or tilt in <a href="#" data-goto="settings">settings</a>.</p>
+            <p class="dim">A stick appears under the left thumb, wherever it lands; the right thumb held down anywhere is the power. Choose thumb sticks or tilt, and easy or advanced steering, in <a href="#" data-goto="settings">settings</a>.</p>
           </div>
           <table class="keys tricks">
             <thead><tr><th>tricks</th><th></th><th>points</th></tr></thead>
             <tbody>
-              <tr><th>loop the loop</th><td>pitch all the way round, steering by turn &amp; pitch (or <kbd>Y</kbd>)</td><td>150</td></tr>
+              <tr><th>loop the loop</th><td>pitch all the way round, with advanced steering (or <kbd>Y</kbd>)</td><td>150</td></tr>
               <tr><th>balloon bounce</th><td>come down on top of a balloon</td><td>100</td></tr>
               <tr><th>bunting</th><td>fly through the line between two balloons</td><td>60</td></tr>
               <tr><th>water skim</th><td>within a tile of the sea, moving, for a moment</td><td>60</td></tr>
@@ -180,8 +179,8 @@
           <div class="set">
             <span class="set-label">sticks</span>
             <div id="sticksteer" class="segs" role="group" aria-label="how the sticks steer">
-              <button class="seg" data-steer="relative" aria-pressed="true">turn &amp; pitch</button>
-              <button class="seg" data-steer="screen" aria-pressed="false">point</button>
+              <button class="seg" data-steer="screen" aria-pressed="true">easy</button>
+              <button class="seg" data-steer="relative" aria-pressed="false">advanced</button>
             </div>
           </div>
           <div class="set">
