@@ -224,6 +224,7 @@ const FLY_DEAD_TURN = 0.35;        // ... and more, by this much of the turn bei
 // wandering a fifth either way ended in the ground one time in six.
 const LEVEL_EASE = 0.04;
 const LEVEL_WITHIN = 1.75;         // radians: a hundred degrees
+const RIGHTING_RATE = 0.08;        // radians a step: upside down and slow, over in about a second
 // How much of the way the wings turn the path onto the nose each step. The
 // nose is the stick's, always: the path follows it, and never the other way
 // -- when it did, the nose jumped back as the bird got up to flying speed.
@@ -744,10 +745,13 @@ export class Player {
       // the nose (see WING_GRIP).
       this.lean -= this.pitchRate;
       this.pitchTurn += this.pitchRate;
-      // Let go of, it levels. See LEVEL_EASE.
+      // Let go of, it levels. See LEVEL_EASE. Too slow for the wings, it
+      // rights itself from any angle, as a stalled bird does, rather than
+      // hanging upside down.
       if (this.pitchRate === 0) {
         const lam = this.lean > Math.PI ? this.lean - Math.PI * 2 : this.lean;
         if (Math.abs(lam) < LEVEL_WITHIN) this.lean -= lam * LEVEL_EASE;
+        else if (!this.flying) this.lean -= Math.sign(lam) * Math.min(Math.abs(lam), RIGHTING_RATE);
       }
     } else {
       // Ease the short way round, the same as the heading does. Without this
@@ -865,8 +869,13 @@ export class Player {
         // A hovering craft spends the sky-facing share of its thrust
         // standing still rather than climbing; that is dealt with below,
         // where gravity is. Everything else pushes with all of it.
-        // Upwards, only what the air over the ground ceiling gives.
-        if (!holding) this.vy = (this.vy + up[1] * power * (up[1] < 0 ? climb : 1)) | 0;
+        // Upwards, only what the air over the ground ceiling gives. And
+        // relative, never downwards: upside down and too slow for the wings,
+        // the push out of its back went straight into the ground at nearly
+        // five g -- the slam. (The throttle's own push down is the other
+        // branch, above, and stays.)
+        const upward = up[1] < 0;
+        if (!holding && (upward || !this.relative)) this.vy = (this.vy + up[1] * power * (upward ? climb : 1)) | 0;
       }
 
       // Rotors turning still cost something, but pushing at a ceiling for no

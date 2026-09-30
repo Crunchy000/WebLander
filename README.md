@@ -253,7 +253,11 @@ straight up on the rotors, nose level, is not.) Slower than that, the power
 pushes along the bird's roof as it always has. Low over the ground the wings get
 what the rotors get there: a slope rising ahead lifts the path and the nose
 up it, and a descent not being pushed for is cushioned -- a deliberate dive
-still reaches the ground. **There is no hover** when
+still reaches the ground. And relative, the power never pushes the bird **down**:
+upside down and too slow for the wings, the push out of its back used to
+drive it into the ground at nearly five g; now only its upward and
+sideways share acts, and a slow bird left upside down rights itself in
+about a second. **There is no hover** when
 steering relative: the right stick is a throttle -- up is power, centred is
 none, down pushes down -- a hover button is full power, and nothing holds a
 height but holding the power. The stay-put assist is for pointing, not for
