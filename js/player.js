@@ -183,7 +183,7 @@ const MAX_LEAN = (Math.PI * 3) / 4;
 // gain. Even is what settles.
 const LOOP_AT = 0.96;      // stick deflection at which it becomes a rate
 const LOOP_KEEP = 0.80;    // ... and where it goes back to being a position
-const LOOP_RATE = 0.060;   // radians a frame, so a full turn takes about 1.7s
+const LOOP_RATE = 0.060;   // radians a step, so a full turn takes about 2.1 s
 // A loop is flown on the wings. The push turning round on its own did nothing
 // with the speed the bird came in with: flying forward into a loop, the push
 // went forward and then down, and the speed carried it into a dive; and drag
@@ -197,21 +197,30 @@ const LOOP_RATE = 0.060;   // radians a frame, so a full turn takes about 1.7s
 // LOOP_RATE. The two-tile ceiling does not apply during one; the world-y
 // limit does.
 // Relative steering, for the sticks when the setting asks for it: across
-// turns the heading, and the momentum round with it, as a banked turn does;
-// forward pitches the nose down along the heading, up to REL_DIVE; back
-// flares the nose up a little (REL_FLARE) while the wings turn the bird's
-// forward speed up into a climb, up to REL_CLIMB, PULL_RATE a step at full
-// pull; right back is a loop. Centred, it levels out and keeps its heading
-// -- and its speed: the stay-put assist is for pointing, not for flying.
+// turns the heading, and the momentum round with it, as a banked turn does.
+// Forward and back fly the wings once the bird is moving (see PITCH_RATE);
+// off a hover, forward leans the nose down along the heading, up to
+// REL_DIVE, and back flares it up a little (REL_FLARE). Centred, it levels
+// out and keeps its heading -- and its speed: the stay-put assist is for
+// pointing, not for flying.
 const TURN_RATE = 0.045;           // radians a step at full stick: round in 2.8 s
 const TURN_GRIP = 0.9;             // how much of the turn the momentum follows
 const REL_DIVE = 1.3;              // radians of lean at full forward: about 75 degrees
-const REL_FLARE = 0.15;            // ... and back, at full pull short of a loop
-const REL_CLIMB = 1.0;             // the steepest climb a pull turns speed into
-const PULL_RATE = 0.08;            // radians a step at full pull: speed turned to climb in a fifth of a second
-// ... and while pulling, drag is only LOOP_DRAG: it is the wings flying, as
-// in a loop, and at the ordinary drag half the speed was gone in the second
-// it took to turn it upwards.
+const REL_FLARE = 0.15;            // ... and back
+// Flying on the wings: moving along its heading faster than FLY_SPEED with
+// the stick off the middle, forward and back no longer lean the bird -- they
+// turn its path, nose down or nose up, at up to PITCH_RATE a step, with no
+// limit on the angle. Held, that goes all the way round: back an inside
+// loop, forward an outside one, and either is a loop the loop. The speed is
+// momentum: gravity takes it climbing and gives it diving, drag is only
+// LOOP_DRAG, and power adds FLY_PUSH of itself along the path. Slower than
+// that -- off a hover -- the stick leans the bird as before, so pushing
+// forward moves it off rather than nosing it into the ground. Centred, the
+// wings let go.
+const PITCH_RATE = LOOP_RATE;      // radians a step at full stick: round in 2.1 s, as a loop by button
+const FLY_SPEED = TILE * 0.05;     // a step, along the heading: 2.5 tiles a second
+const FLY_PUSH = 0.1;
+const FLY_DEAD = 0.1;              // stick this near the middle is centred
 const LOOP_CARRY = 0.2;
 const LOOP_DRAG = 0.997;
 const LOOP_MIN = TILE * 0.05;      // a step: a loop from a standstill is still a loop
@@ -435,6 +444,10 @@ export class Player {
     this.loopSense = 1;
     this.loopTurn = 0;
     this.loopOrder = false;       // a loop asked for by button, under way
+    this.flying = false;          // on the wings: see PITCH_RATE
+    this.settingOff = false;
+    this.pitchRate = 0;
+    this.pitchTurn = 0;
     this.loopAsked = false;
     this.openSky = false;
     // Start sitting on the launchpad at the world origin.
@@ -620,7 +633,6 @@ export class Player {
     let targetDir = (mag > 0.02) ? Math.atan2(stick.x, stick.y) : this.leanDir;
     // Relative steering. See TURN_RATE.
     const rel = this.relative && !this.landed;
-    const pull = rel ? Math.max(0, -stick.y) : 0;
     if (rel) {
       if (!this.looping) {
         const turn = stick.x * TURN_RATE;
@@ -637,10 +649,22 @@ export class Player {
         }
       }
       targetDir = this.leanDir;
-      targetLean = stick.y > 0 ? stick.y * REL_DIVE : -pull * REL_FLARE;
-      // Right back: a loop, pulled up and over the way it is going.
-      if (pull >= LOOP_AT && !this.looping) this.loopAsked = true;
+      targetLean = stick.y > 0 ? stick.y * REL_DIVE : stick.y * REL_FLARE;
+      // On the wings, or not. See PITCH_RATE.
+      const fwd = this.vx * Math.sin(this.leanDir) + this.vz * Math.cos(this.leanDir);
+      const off = Math.abs(stick.y) > FLY_DEAD;
+      // Holding forward off a hover to set off is a lean the whole way, not a
+      // dive once it gets going: forward pushed while slow is `settingOff`
+      // until the stick comes back to the middle or goes back. Anything else
+      // off the middle at speed is the wings.
+      if (stick.y > FLY_DEAD && fwd <= FLY_SPEED && !this.flying) this.settingOff = true;
+      else if (stick.y <= FLY_DEAD) this.settingOff = false;
+      this.flying = off && !this.loopOrder && !this.settingOff && (this.flying || fwd > FLY_SPEED);
+      this.pitchRate = this.flying ? -stick.y * PITCH_RATE : 0;
+    } else {
+      this.flying = false;
     }
+    if (!this.flying) this.pitchTurn = 0;
 
     // Interpolate the direction the short way round the circle.
     let dd = targetDir - this.leanDir;
@@ -698,6 +722,18 @@ export class Player {
         this.loopOrder = false;
         if (!this.landed && game && game.onTrick) game.onTrick('loop');
       }
+    } else if (this.flying) {
+      // On the wings the nose is where the path goes. See PITCH_RATE.
+      const vD = this.vx * Math.sin(this.leanDir) + this.vz * Math.cos(this.leanDir);
+      let dl = -Math.atan2(-this.vy, vD) - this.lean;
+      dl -= Math.round(dl / (Math.PI * 2)) * Math.PI * 2;
+      this.lean += dl * 0.5;
+      // All the way round, either way: a loop the loop.
+      this.pitchTurn += this.pitchRate;
+      if (Math.abs(this.pitchTurn) >= Math.PI * 2) {
+        this.pitchTurn -= Math.sign(this.pitchTurn) * Math.PI * 2;
+        if (game && game.onTrick) game.onTrick('loop');
+      }
     } else {
       // Ease the short way round, the same as the heading does. Without this
       // a craft coming off a loop at five radians would unwind backwards
@@ -754,7 +790,7 @@ export class Player {
     // the top of the balloon it is beside: `climb` is the share of the upward
     // push it still gets. See GROUND_CEILING.
     let over = 0, climb = 1, warm = false;
-    if (!this.openSky && !this.landed && !this.looping) {
+    if (!this.openSky && !this.landed && !this.looping && !this.flying) {
       // The ground is the highest of what is under the bird and what it will
       // be over in a half and a whole second, so the ceiling rises ahead of a
       // hill rather than on it: measured from underfoot alone, the way up a
@@ -791,7 +827,7 @@ export class Player {
 
     // In a loop the wings fly it, from the speed it had coming into this step
     // (see LOOP_CARRY); the push's own share in the plane is set aside below.
-    const winged = this.looping && thrust > 0 && !this.landed;
+    const winged = ((this.looping && thrust > 0) || this.flying) && !this.landed;
     const wsy = Math.sin(this.leanDir), wcy = Math.cos(this.leanDir);
     const wD0 = this.vx * wsy + this.vz * wcy, wU0 = -this.vy;
     if (thrust) {
@@ -861,34 +897,29 @@ export class Player {
     // three tiles off it -- every loop from anywhere near the two-tile
     // ceiling ended in the sea. Carried, it comes back round to about where
     // it began.
-    const carried = holding || (this.looping && thrust > 0);
+    const carried = holding || winged;
     this.vy = (this.vy + (carried ? Math.round(gravity * (1 - lift * climb)) : gravity)) | 0;
     // Staying put: the lean stick centred on an assisted control, in the
     // air, with power to do it. A craft falling with its engine off, or a
     // flat pack, gets no help.
     const staying = stay && !rel && !this.landed && thrust > 0 && mag === 0;
-    const drag = winged || (rel && pull > 0.1) ? LOOP_DRAG : DRAG;
+    const drag = winged ? LOOP_DRAG : DRAG;
     this.vx = (this.vx * drag) | 0;
     this.vy = (this.vy * drag) | 0;
     this.vz = (this.vz * drag) | 0;
-    // Pulling up, short of a loop: the wings turn forward speed into climb,
-    // keeping the speed. See TURN_RATE.
-    if (rel && pull > 0.1 && !winged) {
-      const sy = Math.sin(this.leanDir), cy = Math.cos(this.leanDir);
-      const vD = this.vx * sy + this.vz * cy, vU = -this.vy;
-      if (vD > TILE * 0.005) {
-        const a = Math.atan2(vU, vD), want = pull * REL_CLIMB;
-        if (a < want) {
-          const sp = Math.hypot(vD, vU), a2 = Math.min(want, a + PULL_RATE * pull);
-          const nD = sp * Math.cos(a2);
-          this.vx = (this.vx + (nD - vD) * sy) | 0;
-          this.vz = (this.vz + (nD - vD) * cy) | 0;
-          this.vy = (-sp * Math.sin(a2)) | 0;
-        }
-      }
-    }
-    // Round the loop on the wings. See LOOP_CARRY.
-    if (winged) {
+    // Flying on the wings: the path turned by the stick, the speed momentum.
+    // See PITCH_RATE.
+    if (winged && this.flying) {
+      const vD = this.vx * wsy + this.vz * wcy;
+      const ang = Math.atan2(wU0, wD0) + this.pitchRate;
+      const push = thrust === 2 ? THRUST_FULL * Math.max(0, t) : thrust ? THRUST_HOVER : 0;
+      const sp = Math.max(LOOP_MIN, Math.hypot(wD0, wU0) * LOOP_DRAG - gravity * Math.sin(ang) + push * FLY_PUSH);
+      const nD = sp * Math.cos(ang), nU = sp * Math.sin(ang);
+      this.vx = (this.vx + (nD - vD) * wsy) | 0;
+      this.vz = (this.vz + (nD - vD) * wcy) | 0;
+      this.vy = (-nU) | 0;
+    } else if (winged) {
+      // Round the loop on the wings. See LOOP_CARRY.
       const vD = this.vx * wsy + this.vz * wcy;      // along the lean, now
       const sp = Math.max(LOOP_MIN, Math.hypot(wD0, wU0) * LOOP_DRAG);
       const tD = this.loopSense * Math.cos(this.loopTurn), tU = Math.sin(this.loopTurn);
@@ -917,7 +948,7 @@ export class Player {
     // hold -- at a steady HOVER_SINK -- rather than settling a tile a minute.
     if (holding && over > GROUND_FADE) {
       if (this.vy > HOVER_SINK) this.vy = HOVER_SINK;
-    } else if (holding && lift > 0 && !winged && !(rel && pull > 0.1)) this.vy = (this.vy * HOVER_SETTLE) | 0;
+    } else if (holding && lift > 0 && !winged) this.vy = (this.vy * HOVER_SETTLE) | 0;
     // ... but not into the ground coming up under it.
     if (holding && hold && !winged && this.altitude < HOLD_FLOOR && this.vy > -HOLD_RISE) this.vy = -HOLD_RISE;
     // ... and the same across the ground, when it has been told to stay.
@@ -979,7 +1010,7 @@ export class Player {
     const speed = Math.hypot(this.vx, this.vz) / TILE;
     // Not in a loop, or leaning past upright: there the travel swings right
     // round and the bird would spin to follow it. It faces its lean.
-    const w = this.looping || this.tilt > Math.PI / 2 ? 0
+    const w = this.looping || this.flying || this.tilt > Math.PI / 2 ? 0
       : clamp((speed - FACE_SLOW) / (FACE_FAST - FACE_SLOW), 0, 1);
     let want = this.leanDir;
     if (w > 0) {
@@ -997,7 +1028,7 @@ export class Player {
     while (off < -Math.PI) off += Math.PI * 2;
     // In a loop it is drawn at its whole pitch -- the softening is for
     // reading ordinary flight -- blended in and out so neither end pops.
-    this.loopPose = (this.loopPose || 0) + ((this.looping ? 1 : 0) - (this.loopPose || 0)) * 0.15;
+    this.loopPose = (this.loopPose || 0) + ((this.looping || this.flying ? 1 : 0) - (this.loopPose || 0)) * 0.15;
     const whole = this.lean > Math.PI ? this.lean - Math.PI * 2 : this.lean;
     const pitch = drawnPitch(this.lean) + (whole - drawnPitch(this.lean)) * this.loopPose;
     matFromAim(this.facing, pitch * Math.max(0, Math.cos(off)), this.pose);

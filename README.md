@@ -233,14 +233,18 @@ the heading — trading lift for speed.
 and the left thumb on the glass -- can fly, and the default (settings:
 *sticks* -- *turn & pitch* or *point*). Across turns the heading, round in
 2.8 seconds at full stick, and carries nine tenths of the momentum round
-with it, as a banked turn does. Forward pitches the nose down along the
-heading, up to about 75 degrees. Back flares the nose up a little while the
-wings turn the forward speed into a climb (up to about 57 degrees, at full
-pull within a fifth of a second), and while pulling the drag is only a
-loop's: a second's pull at 0.6 from a 5.8 tiles-a-second cruise climbs a
-tile and two thirds and keeps 3.6. Right back is a loop, pulled up and over
-the way the bird is going; held there, loop after loop. Centred, it levels
-out and keeps its heading -- the stay-put assist is for pointing, not for
+with it, as a banked turn does. Once the bird is moving (faster than 2.5
+tiles a second along its heading), forward and back **fly the wings**: they
+turn its path, nose down or nose up, at a rate set by how far the stick is
+pushed -- a full turn in 2.1 seconds at the rim -- and there is no limit on
+the angle. Held, that goes all the way round: back is an inside loop,
+forward an outside one, and either counts as a loop the loop. The speed is
+momentum: climbing costs it, diving gives it, drag is only a loop's, and
+power adds a little along the path. Off a hover, forward leans the nose
+down along the heading instead, up to about 75 degrees, so pushing forward
+sets off rather than diving into the ground -- until the stick comes back
+to the middle or goes back. Centred, the wings let go, the bird levels out
+and keeps its heading -- the stay-put assist is for pointing, not for
 flying. The camera does not turn with the bird, so flying towards it the
 turns feel reversed, as they do for a car driven towards you. The mouse and
 tilt always point.
