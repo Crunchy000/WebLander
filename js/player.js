@@ -88,6 +88,14 @@ const LOOK_MAX = TILE * 3;         // ... but never more than this far
 // speed it is going.
 const RIDGE_NEAR = TILE * 2.5;
 const RIDGE_EASE = 0.3;            // how much of the way to that each step
+// Ground effect: the same idea on the flat, land or sea. Under power, the
+// nearer the surface the more the air trapped under the wings holds the bird
+// up: an extra push of up to GE_LIFT of full power at the surface, fading to
+// nothing at GE_NEAR, and a descent towards it cushioned. Not on hover, which
+// is already holding the height it was asked to -- a skim, or a landing.
+const GE_NEAR = TILE * 1.5;
+const GE_LIFT = 0.25;              // of THRUST_FULL: over a g, at the surface
+const GE_CUSHION = 0.12;           // of a descent taken off each step, at the surface
 const CEILING_BRAKE = 0.8;         // what is left of a climb each step in the world-y ceiling's thin air
 const THERMAL_OVER = TILE * 1.2;   // how far over a balloon's top its air carries
 // Battery capacity. Doubled from the original tank so a sortie lasts about
@@ -726,6 +734,15 @@ export class Player {
           const want = -sp * rise / Math.hypot(dx, dz);
           if (this.vy > want) this.vy = (this.vy + (want - this.vy) * RIDGE_EASE) | 0;
         }
+      }
+    }
+    // ... and on the flat, ground effect. See GE_NEAR.
+    if (thrust === 2 && t > 0 && !this.landed && !holding) {
+      const near = (Math.min(landAltitude(this.x, this.z), SEA_LEVEL) - this.y - UNDERCARRIAGE_Y) | 0;
+      if (near < GE_NEAR) {
+        const k = 1 - Math.max(0, near) / GE_NEAR;
+        this.vy = (this.vy - THRUST_FULL * GE_LIFT * t * k) | 0;
+        if (this.vy > 0) this.vy = (this.vy * (1 - GE_CUSHION * k)) | 0;
       }
     }
     // So does a loop in progress, on any power: the push goes all the way

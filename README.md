@@ -274,7 +274,13 @@ at a slope that rises ahead, within two and a half tiles of it, **ridge
 lift** -- the air pushed up the face -- carries the bird up the slope's
 angle at the speed it is going: a scripted pilot at the ceiling crashed
 into the steepest slopes on one run in four without it, and on none with
-it. And **a loop carries its own weight** on any power, and the ceiling
+it. On the flat, land or sea, the same air gives **ground effect**: on full
+power, within a tile and a half of the surface, an extra push of up to a
+quarter of full power (over a g) at the surface, fading to nothing at a
+tile and a half, and any descent towards it cushioned. Flying forward at
+0.7 of the stick used to put the bird in the sea in a second and a half;
+now it rides half a tile over it. Hover is left out: it is already holding
+the height it was asked for, for a skim or a landing. And **a loop carries its own weight** on any power, and the ceiling
 does not apply during one: the push goes all the way round and comes to
 nothing over a turn, so gravity alone took three tiles off every loop and
 any loop begun near the ceiling ended in the sea. Carried, it rises a tile
