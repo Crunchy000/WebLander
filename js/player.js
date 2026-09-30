@@ -215,7 +215,15 @@ const TURN_GRIP = 0.9;             // how much of the turn the momentum follows
 const PITCH_RATE = LOOP_RATE;      // radians a step at full stick: round in 2.1 s, as a loop by button
 const FLY_SPEED = TILE * 0.05;     // a step, along the nose: 2.5 tiles a second
 const FLY_PUSH = 0.1;
-const FLY_DEAD = 0.1;              // stick this near the middle is centred
+const FLY_DEAD = 0.15;             // pitch this near the middle is centred ...
+const FLY_DEAD_TURN = 0.35;        // ... and more, by this much of the turn being asked for
+// Centred, the nose comes back to level by LEVEL_EASE of the way a step --
+// unless it is past LEVEL_WITHIN, in a loop or upside down, where it holds.
+// Held where it was left, every accidental touch of pitch stayed in: a thumb
+// turning is never quite square, and a flight of turns with the pitch
+// wandering a fifth either way ended in the ground one time in six.
+const LEVEL_EASE = 0.04;
+const LEVEL_WITHIN = 1.75;         // radians: a hundred degrees
 // How much of the way the wings turn the path onto the nose each step. The
 // nose is the stick's, always: the path follows it, and never the other way
 // -- when it did, the nose jumped back as the bird got up to flying speed.
@@ -649,7 +657,12 @@ export class Player {
       targetDir = this.leanDir;
       // On the wings, or not. See PITCH_RATE.
       const fwd = this.vx * Math.sin(this.leanDir) + this.vz * Math.cos(this.leanDir);
-      const off = Math.abs(stick.y) > FLY_DEAD;
+      // Pitch, shaped: a deadzone that widens with the turn, so a thumb
+      // pushing across does not also pitch, and gentle near the middle.
+      const dead = FLY_DEAD + FLY_DEAD_TURN * Math.abs(stick.x);
+      const py = Math.abs(stick.y) <= dead ? 0
+        : Math.sign(stick.y) * Math.pow((Math.abs(stick.y) - dead) / (1 - dead), 1.6);
+      const off = py !== 0;
       // Forward and back are a rate of pitch at every speed, with no limit.
       // Moving, it turns the path, on the wings; slower than FLY_SPEED it
       // turns the bird itself, and the power pushes along its roof. Centred,
@@ -662,12 +675,12 @@ export class Player {
       const lam = this.lean > Math.PI ? this.lean - Math.PI * 2 : this.lean;
       const alongNose = fwd * Math.cos(lam) + this.vy * Math.sin(lam);
       this.flying = !this.loopOrder && alongNose > (this.flying ? FLY_SPEED * 0.7 : FLY_SPEED);
-      this.pitchRate = off ? -stick.y * PITCH_RATE : 0;
+      this.pitchRate = -py * PITCH_RATE;
     } else {
       this.flying = false;
     }
     if (!this.flying && !rel) this.pitchTurn = 0;
-    if (rel && Math.abs(stick.y) <= FLY_DEAD) this.pitchTurn = 0;
+    if (rel && this.pitchRate === 0) this.pitchTurn = 0;
 
     // Interpolate the direction the short way round the circle.
     let dd = targetDir - this.leanDir;
@@ -731,6 +744,11 @@ export class Player {
       // the nose (see WING_GRIP).
       this.lean -= this.pitchRate;
       this.pitchTurn += this.pitchRate;
+      // Let go of, it levels. See LEVEL_EASE.
+      if (this.pitchRate === 0) {
+        const lam = this.lean > Math.PI ? this.lean - Math.PI * 2 : this.lean;
+        if (Math.abs(lam) < LEVEL_WITHIN) this.lean -= lam * LEVEL_EASE;
+      }
     } else {
       // Ease the short way round, the same as the heading does. Without this
       // a craft coming off a loop at five radians would unwind backwards
@@ -916,7 +934,29 @@ export class Player {
       const path = Math.atan2(wU0, wD0);
       let dn = -(this.lean > Math.PI ? this.lean - Math.PI * 2 : this.lean) - path;
       dn -= Math.round(dn / (Math.PI * 2)) * Math.PI * 2;
-      const ang = path + dn * WING_GRIP;
+      let ang = path + dn * WING_GRIP;
+      // Low over the ground the wings get what the rotors do there: a slope
+      // rising ahead lifts the path up it (ridge lift), and a descent not
+      // being pushed for is cushioned (ground effect) -- nose and path
+      // together, so the one does not pull the other back down. Flying on the
+      // wings with neither, a hill was a wall: level, stick centred, into it.
+      const near = (Math.min(landAltitude(this.x, this.z), SEA_LEVEL) - this.y - UNDERCARRIAGE_Y) | 0;
+      if (near < RIDGE_NEAR) {
+        const k = 1 - Math.max(0, near) / RIDGE_NEAR;
+        let want = ang;
+        const dx = clamp(this.vx * LOOK_AHEAD, -LOOK_MAX, LOOK_MAX), dz = clamp(this.vz * LOOK_AHEAD, -LOOK_MAX, LOOK_MAX);
+        const dist = Math.hypot(dx, dz);
+        if (dist > TILE * 0.2) {
+          const rise = Math.min(landAltitude(this.x, this.z), SEA_LEVEL) - Math.min(landAltitude((this.x + dx) | 0, (this.z + dz) | 0), SEA_LEVEL);
+          if (rise > 0) want = Math.max(want, Math.atan2(rise, dist) + 0.1);
+        }
+        if (want < 0 && this.pitchRate >= 0 && near < GE_NEAR) want *= Math.max(0, near) / GE_NEAR;
+        const lifted = (want - ang) * Math.min(1, k * 1.5);
+        if (lifted > 0) {
+          ang += lifted;
+          this.lean -= lifted;
+        }
+      }
       const push = thrust === 2 ? THRUST_FULL * Math.max(0, t) : thrust ? THRUST_HOVER : 0;
       const sp = Math.max(LOOP_MIN, Math.hypot(wD0, wU0) * LOOP_DRAG - gravity * Math.sin(ang) + push * FLY_PUSH);
       const nD = sp * Math.cos(ang), nU = sp * Math.sin(ang);

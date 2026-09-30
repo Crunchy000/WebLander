@@ -235,7 +235,13 @@ and the left thumb on the glass -- can fly, and the default (settings:
 2.8 seconds at full stick, and carries nine tenths of the momentum round
 with it, as a banked turn does. Forward and back are a **rate of pitch** at
 every speed, with no limit on the angle -- a full turn in 2.1 seconds at the
-rim -- and centred, the bird keeps whatever attitude it was left at. Held,
+rim. The pitch is shaped: a deadzone that widens with the turn being
+asked for, so a thumb pushing across does not also pitch, and gentle near
+the middle. Let go of, the nose comes back to level -- unless it is past a
+hundred degrees, in a loop or upside down, where it holds. (Held wherever
+it was left, every accidental touch of pitch stayed in: flights of turns
+with the thumb wandering a third either way ended in the ground 24 times in
+30, and now none do.) Held,
 pitch goes all the way round: back an inside loop, forward an outside one,
 and either counts as a loop the loop. When the bird is moving along its
 nose faster than 2.5 tiles a second it is **flying on the wings**: the path
@@ -244,7 +250,10 @@ speed is momentum -- climbing costs it, diving gives it, drag is only a
 loop's, and power adds a little along the path. (Along the nose, not just
 forward: that way a dive straight down is still flying, and a climb
 straight up on the rotors, nose level, is not.) Slower than that, the power
-pushes along the bird's roof as it always has. **There is no hover** when
+pushes along the bird's roof as it always has. Low over the ground the wings get
+what the rotors get there: a slope rising ahead lifts the path and the nose
+up it, and a descent not being pushed for is cushioned -- a deliberate dive
+still reaches the ground. **There is no hover** when
 steering relative: the right stick is a throttle -- up is power, centred is
 none, down pushes down -- a hover button is full power, and nothing holds a
 height but holding the power. The stay-put assist is for pointing, not for
