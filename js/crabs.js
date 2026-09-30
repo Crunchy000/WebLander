@@ -98,10 +98,12 @@ function buildCrab(frame, shut, raised, under = false) {
     { y: -0.48, w: 0.23, d: 0.19, c: 0.40 },
   ];
   const rings = R.map((r) => ring(r.y, r.w, r.d, r.c));
+  let brow = -1;                     // the face the eyes are laid on
   for (let k = 0; k < 2; k++) {
     const A = rings[k], B = rings[k + 1];
     for (let i = 0; i < 8; i++) {
       const j = (i + 1) % 8;
+      if (k === 1 && i === 1) brow = m.faces.length;
       F([A[i], A[j], B[j], B[i]], k ? SHELL_TOP : SHELL, SHELL_MID);
     }
   }
@@ -115,7 +117,9 @@ function buildCrab(frame, shut, raised, under = false) {
   if (under) F(rings[0].slice(), BELLY, SHELL_MID);
 
   // The eyes, on the front face of the upper band: a white square each,
-  // lit, with a dark pupil low and to the inside, both a hair proud of it.
+  // lit, with a dark pupil low and to the inside, both a hair proud of it --
+  // and each sorted with what it lies on (see `over` in drawModel), or the
+  // shell is painted over the eyes whenever the crab is turned a little.
   {
     const a = R[1], b = R[2];
     const ny = -(a.d - b.d), nz = a.y - b.y;              // outward: forward and up
@@ -128,8 +132,10 @@ function buildCrab(frame, shut, raised, under = false) {
       const q = (u0, u1, t0, t1, out) => sx > 0
         ? [on(u0, t0, out), on(u1, t0, out), on(u1, t1, out), on(u0, t1, out)]
         : [on(-u1, t0, out), on(-u0, t0, out), on(-u0, t1, out), on(-u1, t1, out)];
-      m.faces.push({ idx: out(q(0.07, 0.76, 0.08, 0.97, 0.012), SHELL_MID), col: EYE, glow: true });
+      const eye = m.faces.length;
+      m.faces.push({ idx: out(q(0.07, 0.76, 0.08, 0.97, 0.012), SHELL_MID), col: EYE, glow: true, over: brow });
       F(q(0.10, 0.36, 0.12, 0.62, 0.024), PUPIL, SHELL_MID);
+      m.faces[m.faces.length - 1].over = eye;
     }
   }
 

@@ -234,7 +234,9 @@ export function recolour(model, fn, glow = false) {
   out.faces = model.faces.map((f) => {
     const col = fn(f.col);
     if (!col) return f;
-    return glow ? { idx: f.idx, col, glow: true } : { idx: f.idx, col };
+    const g = glow ? { idx: f.idx, col, glow: true } : { idx: f.idx, col };
+    if (f.over !== undefined) g.over = f.over;
+    return g;
   });
   return out;
 }
@@ -482,13 +484,18 @@ export function drawModel(rd, model, matrix, wx, wy, wz, camX, camY, camZ,
       depth += d;
     }
     if (!ok) continue;
+    // A face laid on another -- an eye on a shell -- says which with `over`,
+    // and is sorted with it: just after it, whichever of the two middles
+    // happens to be nearer. By its own middle, off to one side of the face
+    // under it, it went behind that face at half of all angles and was
+    // painted out. (The one under it has a lower index, so it is done.)
+    faceDepth[f] = faces[f].over === undefined ? depth / idx.length : faceDepth[faces[f].over] - 1;
     if (solid) {
       const a = idx[0] * 3, b = idx[1] * 3, c = idx[2] * 3;
       const area = (scratch[b] - scratch[a]) * (scratch[c + 1] - scratch[a + 1])
                  - (scratch[c] - scratch[a]) * (scratch[b + 1] - scratch[a + 1]);
       if (area * FRONT_FACE <= 0) continue;
     }
-    faceDepth[f] = depth / idx.length;
     faceOrder.push(f);
   }
   // Far to near. Small models -- almost everything -- by a stable insertion
