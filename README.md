@@ -149,7 +149,7 @@ time before (never under a quarter), so variety pays.
 
 | trick | points |
 |---|---|
-| loop the loop -- all the way round, forwards (the pad or the thumb sticks) | 150 |
+| loop the loop -- all the way round: Y, V or the mouse wheel, or a stick held right over | 150 |
 | balloon bounce -- come down on top of a balloon; it throws you back up | 100 |
 | bunting -- fly through the line strung between two balloons | 60 |
 | timber -- knock over a stack of blocks, or a tree | what it is worth |
@@ -235,7 +235,11 @@ height of movement takes it from the middle to the rim, and near the middle
 counts as the middle. The mouse and the keys stop just short of the rim that
 starts a loop: neither can be let go of the way a pad's stick or a thumb
 can, and at the rim they kept the bird looping -- flying backwards for half
-of every turn. Loops belong to the pad and the thumb sticks.
+of every turn. So a loop is also **a button**: <kbd>Y</kbd> on the pad,
+<kbd>V</kbd>, a turn of the mouse wheel or a mouse side button. One press
+flies one whole loop the way the bird is going, whatever the stick is doing
+meanwhile -- which is the easy way on the pad too, where a thumb easing off
+the rim during a loop (below 0.8) let go of it halfway round.
 
 **Hover does not make that trade** — it keeps the height it is at. The
 sky-facing share of its thrust goes on carrying the craft's weight rather than

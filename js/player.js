@@ -415,6 +415,8 @@ export class Player {
     this.thermal = 0x7fffffff;      // the top of the warm air over a balloon, if in it
     this.loopSense = 1;
     this.loopTurn = 0;
+    this.loopOrder = false;       // a loop asked for by button, under way
+    this.loopAsked = false;
     this.openSky = false;
     // Start sitting on the launchpad at the world origin.
     this.x = TILE * 4;
@@ -602,10 +604,23 @@ export class Player {
     let dd = targetDir - this.leanDir;
     while (dd > Math.PI) dd -= Math.PI * 2;
     while (dd < -Math.PI) dd += Math.PI * 2;
-    this.leanDir += dd * LEAN_RATE;
+    // A loop asked for by button keeps the heading it was begun on.
+    if (!this.loopOrder) this.leanDir += dd * LEAN_RATE;
 
     const wasLooping = this.looping;
-    this.looping = mag >= (this.looping ? LOOP_KEEP : LOOP_AT);
+    // A loop asked for by button: one whole turn, flown the way the bird is
+    // going, whatever the stick says. It is how the controls that cannot
+    // hold a stick hard over -- the mouse, the keys -- loop at all, and an
+    // easier one for any. Airborne only, and not over one already going.
+    if (this.loopAsked) {
+      this.loopAsked = false;
+      if (!this.landed && !this.looping) {
+        const sp = Math.hypot(this.vx, this.vz);
+        if (sp > TILE * 0.01) this.leanDir = Math.atan2(this.vx, this.vz);
+        this.loopOrder = true;
+      }
+    }
+    this.looping = this.loopOrder || mag >= (this.looping ? LOOP_KEEP : LOOP_AT);
     // Which way round: forward, up and over if it is going the way it leans
     // as the loop starts, and the other way if it is backing into it. See
     // LOOP_CARRY.
@@ -621,6 +636,7 @@ export class Player {
       // flown from where it began -- see LOOP_CARRY.)
       if (this.loopTurn >= Math.PI * 2) {
         this.loopTurn -= Math.PI * 2;
+        this.loopOrder = false;
         if (!this.landed && game && game.onTrick) game.onTrick('loop');
       }
     } else {
@@ -639,6 +655,8 @@ export class Player {
 
     // Past the handling, the hold is a hover. See above.
     if (hold) thrust = 1;
+    // A loop asked for by button is flown under power, at least a hover's.
+    if (this.loopOrder && !thrust) thrust = 1;
 
     // A flat battery means no thrust at all. Remembering that it was asked
     // for lets the HUD say so, rather than the machine simply going quiet.
@@ -824,9 +842,9 @@ export class Player {
     // hold -- at a steady HOVER_SINK -- rather than settling a tile a minute.
     if (holding && over > GROUND_FADE) {
       if (this.vy > HOVER_SINK) this.vy = HOVER_SINK;
-    } else if (holding && lift > 0) this.vy = (this.vy * HOVER_SETTLE) | 0;
+    } else if (holding && lift > 0 && !winged) this.vy = (this.vy * HOVER_SETTLE) | 0;
     // ... but not into the ground coming up under it.
-    if (holding && hold && this.altitude < HOLD_FLOOR && this.vy > -HOLD_RISE) this.vy = -HOLD_RISE;
+    if (holding && hold && !winged && this.altitude < HOLD_FLOOR && this.vy > -HOLD_RISE) this.vy = -HOLD_RISE;
     // ... and the same across the ground, when it has been told to stay.
     if (staying) {
       this.vx = (this.vx * STAY_SETTLE) | 0;

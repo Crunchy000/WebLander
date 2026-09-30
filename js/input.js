@@ -177,6 +177,8 @@ export class Input {
         e.preventDefault();
       }
       if (e.code === 'Enter' || e.code === 'Space') this.startPressed = true;
+      // V: a loop the loop, on the press. See Player.update, `loopAsked`.
+      if (e.code === 'KeyV' && !e.repeat) this.loopPressed = true;
     };
     const up = (e) => this.keys.delete(e.code);
     addEventListener('keydown', down);
@@ -290,6 +292,8 @@ export class Input {
     stage.addEventListener('mousedown', (e) => {
       if (e.target !== c && e.target !== stage) return;
       e.preventDefault();
+      // The side buttons, back or forward: a loop the loop.
+      if (e.button === 3 || e.button === 4) this.loopPressed = true;
       // Any click takes the pointer back, so wandering out of the window or
       // pressing Escape costs one click rather than the rest of the flight.
       this.grabPointer();
@@ -298,6 +302,16 @@ export class Input {
     addEventListener('mouseup', (e) => this._buttons(this._held &= e.buttons));
     addEventListener('blur', () => this._buttons(this._held = 0));
     c.addEventListener('contextmenu', (e) => e.preventDefault());
+    // ... and so is a turn of the wheel, one loop a flick however far it
+    // goes: the mouse steers by where it is, and a loop needs the stick held
+    // hard over, which the mouse is kept short of (see MOUSE_MAX).
+    stage.addEventListener('wheel', (e) => {
+      if (e.target !== c && e.target !== stage) return;
+      e.preventDefault();
+      const now = performance.now();
+      if (now - (this._wheelAt || 0) > 400) this.loopPressed = true;
+      this._wheelAt = now;
+    }, { passive: false });
 
     this.mouseStick = { x: 0, y: 0 };
     this.mouseZero = { x: 0, y: 0 };
@@ -647,6 +661,11 @@ export class Input {
     }
     this.padAnyButton = any;
 
+    // Y: a loop the loop, on the press.
+    const loopNow = btn(3);
+    if (loopNow && !this._padLoopWas) this.loopPressed = true;
+    this._padLoopWas = loopNow;
+
     // Menu starts a game, on the press rather than while it is held.
     const startNow = btn(9) || btn(8);
     if (startNow && !this._padStartWas) this.startPressed = true;
@@ -778,6 +797,14 @@ export class Input {
   newFlight() {
     this.mouseStick = { x: 0, y: 0 };
     this.keyStick.x = this.keyStick.y = 0;
+    this.loopPressed = false;
+  }
+
+  // A loop asked for since the last step: the press, once.
+  consumeLoop() {
+    const v = this.loopPressed;
+    this.loopPressed = false;
+    return v;
   }
 
   consumeStart() {
